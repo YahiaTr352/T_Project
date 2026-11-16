@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -102,6 +103,13 @@ class Notification extends Model
     public function scopePendingApproval($query)
     {
         return $query->where('status', 'pending_approval');
+    }
+
+    public function scopeReceivedInvitations(Builder $query, int $personId): Builder
+    {
+        return $query->whereNotNull('person_id')
+            ->whereIn('status', ['sent', 'partial'])
+            ->whereHas('recipients', fn (Builder $recipients) => $recipients->where('person_id', $personId));
     }
 
     public function scopeApproved($query)

@@ -6,14 +6,15 @@ import {
   isProfileIncomplete,
   isUnderageBlocked,
   type InvitationLog,
+  type InvitationLogDirection,
 } from '@/lib/api/invitations';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export function useInvitationLogs(enabled: boolean) {
+export function useInvitationLogs(enabled: boolean, direction: InvitationLogDirection = 'outgoing') {
   const [items, setItems] = useState<InvitationLog[]>([]);
   const [page, setPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +22,7 @@ export function useInvitationLogs(enabled: boolean) {
   const [profileIncomplete, setProfileIncomplete] = useState(false);
   const [underageBlocked, setUnderageBlocked] = useState(false);
   const loadingMoreLock = useRef(false);
+  const latestRequest = useRef(0);
 
   const applyPage = useCallback((payload: unknown, append: boolean) => {
     const wrapped = payload as { notifications?: unknown } | null;
@@ -58,9 +60,12 @@ export function useInvitationLogs(enabled: boolean) {
       } else {
         setLoading(true);
       }
+      const requestId = ++latestRequest.current;
       setError(null);
 
-      const res = await fetchInvitationLogs(pageNumber);
+      const res = await fetchInvitationLogs(pageNumber, direction);
+      if (requestId !== latestRequest.current) return;
+
       if (isIdentityRequired(res) || isProfileIncomplete(res) || isUnderageBlocked(res)) {
         setIdentityRequired(isIdentityRequired(res));
         setProfileIncomplete(isProfileIncomplete(res));
@@ -82,7 +87,7 @@ export function useInvitationLogs(enabled: boolean) {
       setLoadingMore(false);
       loadingMoreLock.current = false;
     },
-    [enabled, applyPage]
+    [enabled, applyPage, direction]
   );
 
   useEffect(() => {
@@ -99,12 +104,12 @@ export function useInvitationLogs(enabled: boolean) {
   }, [load, loading, loadingMore, refreshing, page, lastPage]);
 
   const fetchDetail = useCallback(async (id: number) => {
-    const res = await fetchInvitationLogDetail(id);
+    const res = await fetchInvitationLogDetail(id, direction);
     if (!res.success || !res.data?.notification) {
       return { ok: false as const, message: extractInvitationError(res) };
     }
     return { ok: true as const, notification: res.data.notification };
-  }, []);
+  }, [direction]);
 
   const updateItem = useCallback((notification: InvitationLog) => {
     setItems((prev) => prev.map((it) => (it.id === notification.id ? notification : it)));

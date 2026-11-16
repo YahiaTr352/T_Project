@@ -31,6 +31,8 @@ interface LogDetailModalProps {
   onClose: () => void;
   log: InvitationLog | null;
   loading: boolean;
+  error: string | null;
+  incoming: boolean;
   colors: ThemeColors;
   isDark: boolean;
 }
@@ -111,6 +113,8 @@ export function LogDetailModal({
   onClose,
   log,
   loading,
+  error,
+  incoming,
   colors,
   isDark,
 }: LogDetailModalProps) {
@@ -130,76 +134,88 @@ export function LogDetailModal({
       <View style={styles.overlay}>
         <View style={[styles.card, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC' }]}>
           <View style={styles.header}>
-            <ThemedText style={styles.title}>تفاصيل الإرسال</ThemedText>
+            <ThemedText style={styles.title}>{incoming ? 'تفاصيل الدعوة الواردة' : 'تفاصيل الإرسال'}</ThemedText>
             <Pressable onPress={onClose} hitSlop={12}>
               <IconSymbol name="xmark.circle.fill" size={22} color={muted} />
             </Pressable>
           </View>
 
-          {loading || !log ? (
+          {error ? (
+            <ThemedText style={[styles.date, { color: muted }]}>{error}</ThemedText>
+          ) : loading || !log ? (
             <ActivityIndicator color={colors.primary} style={{ marginVertical: 24 }} />
           ) : (
             <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={[styles.badge, { backgroundColor: meta.color + '20' }]}>
-                <ThemedText style={[styles.badgeText, { color: meta.color }]}>
-                  {meta.label}
-                </ThemedText>
-              </View>
-              {meta.hint ? (
-                <View style={[styles.hintBox, { backgroundColor: meta.color + '12', borderColor: meta.color + '40' }]}>
-                  <Ionicons name="information-circle-outline" size={15} color={meta.color} />
-                  <ThemedText style={[styles.hintText, { color: meta.color }]}>
-                    {meta.hint}
-                  </ThemedText>
-                </View>
+              {!incoming ? (
+                <>
+                  <View style={[styles.badge, { backgroundColor: meta.color + '20' }]}>
+                    <ThemedText style={[styles.badgeText, { color: meta.color }]}>
+                      {meta.label}
+                    </ThemedText>
+                  </View>
+                  {meta.hint ? (
+                    <View style={[styles.hintBox, { backgroundColor: meta.color + '12', borderColor: meta.color + '40' }]}>
+                      <Ionicons name="information-circle-outline" size={15} color={meta.color} />
+                      <ThemedText style={[styles.hintText, { color: meta.color }]}>
+                        {meta.hint}
+                      </ThemedText>
+                    </View>
+                  ) : null}
+                  {completed && log?.status && log.status.toLowerCase() !== 'completed' && log.status.toLowerCase() !== 'sent' ? (
+                    <View style={[styles.hintBox, { backgroundColor: '#10B98112', borderColor: '#10B98140' }]}>
+                      <Ionicons name="checkmark-circle" size={15} color="#10B981" />
+                      <ThemedText style={[styles.hintText, { color: '#059669' }]}>
+                        وصلت الرسالة فعلاً واكتملت بتاريخ {formatLogDate(log.sent_at)} — نص الحالة في الخادم متأخر فقط.
+                      </ThemedText>
+                    </View>
+                  ) : null}
+                  {/* خط زمني: إنشاء → اعتماد → إرسال → اكتمال */}
+                  <View style={styles.timeline}>
+                    {['إنشاء', 'اعتماد', 'إرسال', 'اكتمال'].map((stepLabel, i) => {
+                      const current = statusStepIndex(effectiveStatus);
+                      const done = i <= current;
+                      const active = i === current;
+                      const connectorColor =
+                        i < current ? meta.color : isDark ? '#334155' : '#E2E8F0';
+                      return (
+                        <React.Fragment key={stepLabel}>
+                          <View style={styles.timelineStep}>
+                            <View
+                              style={[
+                                styles.timelineDot,
+                                {
+                                  backgroundColor: done ? meta.color : isDark ? '#334155' : '#E2E8F0',
+                                  borderColor: active ? meta.color : 'transparent',
+                                  borderWidth: active ? 2 : 0,
+                                },
+                              ]}>
+                              {done ? <Ionicons name="checkmark" size={11} color="#FFFFFF" /> : null}
+                            </View>
+                            <ThemedText style={[styles.timelineLabel, { color: done ? meta.color : muted }]}>
+                              {stepLabel}
+                            </ThemedText>
+                          </View>
+                          {i < 3 ? (
+                            <View style={[styles.timelineConnector, { backgroundColor: connectorColor }]} />
+                          ) : null}
+                        </React.Fragment>
+                      );
+                    })}
+                  </View>
+                </>
               ) : null}
-              {completed && log?.status && log.status.toLowerCase() !== 'completed' && log.status.toLowerCase() !== 'sent' ? (
-                <View style={[styles.hintBox, { backgroundColor: '#10B98112', borderColor: '#10B98140' }]}>
-                  <Ionicons name="checkmark-circle" size={15} color="#10B981" />
-                  <ThemedText style={[styles.hintText, { color: '#059669' }]}>
-                    وصلت الرسالة فعلاً واكتملت بتاريخ {formatLogDate(log.sent_at)} — نص الحالة في الخادم متأخر فقط.
-                  </ThemedText>
-                </View>
-              ) : null}
-              {/* خط زمني: إنشاء → اعتماد → إرسال → اكتمال */}
-              <View style={styles.timeline}>
-                {['إنشاء', 'اعتماد', 'إرسال', 'اكتمال'].map((stepLabel, i) => {
-                  const current = statusStepIndex(effectiveStatus);
-                  const done = i <= current;
-                  const active = i === current;
-                  const connectorColor =
-                    i < current ? meta.color : isDark ? '#334155' : '#E2E8F0';
-                  return (
-                    <React.Fragment key={stepLabel}>
-                      <View style={styles.timelineStep}>
-                        <View
-                          style={[
-                            styles.timelineDot,
-                            {
-                              backgroundColor: done ? meta.color : isDark ? '#334155' : '#E2E8F0',
-                              borderColor: active ? meta.color : 'transparent',
-                              borderWidth: active ? 2 : 0,
-                            },
-                          ]}>
-                          {done ? <Ionicons name="checkmark" size={11} color="#FFFFFF" /> : null}
-                        </View>
-                        <ThemedText style={[styles.timelineLabel, { color: done ? meta.color : muted }]}>
-                          {stepLabel}
-                        </ThemedText>
-                      </View>
-                      {i < 3 ? (
-                        <View style={[styles.timelineConnector, { backgroundColor: connectorColor }]} />
-                      ) : null}
-                    </React.Fragment>
-                  );
-                })}
-              </View>
               {log.title ? (
                 <ThemedText style={styles.logTitle}>{log.title}</ThemedText>
               ) : null}
+              {incoming ? (
+                <ThemedText style={[styles.date, { color: muted }]}>
+                  من {log.sender_name || 'مرسل غير معروف'}
+                </ThemedText>
+              ) : null}
               <ThemedText style={[styles.date, { color: muted }]}>
-                أُنشئت: {formatLogDate(log.created_at)}
-                {log.sent_at ? `  •  اكتملت: ${formatLogDate(log.sent_at)}` : ''}
+                {incoming
+                  ? formatLogDate(log.sent_at ?? log.created_at)
+                  : `أُنشئت: ${formatLogDate(log.created_at)}${log.sent_at ? `  •  اكتملت: ${formatLogDate(log.sent_at)}` : ''}`}
               </ThemedText>
               <View style={styles.channelRow}>
                 {channels.includes('whatsapp') ? (
@@ -218,40 +234,44 @@ export function LogDetailModal({
               <View style={[styles.bodyBox, { backgroundColor: cardBg, borderColor: border }]}>
                 <ThemedText style={styles.body}>{log.body}</ThemedText>
               </View>
-              <ThemedText style={styles.section}>
-                المستلمون{totalRecipients > 0 ? ` (${totalRecipients})` : ''}
-              </ThemedText>
-              {(log.recipients ?? []).length === 0 ? (
-                <ThemedText style={[styles.date, { color: muted }]}>لا يوجد مستلمون مسجّلون</ThemedText>
-              ) : (
-                (log.recipients ?? []).map((r) => {
-                  const photo = recipientPhotoUrl(r);
-                  const displayName = recipientDisplayName(r);
-                  return (
-                    <View key={r.id} style={[styles.recipient, { borderColor: border }]}>
-                      <PersonAvatar
-                        uri={photo}
-                        size={36}
-                        mutedColor={muted}
-                        name={displayName}
-                      />
-                      <View style={{ flex: 1 }}>
-                        <ThemedText style={styles.recipientName}>
-                          {displayName}
-                        </ThemedText>
-                        {r.recipient_phone && r.person_id == null ? (
-                          <ThemedText style={[styles.recipientSub, { color: muted }]}>
-                            {r.recipient_phone}
-                          </ThemedText>
-                        ) : null}
-                      </View>
-                      {(r.delivered_at || r.sent_at) ? (
-                        <Ionicons name="checkmark-done" size={16} color="#10B981" />
-                      ) : null}
-                    </View>
-                  );
-                })
-              )}
+              {!incoming ? (
+                <>
+                  <ThemedText style={styles.section}>
+                    المستلمون{totalRecipients > 0 ? ` (${totalRecipients})` : ''}
+                  </ThemedText>
+                  {(log.recipients ?? []).length === 0 ? (
+                    <ThemedText style={[styles.date, { color: muted }]}>لا يوجد مستلمون مسجّلون</ThemedText>
+                  ) : (
+                    (log.recipients ?? []).map((r) => {
+                      const photo = recipientPhotoUrl(r);
+                      const displayName = recipientDisplayName(r);
+                      return (
+                        <View key={r.id} style={[styles.recipient, { borderColor: border }]}>
+                          <PersonAvatar
+                            uri={photo}
+                            size={36}
+                            mutedColor={muted}
+                            name={displayName}
+                          />
+                          <View style={{ flex: 1 }}>
+                            <ThemedText style={styles.recipientName}>
+                              {displayName}
+                            </ThemedText>
+                            {r.recipient_phone && r.person_id == null ? (
+                              <ThemedText style={[styles.recipientSub, { color: muted }]}>
+                                {r.recipient_phone}
+                              </ThemedText>
+                            ) : null}
+                          </View>
+                          {(r.delivered_at || r.sent_at) ? (
+                            <Ionicons name="checkmark-done" size={16} color="#10B981" />
+                          ) : null}
+                        </View>
+                      );
+                    })
+                  )}
+                </>
+              ) : null}
             </ScrollView>
           )}
 

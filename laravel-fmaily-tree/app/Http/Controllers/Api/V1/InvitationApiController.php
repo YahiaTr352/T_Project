@@ -331,22 +331,44 @@ class InvitationApiController extends Controller
 
     public function logs(Request $request): JsonResponse
     {
-        $notifications = Notification::query()
-            ->where('person_id', $this->person($request)->id)
-            ->with(['recipients.person:id,first_name'])
-            ->latest()
-            ->paginate(15);
+        $filters = $request->validate(['direction' => 'sometimes|in:outgoing,incoming']);
+        $incoming = ($filters['direction'] ?? 'outgoing') === 'incoming';
+        $personId = $this->person($request)->id;
 
-        $this->attachBackgrounds($notifications->getCollection());
+        $query = $incoming
+            ? Notification::receivedInvitations($personId)->with('person:id,first_name,last_name')
+            : Notification::query()->where('person_id', $personId)->with('recipients.person:id,first_name');
+        $notifications = $query->latest()->orderByDesc('id')->paginate(15)->withQueryString();
 
-        return $this->ok('سجل الإرسال.', [
+        if ($incoming) {
+            $notifications->through($this->receivedLogPayload(...));
+        } else {
+            $this->attachBackgrounds($notifications->getCollection());
+        }
+
+        return $this->ok($incoming ? 'سجل الدعوات الواردة.' : 'سجل الإرسال.', [
             'notifications' => $notifications,
         ]);
     }
 
     public function logShow(Request $request, Notification $notification): JsonResponse
     {
-        if ((int) $notification->person_id !== (int) $this->person($request)->id) {
+        $filters = $request->validate(['direction' => 'sometimes|in:outgoing,incoming']);
+        $direction = $filters['direction'] ?? null;
+        $personId = $this->person($request)->id;
+
+        if ($direction !== 'incoming' && (int) $notification->person_id === (int) $personId) {
+            $notification->load(['recipients.person:id,first_name,photo_url']);
+            $this->attachBackgrounds(collect([$notification]));
+
+            return $this->ok('تفاصيل الإرسال.', ['notification' => $notification]);
+        }
+
+        $received = $direction !== 'outgoing'
+            ? Notification::receivedInvitations($personId)->with('person:id,first_name,last_name')->find($notification->id)
+            : null;
+
+        if (!$received) {
             return response()->json([
                 'success' => false,
                 'message' => 'غير مصرح.',
@@ -356,11 +378,21 @@ class InvitationApiController extends Controller
             ], 403);
         }
 
-        $notification->load(['recipients.person:id,first_name,photo_url']);
+        return $this->ok('تفاصيل الدعوة الواردة.', ['notification' => $this->receivedLogPayload($received)]);
+    }
 
-        $this->attachBackgrounds(collect([$notification]));
-
-        return $this->ok('تفاصيل الإرسال.', ['notification' => $notification]);
+    private function receivedLogPayload(Notification $notification): array
+    {
+        return [
+            'id' => $notification->id,
+            'title' => $notification->title,
+            'body' => $notification->body,
+            'channels' => $notification->channels,
+            'status' => $notification->status,
+            'created_at' => $notification->created_at,
+            'sent_at' => $notification->sent_at,
+            'sender_name' => trim($notification->person?->first_name.' '.$notification->person?->last_name),
+        ];
     }
 
     private function person(Request $request): Person

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>سجل الإرسال - الدعوات</title>
+    <title>سجل الدعوات</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -50,15 +50,25 @@
                 <div>
                     <h1 class="text-3xl font-extrabold text-gray-900 mb-2">
                         <i class="fas fa-history text-purple-600 mr-2"></i>
-                        سجل الإرسال
+                        سجل الدعوات
                     </h1>
-                    <p class="text-gray-600">تتبع جميع الرسائل المرسلة</p>
                 </div>
                 <a href="{{ route('invitations.index') }}" class="inline-flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-gray-200 hover:bg-gray-50 transition">
                     <i class="fas fa-arrow-right"></i>
                     العودة
                 </a>
             </div>
+
+            <nav aria-label="سجل الدعوات" class="mb-6 flex gap-2">
+                <a href="{{ route('invitations.logs') }}" @if(!$incoming) aria-current="page" @endif
+                    class="rounded-xl border px-5 py-2.5 font-bold {{ !$incoming ? 'border-green-700 bg-green-700 text-white' : 'border-gray-200 bg-white text-gray-700' }}">
+                    الصادر
+                </a>
+                <a href="{{ route('invitations.logs', ['direction' => 'incoming']) }}" @if($incoming) aria-current="page" @endif
+                    class="rounded-xl border px-5 py-2.5 font-bold {{ $incoming ? 'border-green-700 bg-green-700 text-white' : 'border-gray-200 bg-white text-gray-700' }}">
+                    الوارد
+                </a>
+            </nav>
 
             {{-- Alerts --}}
             @if(session('success'))
@@ -74,6 +84,20 @@
             @if($notifications->count() > 0)
                 <div class="space-y-4">
                     @foreach($notifications as $notification)
+                    @if($incoming)
+                    <details class="glass-card rounded-2xl p-6">
+                        <summary class="cursor-pointer">
+                            <span class="text-lg font-bold text-gray-900">{{ $notification->title ?: 'دعوة بدون عنوان' }}</span>
+                            <span class="mt-1 block text-sm text-gray-600">
+                                من {{ trim($notification->person?->first_name . ' ' . $notification->person?->last_name) ?: 'مرسل غير معروف' }}
+                                · {{ ($notification->sent_at ?? $notification->created_at)?->format('Y-m-d H:i') }}
+                            </span>
+                        </summary>
+                        <p class="mt-4 whitespace-pre-wrap border-t border-gray-100 pt-4 text-gray-800">{{ $notification->body }}</p>
+                    </details>
+                    @continue
+                    @endif
+
                     <div class="glass-card rounded-2xl p-6 log-item">
                         <div class="flex items-start justify-between gap-4 mb-4">
                             <div class="flex items-start gap-4 flex-1">
@@ -205,12 +229,16 @@
                     <div class="w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
                         <i class="fas fa-inbox text-5xl text-gray-400"></i>
                     </div>
-                    <h3 class="text-xl font-bold text-gray-900 mb-2">لا توجد رسائل مرسلة</h3>
-                    <p class="text-gray-600 mb-6">ابدأ بإرسال أول دعوة لك</p>
-                    <a href="{{ route('invitations.send') }}" class="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-bold rounded-xl hover:shadow-lg transition">
-                        <i class="fab fa-whatsapp"></i>
-                        إرسال دعوة جديدة
-                    </a>
+                    <h3 class="text-xl font-bold text-gray-900 mb-2">
+                        {{ $incoming ? 'لا توجد دعوات واردة' : 'لا توجد رسائل مرسلة' }}
+                    </h3>
+                    @unless($incoming)
+                        <p class="text-gray-600 mb-6">ابدأ بإرسال أول دعوة لك</p>
+                        <a href="{{ route('invitations.send') }}" class="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-bold rounded-xl hover:shadow-lg transition">
+                            <i class="fab fa-whatsapp"></i>
+                            إرسال دعوة جديدة
+                        </a>
+                    @endunless
                 </div>
             @endif
         </div>

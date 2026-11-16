@@ -12,6 +12,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useInvitationGroups } from '@/hooks/use-invitation-groups';
 import { useInvitationLogs } from '@/hooks/use-invitation-logs';
 import { useInvitationTemplates } from '@/hooks/use-invitation-templates';
+import type { InvitationLogDirection } from '@/lib/api/invitations';
 import {
   getInvitationEligibility,
   missingFieldsLabel,
@@ -35,6 +36,7 @@ export default function InvitesScreen() {
   const isDark = colorScheme === 'dark';
   const { hasIdentity, user, lock } = useAuth();
   const [tab, setTab] = useState<InvitationTabKey>('compose');
+  const [logDirection, setLogDirection] = useState<InvitationLogDirection>('outgoing');
 
   // الأهلية المحلية: هوية (وجه/واتساب) + عمر 20+ + بيانات أساسية (الاسم + الميلاد)
   // دخول رمز الموقع (112/passcode) بلا user.id → reason=identity → بوابة التوثيق
@@ -43,6 +45,8 @@ export default function InvitesScreen() {
   const templates = useInvitationTemplates(hasIdentity);
   const groups = useInvitationGroups(hasIdentity);
   const logs = useInvitationLogs(hasIdentity);
+  const incomingLogs = useInvitationLogs(hasIdentity && tab === 'logs' && logDirection === 'incoming', 'incoming');
+  const activeLogs = logDirection === 'incoming' ? incomingLogs : logs;
 
   const serverIdentityBlocked =
     templates.identityRequired || groups.identityRequired || logs.identityRequired;
@@ -75,6 +79,7 @@ export default function InvitesScreen() {
   const handleSent = () => {
     void logs.refresh();
     void groups.refresh();
+    setLogDirection('outgoing');
     setTab('logs');
   };
 
@@ -178,20 +183,47 @@ export default function InvitesScreen() {
           ) : null}
 
           {tab === 'logs' ? (
-            <LogsTab
-              items={logs.items}
-              loading={logs.loading}
-              refreshing={logs.refreshing}
-              loadingMore={logs.loadingMore}
-              error={logs.error}
-              hasMore={logs.hasMore}
-              onRefresh={() => void logs.refresh()}
-              onLoadMore={() => logs.loadMore()}
-              onOpenDetail={logs.fetchDetail}
-              onItemUpdated={logs.updateItem}
-              colors={colors}
-              isDark={isDark}
-            />
+            <>
+              <View style={styles.logTabs}>
+                {(['outgoing', 'incoming'] as const).map((direction) => {
+                  const selected = direction === logDirection;
+                  return (
+                    <Pressable
+                      key={direction}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected }}
+                      onPress={() => setLogDirection(direction)}
+                      style={[
+                        styles.logTab,
+                        {
+                          backgroundColor: selected ? colors.primary : colors.card,
+                          borderColor: selected ? colors.primary : colors.border,
+                        },
+                      ]}>
+                      <ThemedText style={[styles.logTabLabel, { color: selected ? '#FFFFFF' : colors.text }]}>
+                        {direction === 'outgoing' ? 'الصادر' : 'الوارد'}
+                      </ThemedText>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <LogsTab
+                key={logDirection}
+                incoming={logDirection === 'incoming'}
+                items={activeLogs.items}
+                loading={activeLogs.loading}
+                refreshing={activeLogs.refreshing}
+                loadingMore={activeLogs.loadingMore}
+                error={activeLogs.error}
+                hasMore={activeLogs.hasMore}
+                onRefresh={activeLogs.refresh}
+                onLoadMore={activeLogs.loadMore}
+                onOpenDetail={activeLogs.fetchDetail}
+                onItemUpdated={activeLogs.updateItem}
+                colors={colors}
+                isDark={isDark}
+              />
+            </>
           ) : null}
         </View>
       )}
@@ -200,6 +232,23 @@ export default function InvitesScreen() {
 }
 
 const styles = StyleSheet.create({
+  logTabs: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  logTab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  logTabLabel: {
+    fontFamily: 'Tajawal-Bold',
+    fontSize: 14,
+  },
   container: {
     flex: 1,
   },

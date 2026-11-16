@@ -25,6 +25,7 @@ const WHATSAPP_GREEN = '#25D366';
 const PUSH_BLUE = '#3B82F6';
 
 interface LogsTabProps {
+  incoming: boolean;
   items: InvitationLog[];
   loading: boolean;
   refreshing: boolean;
@@ -42,6 +43,7 @@ interface LogsTabProps {
 }
 
 export function LogsTab({
+  incoming,
   items,
   loading,
   refreshing,
@@ -61,22 +63,26 @@ export function LogsTab({
   const [detail, setDetail] = useState<InvitationLog | null>(null);
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const openDetail = async (item: InvitationLog) => {
     setDetail(item);
     setDetailVisible(true);
     setDetailLoading(true);
+    setDetailError(null);
     const res = await onOpenDetail(item.id);
     setDetailLoading(false);
     if (res.ok) {
       setDetail(res.notification);
       // حدّث عنصر القائمة فوراً حتى لا تبقى الشارة قديمة بعد اكتمال الإرسال
       onItemUpdated?.(res.notification);
+    } else {
+      setDetailError(res.message);
     }
   };
 
   // تحديث تلقائي صامت كل 20 ثانية طالما يوجد عنصر بانتظار الاعتماد أو جارٍ إرساله
-  const hasTransient = items.some((it) => {
+  const hasTransient = !incoming && items.some((it) => {
     const s = (it.status || '').toLowerCase();
     return ['pending_approval', 'pending', 'approved', 'queued', 'processing', 'sending', 'partial'].includes(s);
   });
@@ -113,7 +119,7 @@ export function LogsTab({
           <View style={styles.centered}>
             <IconSymbol name="clock.fill" size={40} color={muted} />
             <ThemedText style={[styles.muted, { color: muted }]}>
-              لا توجد إرسالات بعد. أرسل أول دعوة من تبويب «دعوة جديدة».
+              {incoming ? 'لا توجد دعوات واردة بعد.' : 'لا توجد إرسالات بعد. أرسل أول دعوة من تبويب «دعوة جديدة».'}
             </ThemedText>
           </View>
         }
@@ -123,10 +129,12 @@ export function LogsTab({
           ) : null
         }
         renderItem={({ item }) => {
-          const meta = statusMeta(effectiveLogStatus(item) || item.status);
+          const meta = incoming
+            ? { label: 'واردة', color: colors.primary }
+            : statusMeta(effectiveLogStatus(item) || item.status);
           const channels = normalizeChannels(item.channels);
           const recipientsCount = item.recipients_count ?? item.recipients?.length ?? 0;
-          const isTransient = ['pending_approval', 'pending', 'approved', 'queued', 'processing', 'sending'].includes((item.status || '').toLowerCase());
+          const isTransient = !incoming && ['pending_approval', 'pending', 'approved', 'queued', 'processing', 'sending'].includes((item.status || '').toLowerCase());
           return (
             <Pressable
               onPress={() => void openDetail(item)}
@@ -161,14 +169,18 @@ export function LogsTab({
                   {channels.includes('push') ? (
                     <IconSymbol name="bell.fill" size={16} color={PUSH_BLUE} />
                   ) : null}
-                  {recipientsCount > 0 ? (
+                  {incoming ? (
+                    <ThemedText style={[styles.metaText, { color: muted }]}>
+                      من {item.sender_name || 'مرسل غير معروف'}
+                    </ThemedText>
+                  ) : recipientsCount > 0 ? (
                     <ThemedText style={[styles.metaText, { color: muted }]}>
                       {recipientsCount} مستلم
                     </ThemedText>
                   ) : null}
                 </View>
                 <ThemedText style={[styles.metaText, { color: muted }]}>
-                  {formatLogDate(item.created_at)}
+                  {formatLogDate(incoming ? item.sent_at ?? item.created_at : item.created_at)}
                 </ThemedText>
               </View>
             </Pressable>
@@ -181,6 +193,8 @@ export function LogsTab({
         onClose={() => setDetailVisible(false)}
         log={detail}
         loading={detailLoading}
+        error={detailError}
+        incoming={incoming}
         colors={colors}
         isDark={isDark}
       />

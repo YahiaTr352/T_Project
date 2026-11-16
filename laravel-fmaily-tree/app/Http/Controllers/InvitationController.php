@@ -162,14 +162,14 @@ class InvitationController extends Controller
     {
         /** @var Person $person */
         $person = $request->attributes->get('identity_person');
+        $incoming = $request->query('direction') === 'incoming';
 
-        $notifications = Notification::query()
-            ->where('person_id', $person->id)
-            ->with(['recipients.person'])
-            ->latest()
-            ->paginate(10);
+        $query = $incoming
+            ? Notification::receivedInvitations($person->id)->with('person:id,first_name,last_name')
+            : Notification::query()->where('person_id', $person->id)->with('recipients.person');
+        $notifications = $query->latest()->orderByDesc('id')->paginate(10)->withQueryString();
 
-        return view('web-site.invitations.logs', compact('notifications', 'person'));
+        return view('web-site.invitations.logs', compact('notifications', 'person', 'incoming'));
     }
 
     public function groupsIndex(Request $request): View

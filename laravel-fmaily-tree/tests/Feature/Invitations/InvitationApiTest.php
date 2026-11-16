@@ -3,6 +3,7 @@
 namespace Tests\Feature\Invitations;
 
 use App\Jobs\SendWhatsAppInvitationJob;
+use App\Models\Notification;
 use App\Models\NotificationGroup;
 use App\Models\Person;
 use App\Models\PersonContactAccount;
@@ -202,6 +203,62 @@ class InvitationApiTest extends TestCase
             ])
             ->assertStatus(403)
             ->assertJsonPath('code', 'GROUP_NOT_OWNED');
+    }
+
+    public function test_invitation_history_separates_directions_and_protects_recipient_details(): void
+    {
+        Queue::fake();
+
+        $adult = ['birth_date' => '1990-01-01', 'death_date' => null];
+        $sender = Person::factory()->create($adult + ['first_name' => 'فهد', 'last_name' => 'التجريبي']);
+        $recipient = Person::factory()->create($adult);
+        $other = Person::factory()->create($adult);
+        $sent = Notification::create([
+            'person_id' => $sender->id,
+            'title' => 'لقاء العائلة',
+            'body' => 'أهلاً بكم',
+            'status' => 'sent',
+            'targeting_filters' => ['external_recipients' => [['phone' => '+12025550199']]],
+        ]);
+        $sent->recipients()->create(['person_id' => $recipient->id]);
+        $sent->recipients()->create(['recipient_name' => 'ضيف آخر', 'recipient_phone' => '+12025550199']);
+        $pending = Notification::create(['person_id' => $sender->id, 'status' => 'pending_approval']);
+        $pending->recipients()->create(['person_id' => $recipient->id]);
+        $generic = Notification::create(['status' => 'sent']);
+        $generic->recipients()->create(['person_id' => $recipient->id]);
+
+        $this->withHeaders($this->identityHeaders($sender))
+            ->getJson('/api/v1/invitations/logs')
+            ->assertOk()
+            ->assertJsonCount(2, 'data.notifications.data');
+        $this->getJson("/api/v1/invitations/logs/{$sent->id}")
+            ->assertOk()
+            ->assertJsonCount(2, 'data.notification.recipients');
+
+        $this->flushSession()->withHeaders($this->identityHeaders($recipient))
+            ->getJson('/api/v1/invitations/logs')
+            ->assertOk()
+            ->assertJsonCount(0, 'data.notifications.data');
+
+        $this->getJson('/api/v1/invitations/logs?direction=incoming')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.notifications.data')
+            ->assertJsonPath('data.notifications.data.0.id', $sent->id)
+            ->assertJsonPath('data.notifications.data.0.sender_name', 'فهد التجريبي')
+            ->assertJsonMissingPath('data.notifications.data.0.recipients')
+            ->assertJsonMissingPath('data.notifications.data.0.targeting_filters');
+
+        $this->getJson("/api/v1/invitations/logs/{$sent->id}?direction=incoming")
+            ->assertOk()
+            ->assertJsonPath('data.notification.body', 'أهلاً بكم')
+            ->assertJsonMissingPath('data.notification.recipients')
+            ->assertJsonMissingPath('data.notification.targeting_filters');
+        $this->getJson("/api/v1/invitations/logs/{$pending->id}?direction=incoming")->assertForbidden();
+        $this->getJson("/api/v1/invitations/logs/{$sent->id}?direction=outgoing")->assertForbidden();
+
+        $this->flushSession()->withHeaders($this->identityHeaders($other))
+            ->getJson("/api/v1/invitations/logs/{$sent->id}?direction=incoming")
+            ->assertForbidden();
     }
 
     /**

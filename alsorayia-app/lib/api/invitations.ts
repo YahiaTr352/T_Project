@@ -102,6 +102,8 @@ export interface InvitationLogRecipient {
   sent_at?: string | null;
 }
 
+export type InvitationLogDirection = 'outgoing' | 'incoming';
+
 export interface InvitationLog {
   id: number;
   title: string | null;
@@ -110,6 +112,7 @@ export interface InvitationLog {
   status: string;
   created_at: string;
   sent_at?: string | null;
+  sender_name?: string | null;
   recipients?: InvitationLogRecipient[];
   recipients_count?: number | null;
   delivered_count?: number | null;
@@ -436,18 +439,20 @@ export async function sendInvitation(
 }
 
 export async function fetchInvitationLogs(
-  page = 1
+  page = 1,
+  direction: InvitationLogDirection = 'outgoing'
 ): Promise<InvitationsApiResponse<{ notifications: InvitationLogsPage }>> {
-  return request('تعذّر جلب سجل الإرسال.', () =>
-    api.get('/v1/invitations/logs', { params: { page }, ...skipHandler } as any)
+  return request('تعذّر جلب سجل الدعوات.', () =>
+    api.get('/v1/invitations/logs', { params: { page, direction }, ...skipHandler } as any)
   );
 }
 
 export async function fetchInvitationLogDetail(
-  id: number
+  id: number,
+  direction: InvitationLogDirection = 'outgoing'
 ): Promise<InvitationsApiResponse<{ notification: InvitationLog }>> {
-  return request('تعذّر جلب تفاصيل الإرسال.', () =>
-    api.get(`/v1/invitations/logs/${id}`, skipHandler as any)
+  return request('تعذّر جلب تفاصيل الدعوة.', () =>
+    api.get(`/v1/invitations/logs/${id}`, { params: { direction }, ...skipHandler } as any)
   );
 }
 
