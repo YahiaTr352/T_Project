@@ -1022,8 +1022,6 @@ export default function HomeScreen() {
   const dynamicSections = data?.dynamicSections ?? [];
   const importantLinks = data?.importantLinks ?? [];
 
-  const goGallery = () => router.push('/gallery');
-
   return (
     <ThemedView style={styles.container}>
       <HeaderBar
@@ -1104,7 +1102,11 @@ export default function HomeScreen() {
             <FamilyEvents colors={colors} events={events} />
             <FamilyPrograms colors={colors} sections={programSections} />
             <ImportantLinksSection colors={colors} links={importantLinks} categories={data?.importantLinkCategories} />
-            <FamilyCourses colors={colors} courses={courses} onSeeAll={goGallery} />
+            <FamilyCourses
+              colors={colors}
+              courses={courses}
+              onSeeAll={() => openExternal('https://alsorayaiacademy.com/all-courses')}
+            />
             <HomeContactWidget
               colors={colors}
               isDark={colorScheme === 'dark'}
