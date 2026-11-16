@@ -1,0 +1,45 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class QuizAnswer extends BaseModel
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'quiz_question_id',
+        'person_id',
+        'user_id',
+        'answer',
+        'answer_type',
+        'is_correct',
+    ];
+
+    protected $casts = [
+        'is_correct' => 'boolean',
+    ];
+
+    public function question(): BelongsTo
+    {
+        return $this->belongsTo(QuizQuestion::class, 'quiz_question_id');
+    }
+
+    public function person(): BelongsTo
+    {
+        return $this->belongsTo(Person::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function selectedChoices(): HasMany
+    {
+        return $this->hasMany(QuizAnswerChoice::class)->orderBy('id');
+    }
+}

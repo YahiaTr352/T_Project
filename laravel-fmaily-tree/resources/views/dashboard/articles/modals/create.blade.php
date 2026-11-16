@@ -1,0 +1,161 @@
+<div class="modal fade" id="createArticleModal" tabindex="-1" role="dialog" aria-labelledby="createArticleModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <form action="{{ route('articles.store') }}" method="POST" enctype="multipart/form-data" class="modal-content">
+            @csrf
+            <div class="modal-header">
+                <h5 class="modal-title" id="createArticleModalLabel">إضافة مقال</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+
+            <div class="modal-body">
+                {{-- العنوان --}}
+                <div class="form-group">
+                    <label>العنوان <span class="text-danger">*</span></label>
+                    <input type="text" name="title" class="form-control" required maxlength="255"
+                        value="{{ old('title') }}">
+                </div>
+
+                {{-- المحتوى --}}
+                <div class="form-group">
+                    <label>المحتوى</label>
+                    <textarea name="content" class="form-control" rows="5">{{ old('content') }}</textarea>
+                </div>
+
+                <div class="form-row">
+                    {{-- الفئة --}}
+                    <div class="form-group col-md-3">
+                        <label>الفئة</label>
+                        <div class="input-group">
+                            <select name="category_id" class="form-control" required>
+                                @foreach ($categories as $cat)
+                                    <option value="{{ $cat->id }}"
+                                        {{ old('category_id') == $cat->id ? 'selected' : '' }}>
+                                        {{ $cat->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <div class="input-group-append">
+                                <button class="btn btn-outline-secondary" type="button" data-toggle="modal"
+                                    data-target="#quickCategoryModal" title="إضافة فئة سريعة">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- الحالة --}}
+                    <div class="form-group col-md-3">
+                        <label>الحالة</label>
+                        <select name="status" class="form-control" required>
+                            <option value="draft" {{ old('status', 'draft') === 'draft' ? 'selected' : '' }}>مسودة</option>
+                            <option value="published" {{ old('status') === 'published' ? 'selected' : '' }}>منشورة</option>
+                        </select>
+                    </div>
+
+                    {{-- سنة المقال --}}
+                    <div class="form-group col-md-3">
+                        <label>سنة المقال</label>
+                        <select name="created_at_year" class="form-control">
+                            <option value="">— اختر السنة —</option>
+                            @php
+                                $currentYear = date('Y');
+                                $startYear = 1900;
+                                $endYear = $currentYear + 10;
+                            @endphp
+                            @for ($year = $endYear; $year >= $startYear; $year--)
+                                <option value="{{ $year }}" {{ old('created_at_year') == $year ? 'selected' : '' }}>
+                                    {{ $year }}
+                                </option>
+                            @endfor
+                        </select>
+                    </div>
+
+                    {{-- شهر المقال --}}
+                    <div class="form-group col-md-3">
+                        <label>شهر المقال</label>
+                        @php
+                            $months = [
+                                1 => 'يناير',
+                                2 => 'فبراير',
+                                3 => 'مارس',
+                                4 => 'أبريل',
+                                5 => 'مايو',
+                                6 => 'يونيو',
+                                7 => 'يوليو',
+                                8 => 'أغسطس',
+                                9 => 'سبتمبر',
+                                10 => 'أكتوبر',
+                                11 => 'نوفمبر',
+                                12 => 'ديسمبر'
+                            ];
+                        @endphp
+                        <select name="created_at_month" class="form-control">
+                            <option value="">— اختر الشهر —</option>
+                            @foreach ($months as $num => $name)
+                                <option value="{{ $num }}" {{ old('created_at_month') == $num ? 'selected' : '' }}>
+                                    {{ $num }} - {{ $name }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    {{-- الناشر (الشخص) --}}
+                    <div class="form-group col-md-12">
+                        <label>الناشر</label>
+                        <select name="person_id" class="form-control">
+                            <option value="">— بدون ناشر —</option>
+                            @isset($people)
+                                @foreach ($people as $p)
+                                    <option value="{{ $p->id }}" {{ old('person_id') == $p->id ? 'selected' : '' }}>
+                                        {{ $p->full_name }}
+                                    </option>
+                                @endforeach
+                            @endisset
+                        </select>
+                        <small class="text-muted d-block">اختياري. إن تركته فارغًا فسيُحفظ المقال بدون ناشر.</small>
+                    </div>
+                </div>
+
+                {{-- صور متعددة --}}
+                <div class="form-group">
+                    <label>صور المقال (متعددة)</label>
+                    <div class="custom-file">
+                        <input type="file" name="images[]" class="custom-file-input" id="createArticleImages"
+                            multiple>
+                        <label class="custom-file-label" for="createArticleImages">اختر ملفات...</label>
+                    </div>
+                    <small class="text-muted d-block mt-1">يمكن رفع عدة صور، بحد أقصى 4MB للصورة.</small>
+                </div>
+
+                <div class="form-group">
+                    <label>مرفقات المقال (متعددة)</label>
+                    <div class="custom-file">
+                        <input type="file" name="attachments[]" class="custom-file-input"
+                            id="createArticleAttachments" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.zip">
+                        <label class="custom-file-label" for="createArticleAttachments">اختر ملفات...</label>
+                    </div>
+                    <small class="text-muted d-block mt-1">
+                        الصيغ المسموحة: PDF, DOC/DOCX, XLS/XLSX, ZIP — وبحد أقصى 10MB لكل ملف (طبقناها في الـ
+                        FormRequest).
+                    </small>
+                </div>
+
+                {{-- روابط فيديو يوتيوب (واحد في كل سطر) --}}
+                <div class="form-group">
+                    <label>روابط الفيديو (YouTube) — ضع كل رابط في سطر منفصل</label>
+                    <textarea name="videos_text" class="form-control" rows="4" placeholder="مثال:\nhttps://www.youtube.com/watch?v=XXXXXXXXX\nhttps://youtu.be/XXXXXXXXX"></textarea>
+                    <small class="text-muted d-block mt-1">ندعم روابط watch?v= و youtu.be و shorts/</small>
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" type="button" data-dismiss="modal">إغلاق</button>
+                <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> حفظ</button>
+            </div>
+        </form>
+    </div>
+</div>

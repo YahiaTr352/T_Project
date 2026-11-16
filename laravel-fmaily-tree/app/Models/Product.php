@@ -1,0 +1,113 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class Product extends BaseModel
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'name',
+        'description',
+        'features',
+        'price',
+        'contact_phone',
+        'contact_whatsapp',
+        'contact_email',
+        'contact_instagram',
+        'contact_facebook',
+        'website_url',
+        'location_url',
+        'main_image',
+        'product_category_id',
+        'product_subcategory_id',
+        'owner_id',
+        'location_id',
+        'is_active',
+        'is_rental',
+        'available_all_week',
+        'all_week_start_time',
+        'all_week_end_time',
+        'sort_order',
+    ];
+
+    protected $casts = [
+        'price' => 'decimal:2',
+        'is_active' => 'boolean',
+        'is_rental' => 'boolean',
+        'available_all_week' => 'boolean',
+        'sort_order' => 'integer',
+        'features' => 'array',
+        'all_week_start_time' => 'datetime:H:i',
+        'all_week_end_time' => 'datetime:H:i',
+    ];
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(ProductCategory::class, 'product_category_id');
+    }
+
+    public function subcategory(): BelongsTo
+    {
+        return $this->belongsTo(ProductSubcategory::class, 'product_subcategory_id');
+    }
+
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(Person::class, 'owner_id');
+    }
+
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
+    }
+
+    public function media(): HasMany
+    {
+        return $this->hasMany(ProductMedia::class)->orderBy('sort_order');
+    }
+
+    public function rentalRequests(): HasMany
+    {
+        return $this->hasMany(RentalRequest::class);
+    }
+
+    public function availabilitySlots(): HasMany
+    {
+        return $this->hasMany(ProductAvailabilitySlot::class)->ordered();
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeRental($query)
+    {
+        return $query->where('is_rental', true);
+    }
+
+    public function scopeNotRental($query)
+    {
+        return $query->where('is_rental', false);
+    }
+
+    public function scopeOrdered($query)
+    {
+        return $query->orderBy('sort_order')->orderBy('name');
+    }
+
+    public function scopeInCategory($query, $categoryId)
+    {
+        return $query->where('product_category_id', $categoryId);
+    }
+
+    public function scopeInSubcategory($query, $subcategoryId)
+    {
+        return $query->where('product_subcategory_id', $subcategoryId);
+    }
+}

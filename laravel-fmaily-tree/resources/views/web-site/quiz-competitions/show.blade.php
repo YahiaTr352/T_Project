@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ strip_tags($quizCompetition->title) }} - استطلاعات الرأي</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;900&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 50%, #bbf7d0 100%);
+            min-height: 100vh;
+        }
+        h1, h2, h3 { font-family: 'Amiri', serif; }
+
+        @keyframes float {
+            0% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(180deg); }
+            100% { transform: translateY(0px) rotate(360deg); }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .slide-in { animation: slideIn 0.6s ease-out forwards; }
+
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .green-glow { box-shadow: 0 0 40px rgba(34, 197, 94, 0.3); }
+        .green-glow-hover:hover {
+            box-shadow: 0 0 60px rgba(34, 197, 94, 0.5);
+            transform: translateY(-5px);
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #16a34a 0%, #22c55e 50%, #4ade80 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .question-card {
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        .question-card.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .question-card:hover {
+            transform: translateY(-5px);
+        }
+
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-track { background: #f0fdf4; }
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #22c55e, #16a34a);
+            border-radius: 5px;
+        }
+
+        /* Quiz Description Styles */
+        .quiz-description {
+            direction: rtl;
+            text-align: right;
+        }
+        .quiz-description p {
+            margin-bottom: 0.75rem;
+        }
+        .quiz-description strong,
+        .quiz-description b {
+            font-weight: 700;
+            color: #16a34a;
+        }
+        .quiz-description em,
+        .quiz-description i {
+            font-style: italic;
+        }
+        .quiz-description ul,
+        .quiz-description ol {
+            margin-right: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .quiz-description li {
+            margin-bottom: 0.5rem;
+        }
+        .quiz-description a {
+            color: #22c55e;
+            text-decoration: underline;
+            transition: color 0.2s;
+        }
+        .quiz-description a:hover {
+            color: #16a34a;
+        }
+        .quiz-description table {
+            width: 100%;
+            margin-bottom: 0.75rem;
+            border-collapse: collapse;
+            direction: ltr;
+            text-align: left;
+        }
+        .quiz-description table td,
+        .quiz-description table th {
+            padding: 0.5rem;
+            border: 1px solid #e5e7eb;
+            text-align: left;
+        }
+        .quiz-description img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 0.5rem;
+            margin: 0.5rem 0;
+        }
+
+        /* Question Text Styles */
+        .question-text {
+            direction: rtl;
+            text-align: right;
+        }
+        .question-text p {
+            margin-bottom: 0.5rem;
+        }
+        .question-text strong,
+        .question-text b {
+            font-weight: 700;
+        }
+        .question-text em,
+        .question-text i {
+            font-style: italic;
+        }
+        .question-text ul,
+        .question-text ol {
+            margin-right: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .question-text li {
+            margin-bottom: 0.25rem;
+        }
+        .question-text a {
+            color: #22c55e;
+            text-decoration: underline;
+        }
+        .question-text img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 0.5rem;
+            margin: 0.5rem 0;
+        }
+        .quiz-description iframe,
+        .quiz-description video,
+        .question-text iframe,
+        .question-text video {
+            max-width: 100%;
+            height: auto;
+            aspect-ratio: 16 / 9;
+            border-radius: 0.5rem;
+            margin: 0.5rem 0;
+        }
+    </style>
+</head>
+
+<body class="text-gray-800 relative overflow-x-hidden">
+    @include('partials.main-header')
+
+    {{-- زخارف الخلفية --}}
+    <div class="fixed top-10 right-10 w-96 h-96 opacity-5 pointer-events-none hidden lg:block" style="animation: float 6s ease-in-out infinite;">
+        <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+            <path fill="#22c55e" d="M44.9,-76.6C59.3,-69.5,72.8,-59.9,80.3,-46.7C87.8,-33.5,89.3,-16.8,88.3,-0.6C87.3,15.6,83.8,31.2,76.3,44.5C68.8,57.8,57.3,68.8,43.3,75.3C29.3,81.8,14.7,83.8,-0.6,84.8C-15.9,85.8,-31.8,85.8,-45.8,79.3C-59.8,72.8,-71.9,59.8,-79.3,44.5C-86.7,29.2,-89.3,11.6,-88.3,-5.9C-87.3,-23.4,-82.7,-46.8,-71.3,-64.3C-59.9,-81.8,-41.7,-93.4,-22.8,-95.8C-3.9,-98.2,15.7,-91.4,34.1,-82.3Z" transform="translate(100 100)" />
+        </svg>
+    </div>
+
+    <div class="container mx-auto px-4 py-6 lg:py-10 relative z-10 max-w-5xl">
+        {{-- التنقل --}}
+        <div class="mb-6 flex flex-wrap items-center gap-2 text-sm">
+            <a href="{{ route('home') }}#activeQuizSection" class="text-green-600 hover:text-green-700 transition-colors font-medium">
+                <i class="fas fa-arrow-right ml-1"></i> الرئيسية - استطلاعات الرأي
+            </a>
+            <span class="text-gray-300">/</span>
+            <span class="text-gray-600">{{ Str::limit($quizCompetition->title, 40) }}</span>
+        </div>
+
+        {{-- رأس المسابقة --}}
+        <div class="glass-effect rounded-3xl green-glow p-5 md:p-8 mb-8 relative overflow-hidden">
+            <div class="absolute top-0 right-0 left-0 h-1.5" style="background: linear-gradient(90deg, #22c55e, #16a34a, #22c55e);"></div>
+            <div class="flex items-start gap-5">
+                <div class="w-16 h-16 md:w-20 md:h-20 rounded-2xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-green-500 to-green-600 shadow-lg" style="box-shadow: 0 8px 25px rgba(34, 197, 94, 0.4);">
+                    <i class="fas fa-trophy text-white text-2xl md:text-3xl"></i>
+                </div>
+                <div class="flex-1">
+                    <h1 class="text-2xl md:text-3xl font-bold gradient-text mb-2">{{ $quizCompetition->title }}</h1>
+                    @if($quizCompetition->description)
+                        <div class="text-gray-500 text-sm md:text-base leading-relaxed mb-3 quiz-description">{!! $quizCompetition->description !!}</div>
+                    @endif
+                    <div class="flex flex-wrap items-center gap-3 text-xs">
+                        <span class="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2.5 py-1 rounded-full border border-green-200">
+                            <i class="fas fa-question-circle"></i>
+                            {{ $quizCompetition->questions->count() }} سؤال
+                        </span>
+                        @if($questions->count() > 0)
+                            <span class="inline-flex items-center gap-1 bg-green-100 text-green-700 px-2.5 py-1 rounded-full font-bold border border-green-300">
+                                <i class="fas fa-play-circle"></i>
+                                {{ $questions->count() }} نشط
+                            </span>
+                        @endif
+                        @if($upcomingQuestions->count() > 0)
+                            <span class="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full border border-amber-200">
+                                <i class="fas fa-clock"></i>
+                                {{ $upcomingQuestions->count() }} قادم
+                            </span>
+                        @endif
+                        @if($endedQuestions->count() > 0)
+                            <span class="inline-flex items-center gap-1 bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full border border-gray-200">
+                                <i class="fas fa-check-circle"></i>
+                                {{ $endedQuestions->count() }} منتهي
+                            </span>
+                        @endif
+                    </div>
+                </div>
+            </div>
+
+            @if($quizCompetition->sponsors && $quizCompetition->sponsors->count() > 0)
+                <div class="mt-8 pt-6 border-t border-green-100">
+                    <h3 class="text-lg font-bold text-gray-700 mb-4 flex items-center gap-2">
+                        <i class="fas fa-handshake text-green-500"></i>
+                        رعاة المسابقة
+                    </h3>
+                    <div class="flex flex-wrap items-center gap-4">
+                        @foreach($quizCompetition->sponsors as $sponsor)
+                            <div class="bg-white/80 border border-green-50 rounded-xl p-3 flex items-center justify-center shadow-sm hover:shadow-md transition-all group" title="{{ $sponsor->description ?? $sponsor->name }}">
+                                @if($sponsor->image)
+                                    <img src="{{ asset('storage/' . $sponsor->image) }}" alt="{{ $sponsor->name }}" class="h-12 md:h-16 object-contain filter group-hover:brightness-110 transition-all rounded">
+                                @else
+                                    <div class="h-12 md:h-16 flex items-center px-4 font-bold text-green-700">
+                                        {{ $sponsor->name }}
+                                    </div>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+        </div>
+        </div>
+
+        {{-- الأسئلة النشطة --}}
+        @if($questions->count() > 0)
+            <div class="mb-8">
+                <div class="flex items-center gap-3 mb-5">
+                    <span class="w-3 h-3 bg-green-500 rounded-full relative">
+                        <span class="absolute inset-0 bg-green-400 rounded-full animate-ping"></span>
+                    </span>
+                    <h2 class="text-xl md:text-2xl font-bold text-gray-800">أسئلة نشطة الآن</h2>
+                    <span class="bg-gradient-to-r from-green-500 to-green-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">{{ $questions->count() }}</span>
+                </div>
+                <div class="space-y-4">
+                    @foreach($questions as $question)
+                        @php
+                            $hasAnswered = isset($userAnsweredQuestions[$question->id]) && $userAnsweredQuestions[$question->id];
+                        @endphp
+                        @if($hasAnswered)
+                            <div class="question-card visible block glass-effect rounded-2xl p-5 md:p-6 relative overflow-hidden">
+                                <div class="absolute top-0 right-0 left-0 h-1" style="background: linear-gradient(90deg, #22c55e, #4ade80);"></div>
+
+                                <div class="flex items-center justify-between mb-3">
+                                    <span class="inline-flex items-center gap-1.5 bg-green-50 text-green-600 text-[11px] font-bold px-2.5 py-1 rounded-full border border-green-200">
+                                        <i class="fas fa-check-circle"></i>
+                                        تم الإجابة
+                                    </span>
+                                    <span class="text-gray-400 text-xs">
+                                        <i class="fas fa-hourglass-half text-amber-500 ml-1"></i>
+                                        ينتهي: {{ $quizCompetition->end_at?->format('H:i') ?? '—' }}
+                                    </span>
+                                </div>
+
+                                <div class="text-lg md:text-xl font-bold text-gray-800 mb-4 leading-relaxed question-text">
+                                    {!! $question->question_text !!}
+                                </div>
+                                @if($question->description)
+                                    <div class="text-gray-600 text-sm mb-3 quiz-description">{!! Str::limit(strip_tags($question->description), 120) !!}</div>
+                                @endif
+
+                                <a href="{{ route('quiz-competitions.question', [$quizCompetition, $question]) }}"
+                                   class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-gray-600 text-sm font-bold transition-all hover:text-green-600 border-2 border-gray-200 hover:border-green-300">
+                                    <i class="fas fa-eye"></i>
+                                    عرض التفاصيل
+                                </a>
+                            </div>
+                        @elseif($question->answer_type === 'walking')
+                            <a href="{{ route('quiz-competitions.question', [$quizCompetition, $question]) }}"
+                               class="question-card visible block glass-effect rounded-2xl p-5 md:p-6 green-glow-hover relative overflow-hidden group border border-emerald-100 hover:border-emerald-300">
+                                <div class="absolute top-0 right-0 left-0 h-1.5" style="background: linear-gradient(90deg, #10b981, #059669);"></div>
+
+                                <div class="flex items-center justify-between mb-3">
+                                    <span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 text-[11px] font-bold px-2.5 py-1 rounded-full border border-emerald-200">
+                                        <i class="fas fa-person-walking text-emerald-600"></i>
+                                        تحدي المشي والخطوات
+                                    </span>
+                                    <span class="text-gray-400 text-xs">
+                                        <i class="fas fa-hourglass-half text-amber-500 ml-1"></i>
+                                        ينتهي: {{ $quizCompetition->end_at?->format('H:i') ?? '—' }}
+                                    </span>
+                                </div>
+
+                                <div class="text-lg md:text-xl font-bold text-gray-800 mb-4 group-hover:text-emerald-700 transition-colors leading-relaxed question-text">
+                                    {!! $question->question_text !!}
+                                </div>
+                                @if($question->description)
+                                    <div class="text-gray-600 text-sm mb-3 quiz-description">{!! Str::limit(strip_tags($question->description), 120) !!}</div>
+                                @endif
+
+                                <span class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-bold transition-all group-hover:-translate-y-0.5"
+                                      style="background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);">
+                                    <i class="fas fa-chart-line"></i>
+                                    متابعة التحدي والمتصدرين
+                                </span>
+                            </a>
+                        @else
+                            <a href="{{ route('quiz-competitions.question', [$quizCompetition, $question]) }}"
+                               class="question-card visible block glass-effect rounded-2xl p-5 md:p-6 green-glow-hover relative overflow-hidden group">
+                                <div class="absolute top-0 right-0 left-0 h-1" style="background: linear-gradient(90deg, #22c55e, #4ade80);"></div>
+
+                                <div class="flex items-center justify-between mb-3">
+                                    <span class="inline-flex items-center gap-1.5 bg-red-50 text-red-600 text-[11px] font-bold px-2.5 py-1 rounded-full border border-red-200">
+                                        <span class="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></span>
+                                        مباشر الآن
+                                    </span>
+                                    <span class="text-gray-400 text-xs">
+                                        <i class="fas fa-hourglass-half text-amber-500 ml-1"></i>
+                                        ينتهي: {{ $quizCompetition->end_at?->format('H:i') ?? '—' }}
+                                    </span>
+                                </div>
+
+                                <div class="text-lg md:text-xl font-bold text-gray-800 mb-4 group-hover:text-green-600 transition-colors leading-relaxed question-text">
+                                    {!! $question->question_text !!}
+                                </div>
+                                @if($question->description)
+                                    <div class="text-gray-600 text-sm mb-3 quiz-description">{!! Str::limit(strip_tags($question->description), 120) !!}</div>
+                                @endif
+
+                                <span class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-bold transition-all group-hover:-translate-y-0.5"
+                                      style="background: linear-gradient(135deg, #22c55e, #16a34a); box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);">
+                                    <i class="fas fa-pen-fancy"></i>
+                                    أجب الآن
+                                </span>
+                            </a>
+                        @endif
+                    @endforeach
+                </div>
+            </div>
+        @endif
+
+        {{-- الأسئلة القادمة --}}
+        @if($upcomingQuestions->count() > 0)
+            <div class="mb-8">
+                <div class="flex items-center gap-3 mb-5">
+                    <i class="fas fa-clock text-amber-500"></i>
+                    <h2 class="text-xl md:text-2xl font-bold text-gray-800">أسئلة قادمة</h2>
+                    <span class="bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-1 rounded-full border border-amber-200">{{ $upcomingQuestions->count() }}</span>
+                </div>
+                <div class="space-y-3">
+                    @foreach($upcomingQuestions as $question)
+                        <div class="question-card visible glass-effect rounded-2xl p-5 opacity-80">
+                            <div class="flex items-start justify-between gap-4">
+                                <div class="flex-1">
+                                    <div class="font-bold text-gray-700 mb-2 question-text">{!! $question->question_text !!}</div>
+                                    @if($question->description)
+                                        <div class="text-gray-600 text-sm mb-2 quiz-description">{!! Str::limit(strip_tags($question->description), 100) !!}</div>
+                                    @endif
+                                    <span class="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 text-xs px-3 py-1.5 rounded-full border border-amber-200">
+                                        <i class="fas fa-calendar-alt"></i>
+                                        يبدأ: {{ $quizCompetition->start_at?->format('H:i') ?? '—' }} - {{ $quizCompetition->start_at?->translatedFormat('d M Y') ?? '—' }}
+                                    </span>
+                                </div>
+                                <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-amber-50 border border-amber-200">
+                                    <i class="fas fa-lock text-amber-400"></i>
+                                </div>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
+
+        {{-- الأسئلة المنتهية --}}
+        @if($endedQuestions->count() > 0)
+            <div class="mb-8">
+                <div class="flex items-center gap-3 mb-5">
+                    <i class="fas fa-check-circle text-gray-400"></i>
+                    <h2 class="text-xl md:text-2xl font-bold text-gray-600">أسئلة منتهية</h2>
+                    <span class="bg-gray-100 text-gray-500 text-xs font-bold px-2.5 py-1 rounded-full border border-gray-200">{{ $endedQuestions->count() }}</span>
+                </div>
+                <div class="space-y-6">
+                    @foreach($endedQuestions as $question)
+                        <div class="question-card visible glass-effect rounded-2xl p-5 md:p-6">
+                            <div class="flex items-start justify-between gap-4 mb-4">
+                                <div class="flex-1">
+                                    <a href="{{ route('quiz-competitions.question', [$quizCompetition, $question]) }}" class="block group">
+                                        <div class="font-bold text-gray-700 mb-2 group-hover:text-green-600 transition-colors question-text">{!! $question->question_text !!}</div>
+                                        @if($question->description)
+                                            <div class="text-gray-600 text-sm mb-2 quiz-description">{!! Str::limit(strip_tags($question->description), 100) !!}</div>
+                                        @endif
+                                    </a>
+                                    <div class="flex flex-wrap items-center gap-3 text-xs mb-4">
+                                        <span class="text-gray-400">
+                                            <i class="fas fa-calendar-check ml-1"></i>
+                                            انتهى: {{ $quizCompetition->end_at?->translatedFormat('d M Y - H:i') ?? '—' }}
+                                        </span>
+                                        <span class="bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full border border-blue-200">
+                                            {{ $question->answers->count() }} إجابة
+                                        </span>
+                                        <span class="bg-green-50 text-green-600 px-2.5 py-1 rounded-full border border-green-200">
+                                            {{ $question->answers->where('is_correct', true)->count() }} صحيح
+                                        </span>
+                                        <span class="bg-red-50 text-red-600 px-2.5 py-1 rounded-full border border-red-200">
+                                            {{ $question->answers->where('is_correct', false)->count() }} خاطئ
+                                        </span>
+                                    </div>
+                                </div>
+                                <a href="{{ route('quiz-competitions.question', [$quizCompetition, $question]) }}" class="text-green-600 text-sm font-medium hover:text-green-700 flex-shrink-0">
+                                    تفاصيل كاملة <i class="fas fa-arrow-left mr-1"></i>
+                                </a>
+                            </div>
+
+                            {{-- من جاوب صح --}}
+                            @php $correctAnswers = $question->answers->where('is_correct', true); @endphp
+                            @if($correctAnswers->count() > 0)
+                                <div class="mb-4">
+                                    <h4 class="text-sm font-bold text-green-600 mb-2 flex items-center gap-2">
+                                        <i class="fas fa-check-circle"></i>
+                                        من جاوب صح ({{ $correctAnswers->count() }})
+                                    </h4>
+                                    <div class="flex flex-wrap gap-2">
+                                        @foreach($correctAnswers as $ans)
+                                            <span class="inline-flex items-center gap-1 bg-green-50 text-green-700 px-3 py-1.5 rounded-lg text-sm border border-green-200">
+                                                {{ $ans->user->name ?? '-' }}
+                                            </span>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endif
+
+                            {{-- الفائزون --}}
+                            @if($question->winners->count() > 0)
+                                <div class="pt-4 border-t border-amber-200">
+                                    <h4 class="text-sm font-bold text-amber-600 mb-2 flex items-center gap-2">
+                                        <i class="fas fa-trophy"></i>
+                                        الفائزون ({{ $question->winners->count() }})
+                                    </h4>
+                                    <div class="flex flex-wrap gap-2">
+                                        @foreach($question->winners as $winner)
+                                            <span class="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg text-sm font-bold border border-amber-200">
+                                                @if($winner->position == 1)
+                                                    <i class="fas fa-crown text-amber-500"></i>
+                                                @endif
+                                                {{ $winner->position }}. {{ $winner->user->name ?? '-' }}
+                                            </span>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
+
+        {{-- لا توجد أسئلة --}}
+        @if($questions->count() == 0 && $upcomingQuestions->count() == 0 && $endedQuestions->count() == 0)
+            <div class="text-center glass-effect p-8 lg:p-16 rounded-3xl green-glow">
+                <div class="w-20 h-20 rounded-full mx-auto mb-5 flex items-center justify-center bg-gradient-to-br from-green-50 to-green-100">
+                    <i class="fas fa-question-circle text-green-300 text-3xl"></i>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-800 mb-2">لا توجد أسئلة في هذه المسابقة بعد</h3>
+                <p class="text-gray-500">ترقبوا الأسئلة القادمة</p>
+            </div>
+        @endif
+    </div>
+</body>
+
+</html>

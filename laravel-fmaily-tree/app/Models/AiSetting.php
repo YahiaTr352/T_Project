@@ -1,0 +1,36 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class AiSetting extends Model
+{
+    protected $fillable = [
+        'key',
+        'value',
+    ];
+
+    protected $casts = [
+        'value' => 'array',
+    ];
+
+    public static function getValue(string $key, mixed $default = null): mixed
+    {
+        $row = static::query()->where('key', $key)->first();
+
+        if ($row === null || $row->value === null) {
+            return $default;
+        }
+
+        return $row->value;
+    }
+
+    public static function setValue(string $key, array $value): self
+    {
+        return static::query()->updateOrCreate(
+            ['key' => $key],
+            ['value' => $value]
+        );
+    }
+}

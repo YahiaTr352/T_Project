@@ -1,0 +1,196 @@
+@extends('layouts.app')
+
+@section('title', 'خلفيات الدعوات')
+
+@push('styles')
+    @include('dashboard.notifications.partials.styles')
+@endpush
+
+@section('content')
+<div class="container-fluid py-4" style="font-family: 'Tajawal', sans-serif;">
+    <div
+        data-visual-scope
+        data-preview-modal="#visualPreviewModal"
+        data-reject-modal="#visualRejectModal"
+        data-confirm-modal="#visualConfirmModal"
+    >
+        {{-- Hero — مكون جاهز يدعم الوضع الليلي والنهاري --}}
+        <x-dashboard.glass-hero
+            title="خلفيات الدعوات"
+            subtitle="مكتبة الخلفيات المعتمدة ومراجعة رفع الأعضاء — اضغط على أي صورة للمعاينة السريعة"
+        >
+            <x-slot name="actions">
+                @can('notifications.send')
+                    <button
+                        type="button"
+                        class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-bold rounded-xl transition-all shadow-md border-0"
+                        data-toggle="modal"
+                        data-target="#visualUploadModal"
+                    >
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        رفع خلفية
+                    </button>
+                @endcan
+                <a
+                    href="{{ route('dashboard.notifications.index') }}"
+                    class="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all border-0"
+                    style="background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.25) !important;"
+                >
+                    <i class="fas fa-arrow-right"></i>
+                    عودة
+                </a>
+            </x-slot>
+        </x-dashboard.glass-hero>
+
+        @include('components.alerts')
+
+        {{-- إحصائيات سريعة --}}
+        <div class="row mb-4">
+            <div class="col-xl-4 col-md-6 mb-3 mb-xl-0">
+                <a
+                    href="{{ route('dashboard.backgrounds.index', ['status' => 'pending']) }}"
+                    class="dashboard-notif-card h-100 p-4 d-flex align-items-center text-decoration-none"
+                    style="gap:12px;"
+                >
+                    <span class="action-icon-circle bg-soft-warning shrink-0">
+                        <i class="fas fa-hourglass-half"></i>
+                    </span>
+                    <span>
+                        <span class="d-block notif-muted" style="font-size:11px;font-weight:700;">بانتظار المراجعة</span>
+                        <span class="d-block notif-title" style="font-size:1.6rem;font-weight:900;line-height:1.2;">{{ number_format($counts['pending'] ?? 0) }}</span>
+                    </span>
+                </a>
+            </div>
+            <div class="col-xl-4 col-md-6 mb-3 mb-xl-0">
+                <a
+                    href="{{ route('dashboard.backgrounds.index', ['status' => 'approved']) }}"
+                    class="dashboard-notif-card h-100 p-4 d-flex align-items-center text-decoration-none"
+                    style="gap:12px;"
+                >
+                    <span class="action-icon-circle bg-soft-success shrink-0">
+                        <i class="fas fa-check-circle"></i>
+                    </span>
+                    <span>
+                        <span class="d-block notif-muted" style="font-size:11px;font-weight:700;">خلفيات معتمدة</span>
+                        <span class="d-block notif-title" style="font-size:1.6rem;font-weight:900;line-height:1.2;">{{ number_format($counts['approved'] ?? 0) }}</span>
+                    </span>
+                </a>
+            </div>
+            <div class="col-xl-4 col-md-6">
+                <a
+                    href="{{ route('dashboard.backgrounds.index', ['status' => 'rejected']) }}"
+                    class="dashboard-notif-card h-100 p-4 d-flex align-items-center text-decoration-none"
+                    style="gap:12px;"
+                >
+                    <span class="action-icon-circle bg-soft-danger shrink-0">
+                        <i class="fas fa-times-circle"></i>
+                    </span>
+                    <span>
+                        <span class="d-block notif-muted" style="font-size:11px;font-weight:700;">خلفيات مرفوضة</span>
+                        <span class="d-block notif-title" style="font-size:1.6rem;font-weight:900;line-height:1.2;">{{ number_format($counts['rejected'] ?? 0) }}</span>
+                    </span>
+                </a>
+            </div>
+        </div>
+
+        {{-- شريط التصفية --}}
+        <div class="dashboard-notif-card p-4 mb-4">
+            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between" style="gap:12px;">
+                <x-dashboard.visual.status-tabs
+                    baseRoute="dashboard.backgrounds.index"
+                    :status="$status"
+                    :counts="$counts"
+                />
+                <span class="notif-muted" style="font-size:11px;font-weight:700;">
+                    {{ $backgrounds->total() }} خلفية — صفحة {{ $backgrounds->currentPage() }} من {{ $backgrounds->lastPage() }}
+                </span>
+            </div>
+        </div>
+
+        {{-- الشبكة / الحالة الفارغة --}}
+        @if ($backgrounds->isEmpty())
+            <x-dashboard.visual.empty-state
+                icon="fas fa-images"
+                title="لا توجد خلفيات في هذا القسم بعد"
+                subtitle="عند رفع الأعضاء لخلفيات جديدة ستظهر هنا للمراجعة والاعتماد، أو ارفع خلفية جديدة بنفسك."
+            >
+                @can('notifications.send')
+                    <x-slot name="action">
+                        <button
+                            type="button"
+                            class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-md border-0"
+                            data-toggle="modal"
+                            data-target="#visualUploadModal"
+                        >
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            رفع أول خلفية
+                        </button>
+                    </x-slot>
+                @endcan
+            </x-dashboard.visual.empty-state>
+        @else
+            <div class="row">
+                @foreach ($backgrounds as $bg)
+                    <div class="col-sm-6 col-md-4 col-lg-3 mb-4">
+                        <x-dashboard.visual.library-card
+                            :id="$bg->id"
+                            :imageUrl="$bg->image_url"
+                            :name="$bg->name"
+                            :uploaderName="$bg->uploader->full_name ?? null"
+                            :createdAt="$bg->created_at?->format('Y-m-d')"
+                            :status="$bg->status"
+                            :statusLabel="$bg->status_label"
+                            :rejectionReason="$bg->rejection_reason"
+                            :extraBadge="$bg->is_template ? 'قالب جاهز' : null"
+                            :approveUrl="route('dashboard.backgrounds.approve', $bg)"
+                            :rejectUrl="route('dashboard.backgrounds.reject', $bg)"
+                            :deleteUrl="route('dashboard.backgrounds.destroy', $bg)"
+                            :canManage="auth()->user()?->can('notifications.send') ?? false"
+                        />
+                    </div>
+                @endforeach
+            </div>
+
+            @if ($backgrounds->hasPages())
+                <div class="d-flex justify-content-center mt-2">
+                    {{ $backgrounds->links() }}
+                </div>
+            @endif
+        @endif
+
+        {{-- المودالات المشتركة --}}
+        <x-dashboard.visual.preview-modal id="visualPreviewModal" title="معاينة الخلفية" />
+        <x-dashboard.visual.reject-modal
+            id="visualRejectModal"
+            title="رفض الخلفية"
+            inputId="visualRejectReason"
+        />
+        <x-dashboard.visual.confirm-modal
+            id="visualConfirmModal"
+            title="تأكيد الإجراء"
+            message="هل أنت متأكد؟"
+            confirmLabel="تأكيد"
+        />
+
+        @can('notifications.send')
+            <x-dashboard.visual.upload-modal
+                id="visualUploadModal"
+                title="رفع خلفية جديدة"
+                formId="visualUploadForm"
+                fileId="visualUploadFile"
+                nameId="visualUploadName"
+                extraId="visualUploadTemplate"
+                :showTemplateOption="true"
+                submitLabel="رفع واعتماد"
+                :storeUrl="route('dashboard.backgrounds.store')"
+            />
+        @endcan
+
+        <x-dashboard.visual.toasts />
+    </div>
+</div>
+@endsection
+
+@push('scripts')
+    <script src="{{ asset('js/dashboard/visual-library.js') }}?v={{ file_exists(public_path('js/dashboard/visual-library.js')) ? filemtime(public_path('js/dashboard/visual-library.js')) : time() }}"></script>
+@endpush

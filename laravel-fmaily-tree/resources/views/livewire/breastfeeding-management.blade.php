@@ -1,0 +1,519 @@
+<div class="container-fluid">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-1">إدارة الرضاعة</h2>
+                    <p class="text-muted mb-0">إدارة علاقات الرضاعة بين الأمهات المرضعات والأطفال المرتضعين</p>
+                </div>
+                @can('breastfeeding.create')
+                <button wire:click="openCreateModal" class="btn btn-primary">
+                    <i class="fas fa-plus me-2"></i>إضافة علاقة رضاعة جديدة
+                </button>
+                @endcan
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="input-group">
+                <span class="input-group-text">
+                    <i class="fas fa-search"></i>
+                </span>
+                <input type="text" wire:model.live="search" class="form-control" placeholder="البحث العام بالاسم أو الاسم الكامل...">
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="input-group">
+                <span class="input-group-text">
+                    <i class="fas fa-female"></i>
+                </span>
+                <input type="text" wire:model.live="searchNursingMother" class="form-control" placeholder="البحث في الأمهات بالاسم أو الاسم الكامل...">
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="input-group">
+                <span class="input-group-text">
+                    <i class="fas fa-child"></i>
+                </span>
+                <input type="text" wire:model.live="searchBreastfedChild" class="form-control" placeholder="البحث في الأطفال بالاسم أو الاسم الكامل...">
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="d-flex gap-2">
+                <select wire:model.live="statusFilter" class="form-select">
+                    <option value="all">جميع الحالات</option>
+                    <option value="active">نشط</option>
+                    <option value="inactive">غير نشط</option>
+                </select>
+                <button wire:click="clearSearch" class="btn btn-outline-secondary btn-sm" title="مسح البحث">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Additional Filters -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="d-flex gap-2">
+                <button wire:click="sortBy('created_at')" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-sort me-1"></i>تاريخ الإضافة
+                </button>
+                <button wire:click="sortBy('start_date')" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-sort me-1"></i>تاريخ البداية
+                </button>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <select wire:model.live="perPage" class="form-select">
+                <option value="10">10 لكل صفحة</option>
+                <option value="15">15 لكل صفحة</option>
+                <option value="25">25 لكل صفحة</option>
+                <option value="50">50 لكل صفحة</option>
+            </select>
+        </div>
+        <div class="col-md-6">
+            @if($search || $searchNursingMother || $searchBreastfedChild)
+                <div class="alert alert-info mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    البحث النشط:
+                    @if($search) "{{ $search }}" @endif
+                    @if($searchNursingMother) | أم: "{{ $searchNursingMother }}" @endif
+                    @if($searchBreastfedChild) | طفل: "{{ $searchBreastfedChild }}" @endif
+                </div>
+            @endif
+        </div>
+    </div>
+
+    <!-- Success Message -->
+    @if (session()->has('success'))
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="fas fa-check-circle me-2"></i>{{ session('success') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    @endif
+
+    <!-- Breastfeeding Relationships Table -->
+    <div class="card">
+        <div class="card-body">
+            @if($breastfeedings->count() > 0)
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>الأم المرضعة</th>
+                                <th>الأب (زوج الأم)</th>
+                                <th>الطفل المرتضع</th>
+                                <th>تاريخ البداية</th>
+                                <th>تاريخ النهاية</th>
+                                <th>المدة</th>
+                                <th>الحالة</th>
+                                <th>الملاحظات</th>
+                                <th>الإجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($breastfeedings as $breastfeeding)
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <img src="{{ $breastfeeding->nursingMother->avatar }}"
+                                                 alt="{{ $breastfeeding->nursingMother->first_name }}"
+                                                 class="rounded-circle me-2"
+                                                 width="32" height="32">
+                                            <div>
+                                                <div class="fw-semibold">{{ $breastfeeding->nursingMother->full_name }}</div>
+                                                <small class="text-muted">{{ $breastfeeding->nursingMother->first_name }} {{ $breastfeeding->nursingMother->last_name }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        @if($breastfeeding->breastfeedingFather)
+                                            <div class="d-flex align-items-center">
+                                                <img src="{{ $breastfeeding->breastfeedingFather->avatar }}"
+                                                     alt="{{ $breastfeeding->breastfeedingFather->first_name }}"
+                                                     class="rounded-circle me-2"
+                                                     width="32" height="32">
+                                                <div>
+                                                    <div class="fw-semibold">{{ $breastfeeding->breastfeedingFather->full_name }}</div>
+                                                    <small class="text-muted">{{ $breastfeeding->breastfeedingFather->first_name }} {{ $breastfeeding->breastfeedingFather->last_name }}</small>
+                                                </div>
+                                            </div>
+                                        @else
+                                            <span class="text-muted">غير محدد</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <img src="{{ $breastfeeding->breastfedChild->avatar }}"
+                                                 alt="{{ $breastfeeding->breastfedChild->first_name }}"
+                                                 class="rounded-circle me-2"
+                                                 width="32" height="32">
+                                            <div>
+                                                <div class="fw-semibold">{{ $breastfeeding->breastfedChild->full_name }}</div>
+                                                <small class="text-muted">{{ $breastfeeding->breastfedChild->first_name }} {{ $breastfeeding->breastfedChild->last_name }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        @if($breastfeeding->start_date)
+                                            <span class="badge bg-info">{{ $breastfeeding->start_date->format('Y-m-d') }}</span>
+                                        @else
+                                            <span class="text-muted">غير محدد</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if($breastfeeding->end_date)
+                                            <span class="badge bg-warning">{{ $breastfeeding->end_date->format('Y-m-d') }}</span>
+                                        @else
+                                            <span class="text-muted">مستمر</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if($breastfeeding->duration_in_months)
+                                            <span class="badge bg-success">{{ $breastfeeding->duration_in_months }} شهر</span>
+                                        @else
+                                            <span class="text-muted">غير محدد</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if($breastfeeding->is_active)
+                                            <span class="badge bg-success">نشط</span>
+                                        @else
+                                            <span class="badge bg-secondary">غير نشط</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if($breastfeeding->notes)
+                                            <span class="text-truncate d-inline-block" style="max-width: 150px;"
+                                                  title="{{ $breastfeeding->notes }}">
+                                                {{ Str::limit($breastfeeding->notes, 50) }}
+                                            </span>
+                                        @else
+                                            <span class="text-muted">لا توجد ملاحظات</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            @can('breastfeeding.update')
+                                            <button wire:click="edit({{ $breastfeeding->id }})"
+                                                    class="btn btn-sm btn-outline-primary"
+                                                    title="تعديل">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button wire:click="toggleStatus({{ $breastfeeding->id }})"
+                                                    class="btn btn-sm btn-outline-{{ $breastfeeding->is_active ? 'warning' : 'success' }}"
+                                                    title="{{ $breastfeeding->is_active ? 'إلغاء التفعيل' : 'تفعيل' }}">
+                                                <i class="fas fa-{{ $breastfeeding->is_active ? 'pause' : 'play' }}"></i>
+                                            </button>
+                                            @endcan
+                                            @can('breastfeeding.delete')
+                                            <button wire:click="delete({{ $breastfeeding->id }})"
+                                                    class="btn btn-sm btn-outline-danger"
+                                                    title="حذف">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                            @endcan
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="d-flex justify-content-center mt-4">
+                    {{ $breastfeedings->links() }}
+                </div>
+            @else
+                <div class="text-center py-5">
+                    <i class="fas fa-baby fa-3x text-muted mb-3"></i>
+                    <h4 class="text-muted">لا توجد علاقات رضاعة</h4>
+                    <p class="text-muted">ابدأ بإضافة علاقة رضاعة جديدة</p>
+                    <button wire:click="openCreateModal" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>إضافة علاقة رضاعة جديدة
+                    </button>
+                </div>
+            @endif
+        </div>
+    </div>
+
+    <!-- Create Modal -->
+    @if($showCreateModal)
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">إضافة علاقة رضاعة جديدة</h5>
+                        <button type="button" wire:click="closeModals" class="btn-close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form wire:submit.prevent="create">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="nursing_mother_id" class="form-label">الأم المرضعة <span class="text-danger">*</span></label>
+                                    <div class="position-relative">
+                                        <div class="input-group mb-2">
+                                            <span class="input-group-text">
+                                                <i class="fas fa-search"></i>
+                                            </span>
+                                            <input type="text" wire:model.live="motherSearch" class="form-control" placeholder="ابحث عن الأم المرضعة بالاسم أو الاسم الكامل...">
+                                        </div>
+                                        @if(strlen($motherSearch) >= 2 && $motherSuggestions->count())
+                                            <div class="list-group position-absolute w-100 shadow" style="z-index:1051; max-height: 220px; overflow-y: auto;">
+                                                @foreach($motherSuggestions as $m)
+                                                    <button type="button" class="list-group-item list-group-item-action d-flex align-items-center" wire:click="selectNursingMother({{ $m->id }})">
+                                                        <img src="{{ $m->avatar }}" alt="{{ $m->first_name }}" class="rounded-circle me-2" width="28" height="28">
+                                                        <div class="text-start">
+                                                            <div class="fw-semibold">{{ $m->full_name }}</div>
+                                                            <small class="text-muted">{{ $m->first_name }} {{ $m->last_name }}</small>
+                                                        </div>
+                                                    </button>
+                                                @endforeach
+                                            </div>
+                                        @endif
+                                    </div>
+                                    <input type="hidden" wire:model="nursing_mother_id" id="nursing_mother_id">
+                                    @error('nursing_mother_id') <div class="invalid-feedback d-block">{{ $message }}</div> @enderror
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="breastfeeding_father_id" class="form-label">الأب (زوج الأم)</label>
+                                    @if($nursing_mother_id && count($husbandsList) > 0)
+                                        <select wire:model="breastfeeding_father_id" class="form-select @error('breastfeeding_father_id') is-invalid @enderror" id="breastfeeding_father_id">
+                                            <option value="">-- اختر الأب --</option>
+                                            @foreach($husbandsList as $husband)
+                                                <option value="{{ $husband['id'] }}">{{ $husband['name'] }}</option>
+                                            @endforeach
+                                        </select>
+                                    @elseif($nursing_mother_id)
+                                        <div class="alert alert-info mb-0">
+                                            <i class="fas fa-info-circle me-2"></i>
+                                            لا يوجد أزواج مسجلين لهذه الأم
+                                        </div>
+                                    @else
+                                        <div class="alert alert-warning mb-0">
+                                            <i class="fas fa-exclamation-triangle me-2"></i>
+                                            يرجى اختيار الأم أولاً
+                                        </div>
+                                    @endif
+                                    @error('breastfeeding_father_id') <div class="invalid-feedback d-block">{{ $message }}</div> @enderror
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="breastfed_child_id" class="form-label">الطفل المرتضع <span class="text-danger">*</span></label>
+                                    <div class="position-relative">
+                                        <div class="input-group mb-2">
+                                            <span class="input-group-text">
+                                                <i class="fas fa-search"></i>
+                                            </span>
+                                            <input type="text" wire:model.live="childSearch" class="form-control" placeholder="ابحث عن الطفل المرتضع بالاسم أو الاسم الكامل...">
+                                        </div>
+                                        @if(strlen($childSearch) >= 2 && $childSuggestions->count())
+                                            <div class="list-group position-absolute w-100 shadow" style="z-index:1051; max-height: 220px; overflow-y: auto;">
+                                                @foreach($childSuggestions as $c)
+                                                    <button type="button" class="list-group-item list-group-item-action d-flex align-items-center" wire:click="selectBreastfedChild({{ $c->id }})">
+                                                        <img src="{{ $c->avatar }}" alt="{{ $c->first_name }}" class="rounded-circle me-2" width="28" height="28">
+                                                        <div class="text-start">
+                                                            <div class="fw-semibold">{{ $c->full_name }}</div>
+                                                            <small class="text-muted">{{ $c->first_name }} {{ $c->last_name }}</small>
+                                                        </div>
+                                                    </button>
+                                                @endforeach
+                                            </div>
+                                        @endif
+                                    </div>
+                                    <input type="hidden" wire:model="breastfed_child_id" id="breastfed_child_id">
+                                    @error('breastfed_child_id') <div class="invalid-feedback d-block">{{ $message }}</div> @enderror
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="start_date" class="form-label">تاريخ البداية</label>
+                                    <input type="date" wire:model="start_date" class="form-control @error('start_date') is-invalid @enderror" id="start_date">
+                                    @error('start_date') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="end_date" class="form-label">تاريخ النهاية</label>
+                                    <input type="date" wire:model="end_date" class="form-control @error('end_date') is-invalid @enderror" id="end_date">
+                                    @error('end_date') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="notes" class="form-label">ملاحظات</label>
+                                <textarea wire:model="notes" class="form-control @error('notes') is-invalid @enderror" id="notes" rows="3" placeholder="أي ملاحظات إضافية حول علاقة الرضاعة..."></textarea>
+                                @error('notes') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input wire:model="is_active" class="form-check-input" type="checkbox" id="is_active">
+                                    <label class="form-check-label" for="is_active">
+                                        تفعيل العلاقة
+                                    </label>
+                                </div>
+                            </div>
+                            @error('relationship') <div class="alert alert-danger">{{ $message }}</div> @enderror
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" wire:click="closeModals" class="btn btn-secondary">إلغاء</button>
+                        <button type="button" wire:click="create" class="btn btn-primary">إضافة</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    <!-- Edit Modal -->
+    @if($showEditModal)
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">تعديل علاقة الرضاعة</h5>
+                        <button type="button" wire:click="closeModals" class="btn-close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form wire:submit.prevent="update">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="edit_nursing_mother_id" class="form-label">الأم المرضعة <span class="text-danger">*</span></label>
+                                    <div class="position-relative">
+                                        <div class="input-group mb-2">
+                                            <span class="input-group-text">
+                                                <i class="fas fa-search"></i>
+                                            </span>
+                                            <input type="text" wire:model.live="motherSearch" class="form-control" placeholder="ابحث عن الأم المرضعة بالاسم أو الاسم الكامل...">
+                                        </div>
+                                        @if(strlen($motherSearch) >= 2 && $motherSuggestions->count())
+                                            <div class="list-group position-absolute w-100 shadow" style="z-index:1051; max-height: 220px; overflow-y: auto;">
+                                                @foreach($motherSuggestions as $m)
+                                                    <button type="button" class="list-group-item list-group-item-action d-flex align-items-center" wire:click="selectNursingMother({{ $m->id }})">
+                                                        <img src="{{ $m->avatar }}" alt="{{ $m->first_name }}" class="rounded-circle me-2" width="28" height="28">
+                                                        <div class="text-start">
+                                                            <div class="fw-semibold">{{ $m->full_name }}</div>
+                                                            <small class="text-muted">{{ $m->first_name }} {{ $m->last_name }}</small>
+                                                        </div>
+                                                    </button>
+                                                @endforeach
+                                            </div>
+                                        @endif
+                                    </div>
+                                    <input type="hidden" wire:model="nursing_mother_id" id="edit_nursing_mother_id">
+                                    @error('nursing_mother_id') <div class="invalid-feedback d-block">{{ $message }}</div> @enderror
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="edit_breastfeeding_father_id" class="form-label">الأب (زوج الأم)</label>
+                                    @if($nursing_mother_id && count($husbandsList) > 0)
+                                        <select wire:model="breastfeeding_father_id" class="form-select @error('breastfeeding_father_id') is-invalid @enderror" id="edit_breastfeeding_father_id">
+                                            <option value="">-- اختر الأب --</option>
+                                            @foreach($husbandsList as $husband)
+                                                <option value="{{ $husband['id'] }}">{{ $husband['name'] }}</option>
+                                            @endforeach
+                                        </select>
+                                    @elseif($nursing_mother_id)
+                                        <div class="alert alert-info mb-0">
+                                            <i class="fas fa-info-circle me-2"></i>
+                                            لا يوجد أزواج مسجلين لهذه الأم
+                                        </div>
+                                    @else
+                                        <div class="alert alert-warning mb-0">
+                                            <i class="fas fa-exclamation-triangle me-2"></i>
+                                            يرجى اختيار الأم أولاً
+                                        </div>
+                                    @endif
+                                    @error('breastfeeding_father_id') <div class="invalid-feedback d-block">{{ $message }}</div> @enderror
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="edit_breastfed_child_id" class="form-label">الطفل المرتضع <span class="text-danger">*</span></label>
+                                    <div class="position-relative">
+                                        <div class="input-group mb-2">
+                                            <span class="input-group-text">
+                                                <i class="fas fa-search"></i>
+                                            </span>
+                                            <input type="text" wire:model.live="childSearch" class="form-control" placeholder="ابحث عن الطفل المرتضع بالاسم أو الاسم الكامل...">
+                                        </div>
+                                        @if(strlen($childSearch) >= 2 && $childSuggestions->count())
+                                            <div class="list-group position-absolute w-100 shadow" style="z-index:1051; max-height: 220px; overflow-y: auto;">
+                                                @foreach($childSuggestions as $c)
+                                                    <button type="button" class="list-group-item list-group-item-action d-flex align-items-center" wire:click="selectBreastfedChild({{ $c->id }})">
+                                                        <img src="{{ $c->avatar }}" alt="{{ $c->first_name }}" class="rounded-circle me-2" width="28" height="28">
+                                                        <div class="text-start">
+                                                            <div class="fw-semibold">{{ $c->full_name }}</div>
+                                                            <small class="text-muted">{{ $c->first_name }} {{ $c->last_name }}</small>
+                                                        </div>
+                                                    </button>
+                                                @endforeach
+                                            </div>
+                                        @endif
+                                    </div>
+                                    <input type="hidden" wire:model="breastfed_child_id" id="edit_breastfed_child_id">
+                                    @error('breastfed_child_id') <div class="invalid-feedback d-block">{{ $message }}</div> @enderror
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="edit_start_date" class="form-label">تاريخ البداية</label>
+                                    <input type="date" wire:model="start_date" class="form-control @error('start_date') is-invalid @enderror" id="edit_start_date">
+                                    @error('start_date') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="edit_end_date" class="form-label">تاريخ النهاية</label>
+                                    <input type="date" wire:model="end_date" class="form-control @error('end_date') is-invalid @enderror" id="edit_end_date">
+                                    @error('end_date') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_notes" class="form-label">ملاحظات</label>
+                                <textarea wire:model="notes" class="form-control @error('notes') is-invalid @enderror" id="edit_notes" rows="3" placeholder="أي ملاحظات إضافية حول علاقة الرضاعة..."></textarea>
+                                @error('notes') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input wire:model="is_active" class="form-check-input" type="checkbox" id="edit_is_active">
+                                    <label class="form-check-label" for="edit_is_active">
+                                        تفعيل العلاقة
+                                    </label>
+                                </div>
+                            </div>
+                            @error('relationship') <div class="alert alert-danger">{{ $message }}</div> @enderror
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" wire:click="closeModals" class="btn btn-secondary">إلغاء</button>
+                        <button type="button" wire:click="update" class="btn btn-primary">تحديث</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    <!-- Delete Confirmation Modal -->
+    @if($showDeleteModal)
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">تأكيد الحذف</h5>
+                        <button type="button" wire:click="closeModals" class="btn-close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>هل أنت متأكد من أنك تريد حذف علاقة الرضاعة هذه؟</p>
+                        <p class="text-muted">هذا الإجراء لا يمكن التراجع عنه.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" wire:click="closeModals" class="btn btn-secondary">إلغاء</button>
+                        <button type="button" wire:click="confirmDelete" class="btn btn-danger">حذف</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+</div>

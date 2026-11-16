@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "551796851301",
+    "project_id": "alsorayia-app",
+    "storage_bucket": "alsorayia-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:551796851301:android:69dc1db6a421b82af0bc8c",
+        "android_client_info": {
+          "package_name": "com.alsorayia.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAdSs_rO4uo7yP5jIcmTetDnFe9rnSbIEc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

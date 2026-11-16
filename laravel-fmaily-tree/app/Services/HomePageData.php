@@ -1,0 +1,379 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Article;
+use App\Models\Category;
+use App\Models\Course;
+use App\Models\FamilyCouncil;
+use App\Models\FamilyEvent;
+use App\Models\FamilyNews;
+use App\Models\HomeGalleryImage;
+use App\Models\HomeSection;
+use App\Models\Image;
+use App\Models\ImportantLink;
+use App\Models\Person;
+use App\Models\ProgramCategory;
+use App\Models\QuizCompetition;
+use App\Models\SiteContent;
+use App\Models\SlideshowImage;
+use Illuminate\Support\Facades\Auth;
+
+class HomePageData
+{
+    public function build(): array
+    {
+        $slideshowImages = SlideshowImage::getActiveSlideshowImages();
+
+        if (Auth::check()) {
+            $latestGalleryImages = HomeGalleryImage::with('category:id,name')
+                ->orderBy('order')
+                ->take(8)
+                ->get();
+        } else {
+            $latestGalleryImages = HomeGalleryImage::getActiveGalleryImages();
+        }
+
+        if ($latestGalleryImages->isEmpty()) {
+            $latestGalleryImages = Image::whereNotNull('category_id')
+                ->whereNotNull('path')
+                ->where(function ($query) {
+                    $query->whereNull('youtube_url')
+                        ->where(function ($q) {
+                            $q->where('media_type', 'image')
+                                ->orWhereNull('media_type');
+                        });
+                })
+                ->with(['category:id,name'])
+                ->latest('created_at')
+                ->take(8)
+                ->get();
+        }
+
+        $familyBriefContent = SiteContent::where('key', 'family_brief')
+            ->where('is_active', true)
+            ->first();
+        $familyBrief = $familyBriefContent && ! empty(trim($familyBriefContent->content))
+            ? $familyBriefContent->content
+            : null;
+
+        $whatsNew = SiteContent::getContent('whats_new', '');
+
+        $dynamicSections = HomeSection::getActiveSections();
+        foreach ($dynamicSections as $section) {
+            if ($section->content_source_type) {
+                $section->content_source_items = $section->getContentSourceCollection();
+            }
+        }
+
+        if (Auth::check()) {
+            $courses = Course::orderBy('order')->get();
+        } else {
+            $courses = Course::getActiveCourses();
+        }
+
+        $mainProgramsBase = function () {
+            $q = Image::where('is_program', true)
+                ->whereNull('program_id')
+                ->whereNotNull('path')
+                ->where(function ($query) {
+                    $query->whereNull('youtube_url')
+                        ->where(function ($q) {
+                            $q->where('media_type', 'image')
+                                ->orWhereNull('media_type');
+                        });
+                })
+                ->orderBy('program_order');
+            if (! Auth::check()) {
+                $q->where('program_is_active', true);
+            }
+
+            return $q;
+        };
+
+        $categoriesQuery = ProgramCategory::query()->ordered();
+        if (! Auth::check()) {
+            $categoriesQuery->where('is_active', true);
+        }
+        $programCategoriesForHome = collect();
+        foreach ($categoriesQuery->get() as $cat) {
+            $progs = $mainProgramsBase()->where('program_category_id', $cat->id)->get();
+            if ($progs->isNotEmpty()) {
+                $programCategoriesForHome->push([
+                    'title' => $cat->name,
+                    'programs' => $progs,
+                ]);
+            }
+        }
+        $uncategorizedPrograms = $mainProgramsBase()->whereNull('program_category_id')->get();
+        if ($uncategorizedPrograms->isNotEmpty()) {
+            $programCategoriesForHome->push([
+                'title' => 'بدون تصنيف',
+                'programs' => $uncategorizedPrograms,
+            ]);
+        }
+        $programs = $programCategoriesForHome->flatMap(fn (array $g) => $g['programs']);
+
+        if (Auth::check()) {
+            $proudOf = Image::where('is_proud_of', true)
+                ->whereNotNull('path')
+                ->where(function ($query) {
+                    $query->whereNull('youtube_url')
+                        ->where(function ($q) {
+                            $q->where('media_type', 'image')
+                                ->orWhereNull('media_type');
+                        });
+                })
+                ->orderBy('proud_of_order')
+                ->get();
+        } else {
+            $proudOf = Image::getActiveProudOf();
+        }
+
+        if (Auth::check()) {
+            $councils = FamilyCouncil::with('images')
+                ->orderBy('display_order')
+                ->get();
+        } else {
+            $councils = FamilyCouncil::where('is_active', true)
+                ->with('images')
+                ->orderBy('display_order')
+                ->get();
+        }
+
+        if (Auth::check()) {
+            $events = FamilyEvent::orderBy('event_date', 'asc')
+                ->orderBy('display_order')
+                ->get();
+        } else {
+            $events = FamilyEvent::where('is_active', true)
+                ->orderBy('event_date', 'asc')
+                ->orderBy('display_order')
+                ->get();
+        }
+
+        $events = $events->filter(function ($event) {
+            return $event->event_date->gte(now()->subHours(15));
+        })->values();
+
+        $today = now();
+        $birthdayPersons = Person::whereNotNull('birth_date')
+            ->where('from_outside_the_family', false)
+            ->whereDay('birth_date', $today->day)
+            ->whereMonth('birth_date', $today->month)
+            ->with(['parent:id,first_name,gender,parent_id', 'parent.parent:id,first_name,gender,parent_id'])
+            ->orderBy('birth_date')
+            ->take(12)
+            ->get();
+
+        $bachelorCategoryIds = Category::where(function ($query) {
+            $query->where('name', 'like', '%بكالوريوس%')
+                ->orWhere('name', 'like', '%Bachelor%')
+                ->orWhere('name', 'like', '%Bachelors%')
+                ->orWhere('name', 'like', '%ليسانس%');
+        })
+            ->where('is_active', true)
+            ->whereHas('articles')
+            ->pluck('id');
+
+        $masterCategoryIds = Category::where(function ($query) {
+            $query->where('name', 'like', '%ماجستير%')
+                ->orWhere('name', 'like', '%Master%');
+        })
+            ->where('is_active', true)
+            ->whereHas('articles')
+            ->pluck('id');
+
+        $phdCategoryIds = Category::where(function ($query) {
+            $query->where('name', 'like', '%دكتوراه%')
+                ->orWhere('name', 'like', '%PhD%')
+                ->orWhere('name', 'like', '%Ph.D%');
+        })
+            ->where('is_active', true)
+            ->whereHas('articles')
+            ->pluck('id');
+
+        $bachelorTotalCount = Article::whereIn('status', ['published', 'draft'])
+            ->whereNotNull('person_id')
+            ->whereIn('category_id', $bachelorCategoryIds)
+            ->select('person_id')
+            ->distinct()
+            ->count('person_id');
+
+        $masterTotalCount = Article::whereIn('status', ['published', 'draft'])
+            ->whereNotNull('person_id')
+            ->whereIn('category_id', $masterCategoryIds)
+            ->select('person_id')
+            ->distinct()
+            ->count('person_id');
+
+        $phdTotalCount = Article::whereIn('status', ['published', 'draft'])
+            ->whereNotNull('person_id')
+            ->whereIn('category_id', $phdCategoryIds)
+            ->select('person_id')
+            ->distinct()
+            ->count('person_id');
+
+        $bachelorGraduates = Article::whereIn('status', ['published', 'draft'])
+            ->whereNotNull('person_id')
+            ->whereIn('category_id', $bachelorCategoryIds)
+            ->with(['person:id,first_name,last_name,photo_url,parent_id,gender', 'person.parent:id,first_name,gender,parent_id', 'person.parent.parent:id,first_name,gender,parent_id', 'category:id,name'])
+            ->latest('created_at')
+            ->take(10)
+            ->get();
+
+        $masterGraduates = Article::whereIn('status', ['published', 'draft'])
+            ->whereNotNull('person_id')
+            ->whereIn('category_id', $masterCategoryIds)
+            ->with(['person:id,first_name,last_name,photo_url,parent_id,gender', 'person.parent:id,first_name,gender,parent_id', 'person.parent.parent:id,first_name,gender,parent_id', 'category:id,name'])
+            ->latest('created_at')
+            ->take(10)
+            ->get();
+
+        $phdGraduates = Article::whereIn('status', ['published', 'draft'])
+            ->whereNotNull('person_id')
+            ->whereIn('category_id', $phdCategoryIds)
+            ->with(['person:id,first_name,last_name,photo_url,parent_id,gender', 'person.parent:id,first_name,gender,parent_id', 'person.parent.parent:id,first_name,gender,parent_id', 'category:id,name'])
+            ->latest('created_at')
+            ->take(10)
+            ->get();
+
+        $latestGraduates = collect()
+            ->merge($bachelorGraduates->map(function ($article) {
+                $article->degree_type = 'bachelor';
+
+                return $article;
+            }))
+            ->merge($masterGraduates->map(function ($article) {
+                $article->degree_type = 'master';
+
+                return $article;
+            }))
+            ->merge($phdGraduates->map(function ($article) {
+                $article->degree_type = 'phd';
+
+                return $article;
+            }));
+
+        $firstBachelor = $latestGraduates->where('degree_type', 'bachelor')->first();
+        $firstMaster = $latestGraduates->where('degree_type', 'master')->first();
+        $firstPhd = $latestGraduates->where('degree_type', 'phd')->first();
+
+        $degreeCategoryIds = [
+            'bachelor' => $firstBachelor?->category_id,
+            'master' => $firstMaster?->category_id,
+            'phd' => $firstPhd?->category_id,
+        ];
+
+        $degreeCategories = [
+            'bachelor' => $this->degreeCategoryFromArticle($firstBachelor),
+            'master' => $this->degreeCategoryFromArticle($firstMaster),
+            'phd' => $this->degreeCategoryFromArticle($firstPhd),
+        ];
+
+        $importantLinkCategories = \App\Models\ImportantLinkCategory::where('is_active', true)
+            ->orderBy('sort_order')
+            ->get();
+
+        if (Auth::check()) {
+            $importantLinks = ImportantLink::with(['media', 'submitter', 'category'])->orderBy('order')->get();
+        } else {
+            $importantLinks = ImportantLink::with(['media', 'submitter', 'category'])
+                ->where('is_active', true)
+                ->where('status', 'approved')
+                ->orderBy('order')
+                ->get();
+        }
+
+        $familyNews = FamilyNews::getActiveNews(8);
+
+        $identityResolver = app(\App\Services\SiteIdentityResolver::class);
+        $identity = $identityResolver->resolve(request());
+        $authMethod = $identity['auth_method'] ?? null;
+        $viewerPersonId = $identityResolver->viewerPersonId(request());
+        $viewerPerson = $viewerPersonId ? Person::find($viewerPersonId) : (Auth::check() ? Auth::user()?->person : null);
+
+        $quizCompetitions = QuizCompetition::active()->ordered()->with(['questions.choices.person', 'questions.surveyItems'])->get()
+            ->filter(function (QuizCompetition $c) use ($viewerPerson, $authMethod) {
+                $visibleQuestions = $c->questions->filter(fn ($q) => $q->isVisibleTo($viewerPerson, $authMethod));
+                if ($visibleQuestions->isEmpty() && ! $c->show_draw_only) {
+                    return false;
+                }
+                $c->setRelation('questions', $visibleQuestions->values());
+
+                return true;
+            })->values();
+
+        $nextQuizEvent = QuizCompetition::getNextUpcomingEvent($viewerPerson);
+
+        $activeQuizCompetitions = QuizCompetition::active()
+            ->where(function ($q) {
+                $q->whereNull('start_at')->orWhere('start_at', '<=', now());
+            })
+            ->where(function ($q) {
+                $q->whereNull('end_at')->orWhere('end_at', '>=', now());
+            })
+            ->ordered()
+            ->with(['questions.choices.person', 'questions.surveyItems'])
+            ->get()
+            ->filter(function (QuizCompetition $c) use ($viewerPerson, $authMethod) {
+                $visibleQuestions = $c->questions->filter(fn ($q) => $q->isVisibleTo($viewerPerson, $authMethod));
+                if ($visibleQuestions->isEmpty() && ! $c->show_draw_only) {
+                    return false;
+                }
+                $c->setRelation('questions', $visibleQuestions->values());
+
+                return true;
+            })->values();
+
+        return [
+            'slides' => $slideshowImages,
+            'gallery' => $latestGalleryImages,
+            'familyBrief' => $familyBrief,
+            'whatsNew' => $whatsNew,
+            'courses' => $courses,
+            'programs' => $programs,
+            'programCategories' => $programCategoriesForHome,
+            'proudOf' => $proudOf,
+            'councils' => $councils,
+            'events' => $events,
+            'birthdayPersons' => $birthdayPersons,
+            'latestGraduates' => $latestGraduates,
+            'degree_category_ids' => $degreeCategoryIds,
+            'degree_categories' => $degreeCategories,
+            'bachelorTotalCount' => $bachelorTotalCount,
+            'masterTotalCount' => $masterTotalCount,
+            'phdTotalCount' => $phdTotalCount,
+            'importantLinks' => $importantLinks,
+            'importantLinkCategories' => $importantLinkCategories,
+            'familyNews' => $familyNews,
+            'dynamicSections' => $dynamicSections,
+            'quiz' => [
+                'quizCompetitions' => $quizCompetitions,
+                'nextQuizEvent' => $nextQuizEvent,
+                'activeQuizCompetitions' => $activeQuizCompetitions,
+            ],
+        ];
+    }
+
+    /**
+     * قسم المقال (بكالوريوس/ماجستير/دكتوراه) المرتبط بأول خريج لذلك النوع — لربط واجهة API بعنوان القسم.
+     *
+     * @return array{id: int, name: string|null}|null
+     */
+    private function degreeCategoryFromArticle(?Article $article): ?array
+    {
+        if ($article === null || $article->category_id === null) {
+            return null;
+        }
+
+        $name = $article->relationLoaded('category') && $article->category
+            ? $article->category->name
+            : null;
+
+        return [
+            'id' => (int) $article->category_id,
+            'name' => $name,
+        ];
+    }
+}
