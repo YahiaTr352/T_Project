@@ -3,9 +3,9 @@
 namespace Tests\Feature\Invitations;
 
 use App\Jobs\SendWhatsAppInvitationJob;
+use App\Jobs\NotifyEditorsOfPendingInvitationsJob;
 use App\Models\Notification;
 use App\Models\Person;
-use App\Services\Invitations\InvitationApprovalService;
 use App\Services\Invitations\InvitationMessageService;
 use App\Services\SiteMobileAccessToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -76,6 +76,7 @@ class InvitationExternalAndPlaceholderTest extends TestCase
     public function test_send_invitation_to_external_guest(): void
     {
         Queue::fake();
+        config(['invitations.delivery_enabled' => true]);
 
         $sender = Person::factory()->createQuietly([
             'first_name' => 'سلطان',
@@ -95,13 +96,16 @@ class InvitationExternalAndPlaceholderTest extends TestCase
         ]);
 
         $response->assertCreated();
-        $response->assertJsonPath('success', true);
+        $response->assertJsonPath('success', true)
+            ->assertJsonPath('data.notification.whatsapp_jobs', 1)
+            ->assertJsonPath('data.notification.status', 'sending');
 
         $notificationId = $response->json('data.notification.id');
         $notification = Notification::find($notificationId);
 
         $this->assertNotNull($notification);
-        $this->assertEquals('pending_approval', $notification->status);
+        $this->assertNull($notification->sent_at);
+        $this->assertNull($notification->approved_by);
         $this->assertEquals('external', $notification->targeting_filters['recipient_type']);
 
         $recipients = $notification->recipients;
@@ -110,19 +114,40 @@ class InvitationExternalAndPlaceholderTest extends TestCase
         $this->assertEquals('أبو فهد الشمري', $recipients[0]->recipient_name);
         $this->assertEquals('966501234567', $recipients[0]->recipient_phone);
 
-        // Test approval dispatching for external recipient
-        $approvalService = app(InvitationApprovalService::class);
-        $admin = \App\Models\User::factory()->createQuietly();
-        $approvalResult = $approvalService->approve($notification, $admin);
-
-        $this->assertEquals(1, $approvalResult['whatsapp_jobs']);
-
         Queue::assertPushed(SendWhatsAppInvitationJob::class, function ($job) {
             return $job->toNumber === '966501234567'
                 && str_contains($job->messageBody, 'أبو فهد الشمري')
                 && $job->personId === null
                 && $job->recipientName === 'أبو فهد الشمري';
         });
+        Queue::assertNotPushed(NotifyEditorsOfPendingInvitationsJob::class);
+    }
+
+    public function test_delivery_disabled_saves_invitation_without_dispatching_jobs(): void
+    {
+        Queue::fake();
+        config(['invitations.delivery_enabled' => false]);
+        $sender = Person::factory()->createQuietly(['death_date' => null, 'birth_date' => '1990-01-01']);
+
+        $response = $this->withHeaders($this->identityHeaders($sender))
+            ->postJson('/api/v1/invitations/send', [
+                'channels' => ['whatsapp'],
+                'recipient_type' => 'external',
+                'external_phone' => '0501234567',
+                'body' => 'دعوة تجريبية',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.notification.status', 'delivery_disabled')
+            ->assertJsonPath('data.notification.whatsapp_jobs', 0)
+            ->assertJsonPath('data.notification.push_jobs', 0);
+
+        $this->assertDatabaseHas('notifications', [
+            'id' => $response->json('data.notification.id'),
+            'person_id' => $sender->id,
+            'status' => 'delivery_disabled',
+            'sent_at' => null,
+        ]);
+        Queue::assertNothingPushed();
     }
 
     public function test_preview_external_invitation(): void

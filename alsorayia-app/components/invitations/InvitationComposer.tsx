@@ -448,10 +448,9 @@ export function InvitationComposer({
       CustomAlert.alert('الإرسال', extractInvitationError(res));
       return;
     }
-    const n = res.data.notification;
     CustomAlert.alert(
-      'تم تشغيل الإرسال',
-      `واتساب: ${n.whatsapp_jobs} · إشعارات: ${n.push_jobs}`
+      'حالة الدعوة',
+      res.message ?? 'تم حفظ الدعوة في السجل.'
     );
     onSent?.();
   };
@@ -839,7 +838,7 @@ export function InvitationComposer({
             <View style={[styles.noticeBadge, { backgroundColor: WHATSAPP_GREEN + '12' }]}>
               <Ionicons name="checkmark-circle-outline" size={16} color={WHATSAPP_GREEN} />
               <ThemedText style={[styles.noticeText, { color: isDark ? '#A7F3D0' : '#065F46' }]}>
-                سيتم استبدال {'{name}'} باسم الضيف والإرسال عبر الواتساب فور اعتماد الدعوة.
+                سيتم استبدال {'{name}'} باسم الضيف عند إرسال الدعوة عبر واتساب.
               </ThemedText>
             </View>
           </View>

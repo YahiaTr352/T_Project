@@ -21,6 +21,10 @@ class NotifyEditorsOfPendingInvitationsJob implements ShouldQueue
 
     public function handle(AdminAlertDispatcherService $dispatcher): void
     {
+        if (! config('invitations.delivery_enabled')) {
+            return;
+        }
+
         $notification = Notification::with(['person', 'recipients'])->find($this->notificationId);
 
         if (! $notification || $notification->status !== 'pending_approval') {

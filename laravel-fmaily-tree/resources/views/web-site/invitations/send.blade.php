@@ -115,7 +115,7 @@
 
                         <div class="flex items-center gap-1.5 text-[11px] text-emerald-800 font-medium pt-1">
                             <i class="fas fa-circle-check text-emerald-600"></i>
-                            <span>سيتم استبدال {name} باسم الضيف، والإرسال عبر الواتساب فور اعتماد الدعوة من الإدارة.</span>
+                            <span>سيتم استبدال {name} باسم الضيف عند إرسال الدعوة عبر واتساب.</span>
                         </div>
                     </div>
                 </div>

@@ -162,6 +162,7 @@ class InvitationApiTest extends TestCase
     public function test_send_queues_whatsapp_job(): void
     {
         Queue::fake();
+        config(['invitations.delivery_enabled' => true]);
 
         $me = Person::factory()->create(['gender' => 'male', 'death_date' => null]);
         $target = Person::factory()->create(['gender' => 'male', 'death_date' => null]);

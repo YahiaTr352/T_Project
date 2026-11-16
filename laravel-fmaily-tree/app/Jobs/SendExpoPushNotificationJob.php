@@ -45,6 +45,10 @@ class SendExpoPushNotificationJob implements ShouldQueue
             return;
         }
 
+        if ($notification->person_id !== null && ! config('invitations.delivery_enabled')) {
+            return;
+        }
+
         if (!\App\Support\NotificationSettings::canSendPush()) {
             Log::channel('single')->info('[ExpoPush Job] Push channel is disabled in settings, skipping job', $logContext);
             $this->updateNotificationStatus($notification);

@@ -147,15 +147,8 @@ class InvitationController extends Controller
             return back()->withInput()->with('error', $e->getMessage());
         }
 
-        $msg = 'تم تشغيل مهام الإرسال في الخلفية بنجاح.';
-        if ($result['whatsapp_jobs'] > 0) {
-            $msg .= " (واتساب: {$result['whatsapp_jobs']})";
-        }
-        if ($result['push_jobs'] > 0) {
-            $msg .= " (إشعار التطبيق: {$result['push_jobs']})";
-        }
-
-        return redirect()->route('invitations.logs')->with('success', $msg);
+        return redirect()->route('invitations.logs')
+            ->with('success', $result['notification']->invitationSubmissionMessage());
     }
 
     public function logs(Request $request): View

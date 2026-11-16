@@ -319,7 +319,7 @@ class InvitationApiController extends Controller
             return $this->fail($e);
         }
 
-        return $this->ok('تم تقديم دعوتك بنجاح، وهي قيد المراجعة والاعتماد من قبل إدارة العائلة.', [
+        return $this->ok($result['notification']->invitationSubmissionMessage(), [
             'notification' => [
                 'id' => $result['notification']->id,
                 'status' => $result['notification']->status,

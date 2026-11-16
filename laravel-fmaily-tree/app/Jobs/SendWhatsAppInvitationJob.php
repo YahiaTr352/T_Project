@@ -50,6 +50,10 @@ class SendWhatsAppInvitationJob implements ShouldQueue
             return;
         }
 
+        if ($notification->person_id !== null && ! config('invitations.delivery_enabled')) {
+            return;
+        }
+
         try {
             $cardPath = app(\App\Services\Invitations\InvitationCardRenderer::class)
                 ->renderForNotification($notification, $this->messageBody, $this->personId, $this->toNumber);

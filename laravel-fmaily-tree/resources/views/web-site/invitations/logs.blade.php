@@ -167,7 +167,7 @@
                                     </span>
                                 @else
                                     <span class="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700">
-                                        {{ $notification->status }}
+                                        {{ $notification->status_label }}
                                     </span>
                                 @endif
                             </div>

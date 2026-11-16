@@ -9,14 +9,13 @@ use App\Models\Notification;
 use App\Models\Person;
 use App\Models\User;
 use App\Models\UserDevice;
-use App\Support\NotificationSettings;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class InvitationApprovalService
 {
     public function __construct(
-        protected InvitationMessageService $messages,
+        protected InvitationDeliveryService $delivery,
         protected InvitationGroupService $groups,
     ) {}
 
@@ -46,12 +45,11 @@ class InvitationApprovalService
                 'rejection_reason' => null,
             ]);
 
-            $dispatchResults = $this->dispatchJobs($locked);
-
-            $locked->update([
-                'status' => 'sending',
-                'sent_at' => now(),
-            ]);
+            $dispatchResults = $this->delivery->queueRecipients($locked);
+            $locked->update(['status' => $dispatchResults['status']]);
+            if ($dispatchResults['status'] === 'sending') {
+                $this->notifySenderOfDecision($locked, 'approved');
+            }
 
             return [
                 'notification' => $locked->fresh(['recipients', 'person', 'approvedBy']),
@@ -125,12 +123,11 @@ class InvitationApprovalService
 
             $locked->update($updateData);
 
-            $dispatchResults = $this->dispatchJobs($locked);
-
-            $locked->update([
-                'status' => 'sending',
-                'sent_at' => now(),
-            ]);
+            $dispatchResults = $this->delivery->queueRecipients($locked);
+            $locked->update(['status' => $dispatchResults['status']]);
+            if ($dispatchResults['status'] === 'sending') {
+                $this->notifySenderOfDecision($locked, 'approved');
+            }
 
             return [
                 'notification' => $locked->fresh(['recipients', 'person', 'approvedBy']),
@@ -174,129 +171,18 @@ class InvitationApprovalService
     }
 
     /**
-     * Dispatch queue jobs for all recipients of the notification.
-     *
-     * @return array{whatsapp_jobs: int, push_jobs: int}
-     */
-    public function dispatchJobs(Notification $notification): array
-    {
-        $sender = $notification->person;
-        $channels = is_array($notification->channels) ? $notification->channels : [];
-        $targetingFilters = is_array($notification->targeting_filters) ? $notification->targeting_filters : [];
-        $templateVars = is_array($targetingFilters['template_vars'] ?? null) ? $targetingFilters['template_vars'] : [];
-        $body = (string) $notification->body;
-        $body = $this->messages->withSenderSignature($body, $sender);
-        $title = (string) ($notification->title ?: 'تنبيه عائلي');
-        $mediaType = $notification->media_type;
-        $mediaPath = $notification->media_path;
-
-        // جلب المستلمين المسجلين
-        $recipients = $notification->recipients()->with('person.contactAccounts')->get();
-        $recipientPersons = $recipients->pluck('person')->filter();
-
-        $whatsappJobs = 0;
-        $pushJobs = 0;
-
-        if (in_array('whatsapp', $channels, true)) {
-            $waTargets = [];
-            foreach ($recipients as $recipient) {
-                if ($recipient->person) {
-                    $person = $recipient->person;
-                    $numbers = $this->groups->whatsAppNumbers($person);
-                    if ($numbers === []) {
-                        continue;
-                    }
-
-                    $messageBody = $this->messages->replacePlaceholders($body, $person, $sender, $templateVars);
-                    $waTargets[] = [
-                        'person_id' => $person->id,
-                        'number' => $numbers[0],
-                        'body' => $messageBody,
-                        'name' => $person->first_name ?: $person->full_name,
-                    ];
-                } elseif (! empty($recipient->recipient_phone)) {
-                    $guestName = $recipient->recipient_name ?: 'ضيفنا العزيز';
-                    $messageBody = $this->messages->replacePlaceholders($body, null, $sender, array_merge($templateVars, [
-                        '{name}' => $guestName,
-                        '{first_name}' => $guestName,
-                        '{full_name}' => $guestName,
-                    ]));
-
-                    $waTargets[] = [
-                        'person_id' => null,
-                        'number' => $recipient->recipient_phone,
-                        'body' => $messageBody,
-                        'name' => $guestName,
-                    ];
-                }
-            }
-
-            $delays = NotificationSettings::calculateStaggeredDelays(count($waTargets));
-
-            foreach ($waTargets as $idx => $target) {
-                $delaySeconds = $delays[$idx] ?? 0;
-
-                SendWhatsAppInvitationJob::dispatch(
-                    $notification->id,
-                    $target['person_id'],
-                    $target['number'],
-                    $target['body'],
-                    $mediaType,
-                    $mediaPath,
-                    $target['name']
-                )->delay(now()->addSeconds($delaySeconds));
-
-                $whatsappJobs++;
-            }
-        }
-
-        if (in_array('push', $channels, true)) {
-            $personIds = $recipientPersons->pluck('id')->all();
-            $devices = UserDevice::query()->whereIn('person_id', $personIds)->get();
-
-            foreach ($devices as $device) {
-                if (! $device->expo_push_token) {
-                    continue;
-                }
-
-                $person = $recipientPersons->firstWhere('id', $device->person_id);
-                $bodyText = $this->messages->replacePlaceholders($body, $person, $sender, $templateVars);
-                $resolvedTitle = $this->messages->replacePlaceholders($title ?: 'تنبيه عائلي', $person, $sender, $templateVars);
-
-                SendExpoPushNotificationJob::dispatch(
-                    $notification->id,
-                    (int) $device->person_id,
-                    $device->expo_push_token,
-                    $resolvedTitle,
-                    $bodyText,
-                    ['notification_id' => $notification->id]
-                );
-                $pushJobs++;
-            }
-        }
-
-        // إشعار صاحب الدعوة باعتمادها
-        $this->notifySenderOfDecision($notification, 'approved');
-
-        return [
-            'whatsapp_jobs' => $whatsappJobs,
-            'push_jobs' => $pushJobs,
-        ];
-    }
-
-    /**
      * Notify the invitation sender about approval or rejection via push + WhatsApp fallback.
      * Sender notices never touch the invitation status (isSenderNotice=true).
      */
     protected function notifySenderOfDecision(Notification $notification, string $decision, ?string $reason = null): void
     {
-        if (! $notification->person_id) {
+        if (! $notification->person_id || ! config('invitations.delivery_enabled')) {
             return;
         }
 
         $title = $decision === 'approved' ? '✅ تم قبول دعوتك وبدأ الإرسال' : '❌ تعذر اعتماد دعوتك';
         $body = $decision === 'approved'
-            ? "تمت الموافقة على دعوتك «" . ($notification->title ?: 'دعوة عائلية') . "» وتم إرسالها لجميع المستهدفين."
+            ? "تمت الموافقة على دعوتك «" . ($notification->title ?: 'دعوة عائلية') . "» وبدأ الإرسال."
             : "تم رفض دعوتك «" . ($notification->title ?: 'دعوة عائلية') . "»." . ($reason ? " السبب: {$reason}" : '');
 
         $pushSent = false;
@@ -316,7 +202,7 @@ class InvitationApprovalService
                         'decision' => $decision,
                     ],
                     true,
-                );
+                )->afterCommit();
                 $pushSent = true;
             }
         }
@@ -347,6 +233,6 @@ class InvitationApprovalService
             null,
             $sender->first_name ?: $sender->full_name,
             true,
-        );
+        )->afterCommit();
     }
 }

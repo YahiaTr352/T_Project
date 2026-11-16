@@ -51,7 +51,18 @@ class Notification extends Model
             'sent' => 'تم الإرسال',
             'failed' => 'فشل الإرسال',
             'partial' => 'جزئي',
+            'delivery_disabled' => 'الإرسال معطّل',
             default => $this->status ?? 'غير معروف',
+        };
+    }
+
+    public function invitationSubmissionMessage(): string
+    {
+        return match ($this->status) {
+            'delivery_disabled' => 'تم حفظ الدعوة في السجل. الإرسال معطّل في هذه البيئة.',
+            'failed' => 'تم حفظ الدعوة، لكن تعذّر إرسالها. تحقق من قنوات الإرسال وبيانات المستلمين.',
+            'sent' => 'تم إرسال الدعوة.',
+            default => 'تم حفظ الدعوة وبدأت عملية الإرسال.',
         };
     }
 

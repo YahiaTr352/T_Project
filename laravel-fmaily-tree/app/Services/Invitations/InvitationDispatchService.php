@@ -3,13 +3,11 @@
 namespace App\Services\Invitations;
 
 use App\Exceptions\InvitationException;
-use App\Jobs\SendExpoPushNotificationJob;
-use App\Jobs\SendWhatsAppInvitationJob;
 use App\Models\Notification;
 use App\Models\Person;
-use App\Models\UserDevice;
 use App\Support\NotificationSettings;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -21,6 +19,7 @@ class InvitationDispatchService
         protected InvitationGroupService $groups,
         protected InvitationBackgroundService $backgrounds,
         protected CreativeTemplateService $creatives,
+        protected InvitationDeliveryService $delivery,
     ) {}
 
     /**
@@ -106,7 +105,7 @@ class InvitationDispatchService
 
         $templateVars = is_array($payload['template_vars'] ?? null) ? $payload['template_vars'] : [];
 
-        $notification = Notification::create([
+        $attributes = [
             'user_id' => null,
             'person_id' => $sender->id,
             'title' => $title,
@@ -123,34 +122,35 @@ class InvitationDispatchService
                 'template_vars' => $templateVars,
                 'background_id' => $background?->id,
                 'creative_id' => $creative?->id,
+                'requires_approval' => false,
             ],
-            'status' => 'pending_approval',
-        ]);
-
-        if ($isExternal) {
-            foreach ($externalRecipients as $ext) {
-                $notification->recipients()->create([
-                    'person_id' => null,
-                    'recipient_name' => $ext['name'],
-                    'recipient_phone' => $ext['phone'],
-                ]);
-            }
-        } else {
-            // ربط المستلمين بالسجل
-            foreach ($persons as $person) {
-                $notification->recipients()->firstOrCreate(['person_id' => $person->id]);
-            }
-        }
-
-        // إشعار المحررين والمدراء عبر UltraMsg بالدعوة المعلقة
-        \App\Jobs\NotifyEditorsOfPendingInvitationsJob::dispatch($notification->id);
-
-        return [
-            'notification' => $notification->fresh(['recipients']),
-            'whatsapp_jobs' => 0,
-            'push_jobs' => 0,
-            'status' => 'pending_approval',
+            'status' => 'sending',
         ];
+
+        [$notification, $result] = DB::transaction(function () use ($attributes, $isExternal, $externalRecipients, $persons) {
+            $notification = Notification::create($attributes);
+
+            if ($isExternal) {
+                foreach ($externalRecipients as $ext) {
+                    $notification->recipients()->create([
+                        'person_id' => null,
+                        'recipient_name' => $ext['name'],
+                        'recipient_phone' => $ext['phone'],
+                    ]);
+                }
+            } else {
+                foreach ($persons as $person) {
+                    $notification->recipients()->firstOrCreate(['person_id' => $person->id]);
+                }
+            }
+
+            $result = $this->delivery->queueRecipients($notification);
+            $notification->update(['status' => $result['status']]);
+
+            return [$notification, $result];
+        });
+
+        return ['notification' => $notification->fresh(['recipients'])] + $result;
     }
 
     /**

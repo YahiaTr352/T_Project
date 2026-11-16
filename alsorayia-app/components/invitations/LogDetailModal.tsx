@@ -69,6 +69,8 @@ export function statusMeta(status: string): { label: string; color: string; hint
     case 'cancelled':
     case 'canceled':
       return { label: 'ملغاة', color: '#64748B' };
+    case 'delivery_disabled':
+      return { label: 'الإرسال معطّل', color: '#64748B', hint: 'حُفظت الدعوة في السجل دون إرسالها من هذه البيئة.' };
     default:
       return { label: status || 'غير معروف', color: '#64748B' };
   }
@@ -125,6 +127,11 @@ export function LogDetailModal({
   const effectiveStatus = effectiveLogStatus(log);
   const meta = statusMeta(effectiveStatus || log?.status || '');
   const completed = isLogCompleted(log);
+  const requiresApproval = log?.targeting_filters?.requires_approval !== false;
+  const steps = requiresApproval
+    ? ['إنشاء', 'اعتماد', 'إرسال', 'اكتمال']
+    : ['إنشاء', 'إرسال', 'اكتمال'];
+  const currentStep = Math.max(0, statusStepIndex(effectiveStatus) - (requiresApproval ? 0 : 1));
   const channels = normalizeChannels(log?.channels);
   const totalRecipients =
     log?.recipients_count ?? log?.recipients?.length ?? 0;
@@ -169,14 +176,12 @@ export function LogDetailModal({
                       </ThemedText>
                     </View>
                   ) : null}
-                  {/* خط زمني: إنشاء → اعتماد → إرسال → اكتمال */}
                   <View style={styles.timeline}>
-                    {['إنشاء', 'اعتماد', 'إرسال', 'اكتمال'].map((stepLabel, i) => {
-                      const current = statusStepIndex(effectiveStatus);
-                      const done = i <= current;
-                      const active = i === current;
+                    {steps.map((stepLabel, i) => {
+                      const done = i <= currentStep;
+                      const active = i === currentStep;
                       const connectorColor =
-                        i < current ? meta.color : isDark ? '#334155' : '#E2E8F0';
+                        i < currentStep ? meta.color : isDark ? '#334155' : '#E2E8F0';
                       return (
                         <React.Fragment key={stepLabel}>
                           <View style={styles.timelineStep}>
@@ -195,7 +200,7 @@ export function LogDetailModal({
                               {stepLabel}
                             </ThemedText>
                           </View>
-                          {i < 3 ? (
+                          {i < steps.length - 1 ? (
                             <View style={[styles.timelineConnector, { backgroundColor: connectorColor }]} />
                           ) : null}
                         </React.Fragment>

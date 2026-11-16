@@ -91,6 +91,7 @@ class InvitationWebTest extends TestCase
     public function test_send_dispatches_whatsapp_and_push_jobs(): void
     {
         Queue::fake();
+        config(['invitations.delivery_enabled' => true]);
 
         $me = Person::factory()->create(['gender' => 'male', 'death_date' => null]);
         $target = Person::factory()->create(['first_name' => 'خالد', 'gender' => 'male', 'death_date' => null]);
@@ -121,6 +122,7 @@ class InvitationWebTest extends TestCase
 
         Queue::assertPushed(SendWhatsAppInvitationJob::class);
         Queue::assertPushed(SendExpoPushNotificationJob::class);
+        Queue::assertNotPushed(\App\Jobs\NotifyEditorsOfPendingInvitationsJob::class);
     }
 
     public function test_send_page_uses_sila_tree_markup_and_patronymic_search(): void

@@ -113,6 +113,7 @@ export interface InvitationLog {
   created_at: string;
   sent_at?: string | null;
   sender_name?: string | null;
+  targeting_filters?: { requires_approval?: boolean } | null;
   recipients?: InvitationLogRecipient[];
   recipients_count?: number | null;
   delivered_count?: number | null;
