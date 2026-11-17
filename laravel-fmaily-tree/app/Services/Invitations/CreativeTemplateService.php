@@ -23,11 +23,12 @@ class CreativeTemplateService
         protected InvitationGroupService $groups,
     ) {}
 
-    public function upload(?Person $uploader, UploadedFile $file, ?string $name = null, ?string $description = null): CreativeTemplate
+    public function upload(?Person $uploader, UploadedFile $file, ?string $name = null, ?string $description = null, ?string $invitationType = null): CreativeTemplate
     {
         $path = $file->store('creative-templates', 'public');
 
         $template = CreativeTemplate::create([
+            'invitation_type' => $invitationType,
             'name' => $name ?: $file->getClientOriginalName(),
             'description' => $description,
             'image_path' => $path,
@@ -35,7 +36,9 @@ class CreativeTemplateService
             'status' => CreativeTemplate::STATUS_PENDING,
         ]);
 
-        NotifyEditorsOfPendingVisualJob::dispatch('creative', $template->id);
+        if ($uploader && config('invitations.delivery_enabled')) {
+            NotifyEditorsOfPendingVisualJob::dispatch('creative', $template->id);
+        }
 
         return $template;
     }
@@ -103,7 +106,7 @@ class CreativeTemplateService
     protected function notifyUploader(CreativeTemplate $template, string $decision, ?string $reason = null): void
     {
         $personId = (int) $template->uploaded_by;
-        if ($personId <= 0) {
+        if ($personId <= 0 || ! config('invitations.delivery_enabled')) {
             return;
         }
 

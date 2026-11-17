@@ -821,6 +821,7 @@ Route::group(['middleware' => ['auth'], 'prefix' => 'dashboard'], function () {
         Route::delete('/{background}', [\App\Http\Controllers\admin\InvitationBackgroundController::class, 'destroy'])->name('destroy')->middleware(['permission:notifications.send']);
     });
     Route::prefix('creative-templates')->name('dashboard.creatives.')->middleware(['permission:notifications.view'])->group(function () {
+        Route::patch('/{template}', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'update'])->name('update')->middleware(['permission:notifications.send']);
         Route::get('/', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'index'])->name('index');
         Route::post('/', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'store'])->name('store')->middleware(['permission:notifications.send']);
         Route::post('/{template}/approve', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'approve'])->name('approve')->middleware(['permission:notifications.send']);

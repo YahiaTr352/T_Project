@@ -10,6 +10,7 @@
     'submitLabel' => 'رفع واعتماد',
     'accept' => 'image/*',
     'storeUrl' => null,
+    'invitationTypes' => [],
 ])
 
 <div class="modal fade" id="{{ $id }}" tabindex="-1" role="dialog" aria-hidden="true">
@@ -75,6 +76,17 @@
                         >
                     </div>
 
+                    @if ($invitationTypes)
+                        <div class="form-group mb-3">
+                            <label class="font-bold notif-title mb-2 d-block" for="{{ $formId }}Type">نوع الدعوة</label>
+                            <select id="{{ $formId }}Type" class="dashboard-input" data-visual-invitation-type>
+                                <option value="">تصميم عام</option>
+                                @foreach ($invitationTypes as $type)
+                                    <option value="{{ $type['key'] }}">{{ $type['name'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    @endif
                     @if ($showDescription && $extraId)
                         <div class="form-group mb-3">
                             <label for="{{ $extraId }}" class="font-bold notif-title mb-2 d-block" style="font-size:12px;">وصف مختصر (اختياري)</label>

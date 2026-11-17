@@ -139,66 +139,60 @@
                 <input type="hidden" name="template_key" id="template_key" value="">
                 <div id="templateVars" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 hidden"></div>
                 <input type="text" name="title" id="title" value="{{ old('title') }}" placeholder="عنوان الإشعار" class="w-full px-4 py-3 border rounded-xl mb-3">
-                <textarea name="body" id="body" rows="7" placeholder="اكتب نص الرسالة..." class="w-full px-4 py-3 border rounded-xl">{{ old('body') }}</textarea>
+                <textarea name="body" id="body" rows="7" placeholder="النص اختياري عند اختيار صورة" class="w-full px-4 py-3 border rounded-xl">{{ old('body') }}</textarea>
                 <p class="text-xs text-slate-400 mt-2">المتغيرات: {name} {full_name} {sender_name}</p>
             </div>
 
-                        <div class="glass-card rounded-3xl p-6">
-                <h2 class="text-xl font-bold mb-4">مساحة الإبداع (اختياري)</h2>
-                @if($backgrounds->isEmpty())
-                    <p class="text-sm text-slate-400">لا توجد خلفيات معتمدة بعد.</p>
-                @else
-                    <input type="hidden" name="background_id" id="background_id" value="{{ old('background_id') }}">
-                    <div class="grid grid-cols-3 gap-3">
-                        @foreach($backgrounds as $bg)
-                            <button type="button" data-bg-id="{{ $bg->id }}" data-bg-url="{{ $bg->image_url }}"
-                                class="bg-pick rounded-2xl overflow-hidden border-2 border-transparent focus:outline-none"
-                                title="{{ $bg->name }}">
-                                <img src="{{ $bg->image_url }}" class="w-full h-24 object-cover" alt="">
+            <div class="glass-card rounded-3xl p-6">
+                <h2 class="text-xl font-bold mb-4">الصورة والتصميم</h2>
+                <input type="hidden" name="creative_id" id="creative_id" value="{{ old('creative_id') }}">
+                <input type="hidden" name="background_id" id="background_id" value="{{ old('background_id') }}">
+                <button type="button" id="creativeOpen" aria-haspopup="dialog" aria-controls="creativeDialog"
+                    class="w-full flex items-center gap-3 rounded-2xl bg-emerald-600 p-4 text-white text-right">
+                    <i class="fas fa-palette text-xl" aria-hidden="true"></i>
+                    <span class="flex-1">
+                        <span class="block font-bold">مساحة إبداع</span>
+                        <span id="creativeSelectionLabel" class="block text-xs mt-1">اختر قالبًا للدعوة</span>
+                    </span>
+                    <i class="fas fa-chevron-left" aria-hidden="true"></i>
+                </button>
+                <button type="button" id="creativeClear" class="text-xs underline mt-2">إزالة قالب الصورة</button>
+
+                <dialog id="creativeDialog" aria-labelledby="creativeDialogTitle" dir="rtl"
+                    class="rounded-3xl p-6 shadow-xl" style="width:min(92vw,720px);max-height:85vh;overflow:auto">
+                    <div class="flex items-center justify-between gap-4 mb-3">
+                        <h3 id="creativeDialogTitle" class="font-bold text-xl">مساحة إبداع</h3>
+                        <button type="button" id="creativeClose" aria-label="إغلاق مساحة إبداع"
+                            class="px-3 py-2 rounded-xl border">إغلاق</button>
+                    </div>
+                    <p id="creativeLibraryLabel" class="text-sm text-slate-600 mb-4"></p>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        @foreach($creatives as $creative)
+                            <button type="button" class="creative-pick border-2 rounded-xl p-1"
+                                data-id="{{ $creative->id }}" data-type="{{ $creative->invitation_type }}"
+                                data-name="{{ $creative->name }}" data-url="{{ $creative->image_url }}" aria-pressed="false">
+                                <img src="{{ $creative->image_url }}" alt="{{ $creative->name }}" class="w-full h-40 object-contain">
+                                <span class="text-xs">{{ $creative->name }}</span>
                             </button>
                         @endforeach
                     </div>
-                    <button type="button" id="bgClear" class="mt-2 text-xs text-slate-400 underline">ازالة الاختيار</button>
-                @endif
-                    
-            </div>
+                    <p id="creativeEmpty" class="text-xs text-slate-500 mt-2"></p>
+                    @if($backgrounds->isNotEmpty())
+                        <h4 class="font-bold text-sm my-4">خلفيات عامة</h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            @foreach($backgrounds as $bg)
+                                <button type="button" data-bg-id="{{ $bg->id }}" data-bg-url="{{ $bg->image_url }}"
+                                    data-name="{{ $bg->name }}" aria-pressed="false"
+                                    class="bg-pick rounded-2xl overflow-hidden border-2 border-transparent" title="{{ $bg->name }}">
+                                    <img src="{{ $bg->image_url }}" class="w-full h-40 object-contain" alt="{{ $bg->name }}">
+                                </button>
+                            @endforeach
+                        </div>
+                    @endif
+                </dialog>
 
-            <script>
-            (function () {
-                var input = document.getElementById('background_id');
-                if (!input) return;
-                var sim = document.getElementById('simBg');
-                function paint() {
-                    document.querySelectorAll('.bg-pick').forEach(function (b) {
-                        var on = String(b.getAttribute('data-bg-id')) === String(input.value || '');
-                        b.classList.toggle('ring-2', on);
-                        b.classList.toggle('ring-emerald-500', on);
-                    });
-                    var cur = document.querySelector('.bg-pick[data-bg-id="' + (input.value || '') + '"]');
-                    if (sim) {
-                        if (cur && input.value) { sim.src = cur.getAttribute('data-bg-url'); sim.classList.remove('hidden'); }
-                        else { sim.removeAttribute('src'); sim.classList.add('hidden'); }
-                    }
-                }
-                document.querySelectorAll('.bg-pick').forEach(function (b) {
-                    b.addEventListener('click', function () {
-                        input.value = (input.value === b.getAttribute('data-bg-id')) ? '' : b.getAttribute('data-bg-id');
-                        paint();
-                        paint();
-                    });
-                });
-                var clear = document.getElementById('bgClear');
-                if (clear) clear.addEventListener('click', function () { input.value = ''; paint(); });
-                paint();
-                    });
-                });
-                cpaint();
-            })();
-            </script>
-
-<div class="glass-card rounded-3xl p-6">
-                <h2 class="text-xl font-bold mb-4">٤. مرفق اختياري</h2>
-                <input type="file" name="media" accept="image/*,video/*,audio/*" class="w-full">
+                <label for="media" class="block font-bold text-sm mt-5 mb-2">مرفق اختياري من جهازك</label>
+                <input type="file" id="media" name="media" accept="image/*,video/*,audio/*" class="w-full">
                 <input type="hidden" name="media_type" id="media_type" value="">
             </div>
 
@@ -225,6 +219,94 @@
     <script>
         const templates = @json($templates);
         const senderName = @json($person->full_name ?: $person->first_name);
+        const creativeInput = document.getElementById('creative_id');
+        const backgroundInput = document.getElementById('background_id');
+        const attachment = document.getElementById('media');
+        const previewImage = document.getElementById('simBg');
+        let attachmentUrl = null;
+        const creativeDialog = document.getElementById('creativeDialog');
+        document.getElementById('creativeOpen').addEventListener('click', function () {
+            refreshImages();
+            creativeDialog.showModal();
+        });
+        document.getElementById('creativeClose').addEventListener('click', function () {
+            creativeDialog.close();
+        });
+
+        function refreshImages() {
+            let count = 0;
+            document.querySelectorAll('.creative-pick').forEach(function (button) {
+                const show = !button.dataset.type || button.dataset.type === document.getElementById('template_select').value;
+                button.classList.toggle('hidden', !show);
+                if (show) count++;
+                const selected = creativeInput.value === button.dataset.id;
+                button.classList.toggle('ring-2', selected);
+                button.setAttribute('aria-pressed', String(selected));
+            });
+            document.getElementById('creativeEmpty').textContent = count ? '' : 'لا توجد قوالب صور لهذا النوع بعد. يمكنك إرفاق صورة.';
+            const selectedType = templates.find(function (item) {
+                return item.key === document.getElementById('template_select').value;
+            });
+            document.getElementById('creativeLibraryLabel').textContent = selectedType
+                ? 'صور ' + selectedType.name + ' والتصاميم العامة'
+                : 'التصاميم العامة';
+            document.querySelectorAll('.bg-pick').forEach(function (button) {
+                button.setAttribute('aria-pressed', String(backgroundInput?.value === button.dataset.bgId));
+                button.classList.toggle('ring-2', backgroundInput?.value === button.dataset.bgId);
+                button.classList.toggle('ring-emerald-500', backgroundInput?.value === button.dataset.bgId);
+            });
+            const creative = document.querySelector('.creative-pick[data-id="' + creativeInput.value + '"]');
+            const background = backgroundInput?.value
+                ? document.querySelector('.bg-pick[data-bg-id="' + backgroundInput.value + '"]') : null;
+            document.getElementById('creativeSelectionLabel').textContent = creative || background
+                ? 'القالب المختار: ' + (creative || background).dataset.name
+                : selectedType ? 'صور ' + selectedType.name + ' والتصاميم العامة' : 'اختر قالبًا للدعوة';
+            const url = attachmentUrl || creative?.dataset.url || background?.dataset.bgUrl;
+            previewImage.classList.toggle('hidden', !url);
+            if (url) previewImage.src = url;
+            else previewImage.removeAttribute('src');
+            updatePreview();
+        }
+        function clearAttachment() {
+            attachment.value = '';
+            if (attachmentUrl) URL.revokeObjectURL(attachmentUrl);
+            attachmentUrl = null;
+        }
+        document.querySelectorAll('.creative-pick').forEach(function (button) {
+            button.addEventListener('click', function () {
+                creativeInput.value = button.dataset.id;
+                if (backgroundInput) backgroundInput.value = '';
+                clearAttachment();
+                if (button.dataset.type) {
+                    document.getElementById('body').value = '';
+                    renderTemplateVars('');
+                }
+                refreshImages();
+                creativeDialog.close();
+            });
+        });
+        document.querySelectorAll('.bg-pick').forEach(function (button) {
+            button.addEventListener('click', function () {
+                backgroundInput.value = button.dataset.bgId;
+                creativeInput.value = '';
+                clearAttachment();
+                refreshImages();
+                creativeDialog.close();
+            });
+        });
+        document.getElementById('creativeClear').addEventListener('click', function () {
+            creativeInput.value = '';
+            backgroundInput.value = '';
+            refreshImages();
+        });
+        attachment.addEventListener('change', function () {
+            if (attachmentUrl) URL.revokeObjectURL(attachmentUrl);
+            const file = attachment.files[0];
+            attachmentUrl = file?.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+            creativeInput.value = '';
+            if (backgroundInput) backgroundInput.value = '';
+            refreshImages();
+        });
 
         document.querySelectorAll('input[name="recipient_type"]').forEach(function (el) {
             el.addEventListener('change', function () {
@@ -302,7 +384,7 @@
 
         function updatePreview() {
             document.getElementById('simTitle').textContent = document.getElementById('title').value || 'تنبيه عائلي';
-            document.getElementById('simBody').textContent = applyVars(document.getElementById('body').value || 'السلام عليكم...');
+            document.getElementById('simBody').textContent = applyVars(document.getElementById('body').value || '');
         }
 
         const extNameInput = document.getElementById('external_name');
@@ -312,6 +394,8 @@
 
         document.getElementById('template_select').addEventListener('change', function () {
             const key = this.value;
+            creativeInput.value = '';
+            refreshImages();
             document.getElementById('template_key').value = key;
             if (!key) { renderTemplateVars(document.getElementById('body').value); updatePreview(); return; }
             const tpl = templates.find(function (t) { return t.key === key; });
@@ -327,6 +411,6 @@
             if (!document.getElementById('template_key').value) renderTemplateVars(this.value);
             updatePreview();
         });
-        updatePreview();
+        refreshImages();
     </script>
 @endsection

@@ -13,6 +13,7 @@ class CreativeTemplate extends Model
     public const STATUS_REJECTED = 'rejected';
 
     protected $fillable = [
+        'invitation_type',
         'name',
         'description',
         'image_path',
@@ -79,6 +80,7 @@ class CreativeTemplate extends Model
     public function toPickerArray(): array
     {
         return [
+            'invitation_type' => $this->invitation_type,
             'id' => $this->id,
             'name' => $this->name,
             'image_url' => $this->image_url,

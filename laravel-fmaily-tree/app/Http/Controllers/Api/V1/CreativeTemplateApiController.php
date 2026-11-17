@@ -9,6 +9,7 @@ use App\Models\Person;
 use App\Services\Invitations\CreativeTemplateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class CreativeTemplateApiController extends Controller
 {
@@ -16,9 +17,13 @@ class CreativeTemplateApiController extends Controller
         protected CreativeTemplateService $creatives,
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'invitation_type' => ['sometimes', Rule::in(array_column(config('invitation_templates.templates', []), 'key'))],
+        ]);
         $list = CreativeTemplate::approved()
+            ->when(isset($validated['invitation_type']), fn ($query) => $query->where('invitation_type', $validated['invitation_type']))
             ->latest()
             ->get()
             ->map(fn (CreativeTemplate $t) => $t->toPickerArray())
@@ -39,6 +44,7 @@ class CreativeTemplateApiController extends Controller
                 'id' => $t->id,
                 'name' => $t->name,
                 'description' => $t->description,
+                'invitation_type' => $t->invitation_type,
                 'image_url' => $t->image_url,
                 'status' => $t->status,
                 'status_label' => $t->status_label,
@@ -56,6 +62,7 @@ class CreativeTemplateApiController extends Controller
             'image' => 'required|image|max:16384',
             'name' => 'nullable|string|max:255',
             'description' => 'nullable|string|max:1000',
+            'invitation_type' => ['nullable', Rule::in(array_column(config('invitation_templates.templates', []), 'key'))],
         ], [
             'image.required' => 'يرجى اختيار صورة التصميم.',
             'image.image' => 'الملف المرفوع يجب ان يكون صورة.',
@@ -67,7 +74,8 @@ class CreativeTemplateApiController extends Controller
                 $this->person($request),
                 $request->file('image'),
                 $validated['name'] ?? null,
-                $validated['description'] ?? null
+                $validated['description'] ?? null,
+                $validated['invitation_type'] ?? null
             );
         } catch (InvitationException $e) {
             return $this->fail($e);

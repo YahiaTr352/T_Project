@@ -46,6 +46,9 @@ class InvitationCardRenderer
     ): ?string {
         try {
             $filters = is_array($notification->targeting_filters) ? $notification->targeting_filters : [];
+            if (trim((string) $notification->body) === '') {
+                return null;
+            }
             $backgroundId = $filters['background_id'] ?? null;
             if (! $backgroundId && empty($filters['creative_id'])) {
                 return null;

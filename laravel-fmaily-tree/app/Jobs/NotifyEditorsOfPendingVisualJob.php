@@ -25,6 +25,10 @@ class NotifyEditorsOfPendingVisualJob implements ShouldQueue
 
     public function handle(AdminAlertDispatcherService $dispatcher): void
     {
+        if (! config('invitations.delivery_enabled')) {
+            return;
+        }
+
         if ($this->kind === 'creative') {
             $item = CreativeTemplate::with('uploader')->find($this->id);
             $reviewUrl = route('dashboard.creatives.index', ['status' => 'pending']);

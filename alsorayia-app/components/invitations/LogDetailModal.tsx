@@ -11,6 +11,7 @@ import {
   type InvitationLog,
 } from '@/lib/api/invitations';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import React from 'react';
 import {
   ActivityIndicator,
@@ -237,6 +238,10 @@ export function LogDetailModal({
                 ) : null}
               </View>
               <View style={[styles.bodyBox, { backgroundColor: cardBg, borderColor: border }]}>
+                {log.media_type === 'image' && log.media_url ? (
+                  <Image source={{ uri: log.media_url }} contentFit="contain"
+                    accessibilityLabel="صورة الدعوة" style={{ width: '100%', height: 320, marginBottom: 12 }} />
+                ) : null}
                 <ThemedText style={styles.body}>{log.body}</ThemedText>
               </View>
               {!incoming ? (

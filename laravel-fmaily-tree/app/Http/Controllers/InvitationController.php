@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\InvitationException;
 use App\Models\Notification;
+use App\Models\CreativeTemplate;
 use App\Models\InvitationBackground;
 use App\Models\NotificationGroup;
 use App\Models\Person;
@@ -81,8 +82,9 @@ class InvitationController extends Controller
         $templates = $this->messages->templates();
 
         $backgrounds = InvitationBackground::approved()->latest()->get();
+        $creatives = CreativeTemplate::approved()->latest()->get();
 
-        return view('web-site.invitations.send', compact('person', 'groups', 'templates', 'backgrounds'));
+        return view('web-site.invitations.send', compact('person', 'groups', 'templates', 'backgrounds', 'creatives'));
     }
 
     public function sendSubmit(Request $request): RedirectResponse
@@ -106,7 +108,7 @@ class InvitationController extends Controller
             'external_recipients.*.country_code' => 'nullable|string|max:10',
             'title' => 'nullable|string|max:255',
             'body' => 'nullable|string|max:65535',
-            'background_id' => 'صورة الخلفية',
+            'creative_id' => 'nullable|integer',
             'template_key' => 'nullable|string|max:64',
             'template_vars' => 'nullable|array',
             'template_vars.*' => 'nullable|string|max:255',
@@ -142,6 +144,7 @@ class InvitationController extends Controller
                 'media_type' => $validated['media_type'] ?? null,
                 'media' => $request->file('media'),
                 'background_id' => $validated['background_id'] ?? null,
+                'creative_id' => $validated['creative_id'] ?? null,
             ]);
         } catch (InvitationException $e) {
             return back()->withInput()->with('error', $e->getMessage());

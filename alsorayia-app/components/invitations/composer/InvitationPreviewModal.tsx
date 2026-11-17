@@ -61,7 +61,7 @@ export function InvitationPreviewModal({
             <Image
               source={{ uri: (previewCreative as any).image_url }}
               style={styles.previewBg}
-              contentFit="cover"
+              contentFit="contain"
             />
           ) : previewBg?.image_url ? (
             <Image
@@ -82,7 +82,7 @@ export function InvitationPreviewModal({
             </Text>
           ) : attachedImage ? (
             <Text style={[styles.cardMergedHint, { color: muted }]}>
-              الصورة المرفقة ستُرسل بجانب النص كما هي
+              {previewText.trim() ? 'ستُرسل الصورة مع النص' : 'ستُرسل الصورة وحدها'}
             </Text>
           ) : null}
           <Text style={[styles.previewTitleText, { color: colors.text }]}>معاينة الرسالة</Text>

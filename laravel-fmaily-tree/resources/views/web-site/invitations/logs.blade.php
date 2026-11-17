@@ -94,6 +94,9 @@
                             </span>
                         </summary>
                         <p class="mt-4 whitespace-pre-wrap border-t border-gray-100 pt-4 text-gray-800">{{ $notification->body }}</p>
+                        @if($notification->media_type === 'image' && $notification->media_url)
+                            <img src="{{ $notification->media_url }}" alt="صورة الدعوة" class="mt-4 max-h-96 max-w-full rounded-xl">
+                        @endif
                     </details>
                     @continue
                     @endif
@@ -195,6 +198,9 @@
                         @endif
 
                         {{-- Recipients List --}}
+                        @if($notification->media_type === 'image' && $notification->media_url)
+                            <img src="{{ $notification->media_url }}" alt="صورة الدعوة" class="mt-4 max-h-96 max-w-full rounded-xl">
+                        @endif
                         @if($notification->recipients->count() > 0)
                             <div class="border-t border-gray-100 pt-4 mt-4">
                                 <h4 class="text-sm font-bold text-gray-700 mb-3">

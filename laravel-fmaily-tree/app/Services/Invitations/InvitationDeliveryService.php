@@ -31,7 +31,9 @@ class InvitationDeliveryService
         $targetingFilters = is_array($notification->targeting_filters) ? $notification->targeting_filters : [];
         $templateVars = is_array($targetingFilters['template_vars'] ?? null) ? $targetingFilters['template_vars'] : [];
         $body = (string) $notification->body;
-        $body = $this->messages->withSenderSignature($body, $sender);
+        if (trim($body) !== '') {
+            $body = $this->messages->withSenderSignature($body, $sender);
+        }
         $title = (string) ($notification->title ?: 'تنبيه عائلي');
         $mediaType = $notification->media_type;
         $mediaPath = $notification->media_path;

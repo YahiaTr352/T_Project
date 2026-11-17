@@ -29,6 +29,7 @@ class Notification extends Model
     ];
 
     protected $appends = [
+        'media_url',
         'status_label',
     ];
 
@@ -64,6 +65,15 @@ class Notification extends Model
             'sent' => 'تم إرسال الدعوة.',
             default => 'تم حفظ الدعوة وبدأت عملية الإرسال.',
         };
+    }
+
+    public function getMediaUrlAttribute(): ?string
+    {
+        if (! $this->media_path) {
+            return null;
+        }
+
+        return \Illuminate\Support\Facades\Storage::disk('public')->url($this->media_path);
     }
 
     public function user(): BelongsTo

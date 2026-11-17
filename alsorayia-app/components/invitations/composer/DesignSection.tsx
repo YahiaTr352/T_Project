@@ -14,6 +14,7 @@ import {
 import { composerStyles as styles } from './composerStyles';
 
 interface DesignSectionProps {
+  invitationTypeName?: string;
   colors: ThemeColors;
   isDark: boolean;
   cardBg: string;
@@ -31,6 +32,7 @@ interface DesignSectionProps {
 }
 
 export function DesignSection({
+  invitationTypeName,
   colors,
   isDark,
   cardBg,
@@ -60,7 +62,11 @@ export function DesignSection({
         <View style={{ flex: 1 }}>
           <Text style={designStyles.entryTitle}>مساحة إبداع</Text>
           <Text style={designStyles.entrySubtitle}>
-            {selectedCreative ? `القالب المختار: ${selectedCreative.name || 'بطاقة مصممة'}` : 'اختر قالبًا للدعوة أو ارفع تصميمك'}
+            {selectedCreative
+              ? `القالب المختار: ${selectedCreative.name || 'بطاقة مصممة'}`
+              : invitationTypeName
+                ? `صور ${invitationTypeName} والتصاميم العامة`
+                : 'اختر قالبًا للدعوة أو ارفع تصميمك'}
           </Text>
         </View>
         <Ionicons name="chevron-back" size={18} color="#FFFFFF" />
@@ -70,7 +76,7 @@ export function DesignSection({
             <View style={[styles.miniBadgeOk, { backgroundColor: '#10B98118' }]}>
               <Ionicons name="checkmark-circle" size={14} color="#10B981" />
               <ThemedText style={[styles.miniBadgeOkText, { color: '#059669' }]}>
-                سيتم دمج النص داخل التصميم
+                {body.trim() ? 'سيتم دمج النص داخل التصميم' : 'سيتم إرسال الصورة وحدها'}
               </ThemedText>
             </View>
             <TouchableOpacity onPress={() => void onClearCreative()} style={styles.clearVisual}>
@@ -100,7 +106,7 @@ export function DesignSection({
               </View>
             </View>
             <ThemedText style={[styles.hint, { color: muted, marginBottom: 0, textAlign: 'right' }]}>
-              الصورة تصل <ThemedText style={{ fontFamily: 'Tajawal-Bold', color: colors.text }}>داخل فقاعة الدردشة</ThemedText> — فوق النص مباشرة، والنص لا يُطبع عليها
+              يمكنك إرسال الصورة وحدها، أو إضافة نص يظهر أسفلها في واتساب.
             </ThemedText>
           </View>
         </View>

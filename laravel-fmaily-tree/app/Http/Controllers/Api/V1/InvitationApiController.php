@@ -207,7 +207,7 @@ class InvitationApiController extends Controller
 
     private function previewCard(InvitationBackground|CreativeTemplate|null $background, array $validated, string $preview): ?string
     {
-        if (! $background) {
+        if (! $background || trim($preview) === '') {
             return null;
         }
         try {
@@ -399,6 +399,8 @@ class InvitationApiController extends Controller
             'created_at' => $notification->created_at,
             'sent_at' => $notification->sent_at,
             'sender_name' => trim($notification->person?->first_name.' '.$notification->person?->last_name),
+            'media_type' => $notification->media_type,
+            'media_url' => $notification->media_url,
         ];
     }
 

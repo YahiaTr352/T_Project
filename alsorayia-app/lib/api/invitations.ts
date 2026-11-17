@@ -105,6 +105,8 @@ export interface InvitationLogRecipient {
 export type InvitationLogDirection = 'outgoing' | 'incoming';
 
 export interface InvitationLog {
+  media_type?: string | null;
+  media_url?: string | null;
   id: number;
   title: string | null;
   body: string;
@@ -158,6 +160,7 @@ export interface MyInvitationBackground extends InvitationBackground {
 }
 
 export interface CreativeTemplate {
+  invitation_type?: string | null;
   id: number;
   name?: string | null;
   image_url?: string | null;
@@ -515,7 +518,8 @@ export async function fetchMyCreatives(): Promise<
 
 export async function uploadCreative(
   imageUri: string,
-  name?: string
+  name?: string,
+  invitationType?: string | null
 ): Promise<InvitationsApiResponse<{ template: MyCreativeTemplate }>> {
   const form = new FormData();
   form.append('image', {
@@ -524,6 +528,7 @@ export async function uploadCreative(
     type: 'image/jpeg',
   } as any);
   if (name?.trim()) form.append('name', name.trim());
+  if (invitationType) form.append('invitation_type', invitationType);
   return request('تعذر رفع التصميم.', () => apiUpload('/v1/invitations/creatives', form));
 }
 

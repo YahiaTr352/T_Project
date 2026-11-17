@@ -138,6 +138,8 @@ export function InvitationComposer({
   const applyTemplate = (tpl: InvitationTemplate) => {
     const nextKey = templateKey === tpl.key ? null : tpl.key;
     setTemplateKey(nextKey);
+    setSelectedCreativeId(null);
+    setTempCreativeId(null);
     if (nextKey) {
       setTitle(tpl.title);
       setBody(tpl.body);
@@ -146,6 +148,8 @@ export function InvitationComposer({
   };
 
   const selectedCreative = creatives.find((b) => b.id === selectedCreativeId) ?? null;
+  const visibleCreatives = creatives.filter((item) => !item.invitation_type || item.invitation_type === templateKey);
+  const invitationTypeName = templates.find((item) => item.key === templateKey)?.name;
 
   const loadCreatives = useCallback(async () => {
     setCreativeLoading(true);
@@ -179,10 +183,14 @@ export function InvitationComposer({
 
   const confirmCreativeSelection = useCallback(() => {
     setSelectedCreativeId(tempCreativeId);
+    if (tempCreativeId !== selectedCreativeId && creatives.find((item) => item.id === tempCreativeId)?.invitation_type) {
+      setBody('');
+      setTemplateVars({});
+    }
     // فصل ذكي: اختيار قالب إبداعي يلغي الصورة المرفقة العادية والعكس
     if (tempCreativeId != null) setAttachedImage(null);
     setCreativeModalVisible(false);
-  }, [tempCreativeId]);
+  }, [tempCreativeId, selectedCreativeId, creatives]);
 
   const clearCreativeSelection = useCallback(() => {
     setSelectedCreativeId(null);
@@ -215,7 +223,7 @@ export function InvitationComposer({
     if (picked.canceled || !picked.assets?.[0]?.uri) return;
     setCreativeUploading(true);
     try {
-      const res = await uploadCreative(picked.assets[0].uri);
+      const res = await uploadCreative(picked.assets[0].uri, undefined, templateKey);
       if (!res.success) {
         CustomAlert.alert('رفع تصميم', extractInvitationError(res));
         return;
@@ -351,8 +359,8 @@ export function InvitationComposer({
         CustomAlert.alert('الإرسال', 'يرجى إدخال رقم الواتساب للضيف.');
         return;
       }
-      if (!body.trim()) {
-        CustomAlert.alert('الإرسال', 'أدخل نص الرسالة أو اختر قالبًا.');
+      if (!body.trim() && !attachedImage && !selectedCreativeId) {
+        CustomAlert.alert('الإرسال', 'أدخل نص الرسالة أو اختر صورة.');
         return;
       }
 
@@ -383,8 +391,8 @@ export function InvitationComposer({
       CustomAlert.alert('الإرسال', 'اختر مجموعة للمستلمين.');
       return;
     }
-    if (!body.trim()) {
-      CustomAlert.alert('الإرسال', 'أدخل نص الرسالة أو اختر قالبًا.');
+    if (!body.trim() && !attachedImage && !selectedCreativeId) {
+      CustomAlert.alert('الإرسال', 'أدخل نص الرسالة أو اختر صورة.');
       return;
     }
 
@@ -559,7 +567,7 @@ export function InvitationComposer({
           fontFamily={selectedFontName}
           value={body}
           onChangeText={setBody}
-          placeholder="اكتب الرسالة او اختر قالبا..."
+          placeholder="النص اختياري عند اختيار صورة"
           multiline
           selection={bodySel}
           onSelectionChange={setBodySel}
@@ -609,6 +617,7 @@ export function InvitationComposer({
         ) : null}
 
         <DesignSection
+          invitationTypeName={invitationTypeName}
           colors={colors}
           isDark={isDark}
           cardBg={cardBg}
@@ -920,6 +929,7 @@ export function InvitationComposer({
       />
 
       <CreativePickerModal
+        invitationTypeName={invitationTypeName}
         visible={creativeModalVisible}
         onClose={() => setCreativeModalVisible(false)}
         colors={colors}
@@ -927,10 +937,9 @@ export function InvitationComposer({
         cardBg={cardBg}
         border={border}
         muted={muted}
-        title={title}
         loading={creativeLoading}
         uploading={creativeUploading}
-        creatives={creatives}
+        creatives={visibleCreatives}
         myCreatives={myCreatives}
         tempCreativeId={tempCreativeId}
         onSelect={setTempCreativeId}

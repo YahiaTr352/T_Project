@@ -316,6 +316,8 @@
             }
             var fd = new FormData();
             fd.append('image', fileInput.files[0]);
+            var invitationType = form.querySelector('[data-visual-invitation-type]');
+            if (invitationType) fd.append('invitation_type', invitationType.value);
             if (nameInput) fd.append('name', nameInput.value || '');
             if (extraInput) {
                 if (extraInput.type === 'checkbox') {

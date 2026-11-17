@@ -8,6 +8,7 @@ use App\Models\CreativeTemplate;
 use App\Services\Invitations\CreativeTemplateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class CreativeTemplateController extends Controller
@@ -44,13 +45,15 @@ class CreativeTemplateController extends Controller
             'image' => 'required|image|max:16384',
             'name' => 'nullable|string|max:255',
             'description' => 'nullable|string|max:1000',
+            'invitation_type' => ['nullable', Rule::in(array_column(config('invitation_templates.templates', []), 'key'))],
         ]);
 
         $template = $this->creatives->upload(
             null,
             $request->file('image'),
             $validated['name'] ?? null,
-            $validated['description'] ?? null
+            $validated['description'] ?? null,
+            $validated['invitation_type'] ?? null
         );
         $this->creatives->approve($template, $request->user());
 
@@ -59,6 +62,16 @@ class CreativeTemplateController extends Controller
             'message' => 'تم رفع التصميم واعتماده كقالب.',
             'data' => ['template' => $template->fresh()->toPickerArray()],
         ], 201);
+    }
+
+    public function update(Request $request, CreativeTemplate $template): JsonResponse
+    {
+        $validated = $request->validate([
+            'invitation_type' => ['present', 'nullable', Rule::in(array_column(config('invitation_templates.templates', []), 'key'))],
+        ]);
+        $template->update($validated);
+
+        return response()->json(['success' => true, 'message' => 'تم حفظ نوع الدعوة.']);
     }
 
     public function approve(Request $request, CreativeTemplate $template): JsonResponse

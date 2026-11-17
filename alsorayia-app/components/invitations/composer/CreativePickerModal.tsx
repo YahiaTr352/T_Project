@@ -24,7 +24,7 @@ interface CreativePickerModalProps {
   cardBg: string;
   border: string;
   muted: string;
-  title: string;
+  invitationTypeName?: string;
   loading: boolean;
   uploading: boolean;
   creatives: CreativeTemplate[];
@@ -44,7 +44,7 @@ export function CreativePickerModal({
   cardBg,
   border,
   muted,
-  title,
+  invitationTypeName,
   loading,
   uploading,
   creatives,
@@ -64,8 +64,13 @@ export function CreativePickerModal({
       <View style={styles.previewOverlay}>
         <View style={[styles.previewCard, { backgroundColor: cardBg, maxHeight: '88%' }]}>
           <Text style={[styles.previewTitleText, { color: colors.text }]}>مساحة إبداع</Text>
+          {invitationTypeName ? (
+            <Text style={[styles.sectionLabel, { color: colors.text }]}>
+              صور {invitationTypeName} والتصاميم العامة
+            </Text>
+          ) : null}
           <Text style={[styles.modalSubText, { color: muted }]}>
-            اختر قالبًا معتمدًا ليُدمج فيه العنوان والنص داخل الصورة — يصل لكل مستلم باسمه. رفعك الجديد يراجع من الإدارة ثم يظهر للجميع.
+            اختر صورة جاهزة لنوع الدعوة أو تصميمًا عامًا. يمكنك ترك النص فارغًا لإرسال الصورة وحدها.
           </Text>
           {loading ? (
             <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} />
@@ -93,6 +98,9 @@ export function CreativePickerModal({
                   return (
                     <TouchableOpacity
                       key={bg.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={bg.name || 'قالب صورة'}
+                      accessibilityState={{ selected: cactive }}
                       onPress={() => onSelect(cactive ? null : bg.id)}
                       style={[
                         styles.bgThumb,
@@ -102,7 +110,7 @@ export function CreativePickerModal({
                         },
                       ]}>
                       {bg.image_url ? (
-                        <Image source={{ uri: bg.image_url }} style={styles.bgThumbImg} contentFit="cover" />
+                        <Image source={{ uri: bg.image_url }} style={styles.bgThumbImg} contentFit="contain" />
                       ) : null}
                       {bg.name ? (
                         <View style={styles.bgNameBadge}>
@@ -127,7 +135,9 @@ export function CreativePickerModal({
                 <View style={[styles.tempPreviewBox, { borderColor: colors.primary, backgroundColor: colors.primary + '0D' }]}>
                   <Ionicons name="information-circle-outline" size={16} color={colors.primary} />
                   <Text style={[styles.tempPreviewText, { color: colors.text }]}>
-                    المعاينة: «{(title.trim() || 'العنوان').slice(0, 30)}» سيُركّب على القالب المحدد ويُرسل كصورة لكل مستلم باسمه.
+                    {creatives.find((item) => item.id === tempCreativeId)?.invitation_type
+                      ? 'سيُرسل القالب كصورة. يمكنك إضافة نص بعد اختياره.'
+                      : 'اختر تصميمًا وأضف النص المطلوب، أو اترك النص فارغًا لإرسال الصورة وحدها.'}
                   </Text>
                 </View>
               ) : null}

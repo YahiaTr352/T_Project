@@ -147,6 +147,21 @@
                             :deleteUrl="route('dashboard.creatives.destroy', $ct)"
                             :canManage="auth()->user()?->can('notifications.send') ?? false"
                         />
+                        @can('notifications.send')
+                            <form method="POST" action="{{ route('dashboard.creatives.update', $ct) }}" class="mt-2" data-category-form>
+                                @csrf
+                                @method('PATCH')
+                                <label for="creativeType{{ $ct->id }}">نوع الدعوة</label>
+                                <select name="invitation_type" id="creativeType{{ $ct->id }}" class="dashboard-input">
+                                    <option value="">تصميم عام</option>
+                                    @foreach (config('invitation_templates.templates', []) as $type)
+                                        <option value="{{ $type['key'] }}" @selected($ct->invitation_type === $type['key'])>{{ $type['name'] }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-success mt-2">حفظ التصنيف</button>
+                                <span role="status"></span>
+                            </form>
+                        @endcan
                     </div>
                 @endforeach
             </div>
@@ -181,6 +196,7 @@
                 nameId="visualUploadName"
                 extraId="visualUploadDesc"
                 :showDescription="true"
+                :invitationTypes="config('invitation_templates.templates', [])"
                 submitLabel="رفع واعتماد"
                 :storeUrl="route('dashboard.creatives.store')"
             />
@@ -192,5 +208,28 @@
 @endsection
 
 @push('scripts')
+    <script>
+        document.querySelectorAll('[data-category-form]').forEach(function (form) {
+            form.addEventListener('submit', async function (event) {
+                event.preventDefault();
+                const button = form.querySelector('button');
+                const status = form.querySelector('[role="status"]');
+                button.disabled = true;
+                try {
+                    const response = await fetch(form.action, {
+                        method: 'POST',
+                        headers: { Accept: 'application/json' },
+                        body: new FormData(form),
+                    });
+                    const result = await response.json();
+                    status.textContent = response.ok ? 'تم الحفظ' : (result.message || 'تعذر الحفظ');
+                } catch (error) {
+                    status.textContent = 'تعذر الاتصال، حاول مجددًا';
+                } finally {
+                    button.disabled = false;
+                }
+            });
+        });
+    </script>
     <script src="{{ asset('js/dashboard/visual-library.js') }}?v={{ file_exists(public_path('js/dashboard/visual-library.js')) ? filemtime(public_path('js/dashboard/visual-library.js')) : time() }}"></script>
 @endpush

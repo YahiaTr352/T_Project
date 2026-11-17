@@ -105,6 +105,10 @@ class InvitationDispatchService
 
         $templateVars = is_array($payload['template_vars'] ?? null) ? $payload['template_vars'] : [];
 
+        if (trim($body) === '' && ! $mediaPath) {
+            throw new InvitationException('أدخل نص الرسالة أو اختر صورة.', 'CONTENT_REQUIRED', 422);
+        }
+
         $attributes = [
             'user_id' => null,
             'person_id' => $sender->id,
@@ -161,6 +165,9 @@ class InvitationDispatchService
     public function preview(Person $sender, array $payload, ?int $samplePersonId = null, ?string $sampleExternalName = null): string
     {
         $body = $this->resolveBody($payload);
+        if (trim($body) === '') {
+            return '';
+        }
         $body = $this->messages->withSenderSignature($body, $sender);
         $templateVars = is_array($payload['template_vars'] ?? null) ? $payload['template_vars'] : [];
 
@@ -311,7 +318,9 @@ class InvitationDispatchService
                 throw new InvitationException('القالب غير موجود.', 'TEMPLATE_NOT_FOUND');
             }
 
-            return (string) ($payload['body'] ?? $template['body'] ?? '');
+            return array_key_exists('body', $payload)
+                ? (string) $payload['body']
+                : (string) ($template['body'] ?? '');
         }
 
         return (string) ($payload['body'] ?? '');
