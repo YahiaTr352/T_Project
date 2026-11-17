@@ -151,6 +151,10 @@ class WalkingLeaderboardService
                 ->whereIn('person_id', $allowedPersonIds)
                 ->groupBy('person_id');
 
+            if (! $isGroupScoped) {
+                $baseQuery->havingRaw('SUM(steps) > 0');
+            }
+
             // Apply club minimum steps threshold if specified (e.g. 5,000, 10,000, 20,000)
             if ($minSteps !== null && $minSteps > 0) {
                 $baseQuery->havingRaw('SUM(steps) >= ?', [$minSteps]);

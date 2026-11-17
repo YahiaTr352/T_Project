@@ -4,9 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\Person;
 use App\Models\WalkingRecord;
+use App\Services\SiteMobileAccessToken;
 use App\Services\Walking\WalkingLeaderboardService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class WalkingLeaderboardRollingPeriodTest extends TestCase
@@ -17,6 +20,49 @@ class WalkingLeaderboardRollingPeriodTest extends TestCase
     {
         parent::setUp();
         config(['site.password_protection_enabled' => false]);
+    }
+
+    public function test_only_members_with_positive_steps_in_the_selected_period_are_ranked(): void
+    {
+        Queue::fake();
+        Http::preventStrayRequests();
+
+        $this->travelTo(Carbon::parse('2026-11-18 00:43:00', 'Asia/Riyadh'), function (Carbon $now) {
+            $profile = ['gender' => 'male', 'from_outside_the_family' => false];
+            $walker = Person::factory()->createQuietly($profile);
+            $inactive = Person::factory()->createQuietly($profile);
+            $today = $now->toDateString();
+            $yesterday = $now->copy()->subDay()->toDateString();
+            WalkingRecord::create(['person_id' => $walker->id, 'date' => $yesterday, 'steps' => 2000]);
+            WalkingRecord::create(['person_id' => $walker->id, 'date' => $today, 'steps' => 0]);
+            WalkingRecord::create(['person_id' => $inactive->id, 'date' => $today, 'steps' => 0]);
+
+            $identity = SiteMobileAccessToken::issue(60, ['person_id' => $walker->id, 'auth_method' => 'face']);
+            $this->withHeader('X-Site-Access-Token', $identity['token']);
+            $leaderboard = '/api/v1/walking/leaderboard?per_page=1&period=';
+
+            $this->getJson($leaderboard.'today')->assertOk()
+                ->assertJsonCount(0, 'data.top')
+                ->assertJsonPath('data.pagination.total', 0)
+                ->assertJsonPath('data.viewer_rank.rank', null)
+                ->assertJsonPath('data.viewer_rank.total_steps', 0);
+
+            foreach (['weekly', 'monthly', 'all_time'] as $period) {
+                $this->getJson($leaderboard.$period)->assertOk()
+                    ->assertJsonPath('data.pagination.total', 1)
+                    ->assertJsonPath('data.top.0.person_id', $walker->id)
+                    ->assertJsonPath('data.top.0.total_steps', 2000);
+            }
+
+            $this->postJson('/api/v1/walking/sync', ['date' => $today, 'steps' => 1])->assertOk();
+            $this->getJson($leaderboard.'today')->assertOk()
+                ->assertJsonPath('data.pagination.total', 1)
+                ->assertJsonPath('data.top.0.rank', 1)
+                ->assertJsonPath('data.top.0.person_id', $walker->id)
+                ->assertJsonPath('data.top.0.total_steps', 1);
+
+            $this->assertDatabaseHas('walking_records', ['person_id' => $inactive->id, 'steps' => 0]);
+        });
     }
 
     /**
