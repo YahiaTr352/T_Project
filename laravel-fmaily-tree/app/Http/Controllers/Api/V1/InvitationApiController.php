@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Exceptions\InvitationException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Invitations\InvitationResponseRequest;
 use App\Models\Notification;
 use App\Models\InvitationBackground;
 use App\Models\CreativeTemplate;
@@ -12,7 +13,9 @@ use App\Models\Person;
 use App\Services\Invitations\InvitationDispatchService;
 use App\Services\Invitations\InvitationGroupService;
 use App\Services\Invitations\InvitationMessageService;
+use App\Services\Invitations\InvitationResponseService;
 use App\Services\Invitations\InvitationTreePickerService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -343,7 +346,7 @@ class InvitationApiController extends Controller
         $personId = $this->person($request)->id;
 
         $query = $incoming
-            ? Notification::receivedInvitations($personId)->with('person:id,first_name,last_name')
+            ? $this->receivedLogs($personId)
             : Notification::query()->where('person_id', $personId)->with('recipients.person:id,first_name');
         $notifications = $query->latest()->orderByDesc('id')->paginate(15)->withQueryString();
 
@@ -372,7 +375,7 @@ class InvitationApiController extends Controller
         }
 
         $received = $direction !== 'outgoing'
-            ? Notification::receivedInvitations($personId)->with('person:id,first_name,last_name')->find($notification->id)
+            ? $this->receivedLogs($personId)->find($notification->id)
             : null;
 
         if (!$received) {
@@ -386,6 +389,25 @@ class InvitationApiController extends Controller
         }
 
         return $this->ok('تفاصيل الدعوة الواردة.', ['notification' => $this->receivedLogPayload($received)]);
+    }
+
+    public function respond(InvitationResponseRequest $request, Notification $notification, InvitationResponseService $responses): JsonResponse
+    {
+        $response = $request->validated('response');
+        try {
+            $responses->save($notification, $this->person($request)->id, $response);
+        } catch (InvitationException $exception) {
+            return $this->fail($exception);
+        }
+
+        return $this->ok('تم حفظ ردك.', ['invitation_response' => $response]);
+    }
+
+    private function receivedLogs(int $personId): Builder
+    {
+        return Notification::receivedInvitations($personId)
+            ->withInvitationResponseFor($personId)
+            ->with('person:id,first_name,last_name');
     }
 
     private function receivedLogPayload(Notification $notification): array
@@ -403,6 +425,7 @@ class InvitationApiController extends Controller
             'sender_name' => trim($notification->person?->first_name.' '.$notification->person?->last_name),
             'media_type' => $notification->media_type,
             'media_url' => $notification->media_url,
+            'invitation_response' => $notification->invitation_response,
         ];
     }
 

@@ -97,6 +97,7 @@ Route::prefix('v1/invitations')->name('api.v1.invitations.')->middleware($invita
     Route::post('/send', [InvitationApiController::class, 'send'])->middleware('throttle:20,1')->name('send');
     Route::get('/logs', [InvitationApiController::class, 'logs'])->name('logs');
     Route::get('/logs/{notification}', [InvitationApiController::class, 'logShow'])->name('logs.show');
+    Route::put('/logs/{notification}/response', [InvitationApiController::class, 'respond'])->name('logs.respond');
     Route::get('/backgrounds', [\App\Http\Controllers\Api\V1\InvitationBackgroundApiController::class, 'index'])->name('backgrounds.index');
     Route::get('/backgrounds/mine', [\App\Http\Controllers\Api\V1\InvitationBackgroundApiController::class, 'mine'])->name('backgrounds.mine');
     Route::post('/backgrounds', [\App\Http\Controllers\Api\V1\InvitationBackgroundApiController::class, 'store'])->middleware('throttle:20,1')->name('backgrounds.store');

@@ -79,12 +79,17 @@
 
             {{-- Alerts --}}
             @if(session('success'))
-                <div class="mb-6 rounded-xl bg-green-50 border-l-4 border-green-400 p-4">
+                <div role="status" class="mb-6 rounded-xl bg-green-50 border-l-4 border-green-400 p-4">
                     <div class="flex">
                         <i class="fas fa-check-circle text-green-400 text-xl mr-3"></i>
                         <p class="text-sm text-green-700 font-medium">{{ session('success') }}</p>
                     </div>
                 </div>
+            @endif
+            @if(session('response_error'))
+                <p role="alert" class="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">
+                    {{ session('response_error') }}
+                </p>
             @endif
 
             {{-- Logs List --}}
@@ -96,7 +101,8 @@
                         $fontFamily = $notification->targeting_filters['font_family'] ?? ($fontWeight ? 'tajawal' : '');
                     @endphp
                     @if($incoming)
-                    <details class="glass-card rounded-2xl p-6" data-invitation-font="{{ $fontFamily }}" data-invitation-weight="{{ $fontWeight }}">
+                    <details class="glass-card rounded-2xl p-6" data-invitation-font="{{ $fontFamily }}" data-invitation-weight="{{ $fontWeight }}"
+                        @if(session('responded_invitation_id') === $notification->id) open @endif>
                         <summary class="cursor-pointer">
                             <span class="invitation-log-text text-lg font-bold text-gray-900">{{ $notification->title ?: 'دعوة بدون عنوان' }}</span>
                             <span class="mt-1 block text-sm text-gray-600">
@@ -108,6 +114,7 @@
                         @if($notification->media_type === 'image' && $notification->media_url)
                             <img src="{{ $notification->media_url }}" alt="صورة الدعوة" class="mt-4 max-h-96 max-w-full rounded-xl">
                         @endif
+                        @include('web-site.invitations.partials.response-form')
                     </details>
                     @continue
                     @endif
@@ -212,7 +219,9 @@
                         @if($notification->media_type === 'image' && $notification->media_url)
                             <img src="{{ $notification->media_url }}" alt="صورة الدعوة" class="mt-4 max-h-96 max-w-full rounded-xl">
                         @endif
-                        @if($notification->recipients->count() > 0)
+                        @if($notification->recipients->isNotEmpty() && in_array($notification->status, \App\Models\Notification::RESPONDABLE_STATUSES, true))
+                            @include('web-site.invitations.partials.response-recipients')
+                        @elseif($notification->recipients->isNotEmpty())
                             <div class="border-t border-gray-100 pt-4 mt-4">
                                 <h4 class="text-sm font-bold text-gray-700 mb-3">
                                     <i class="fas fa-user-friends text-green-600 mr-2"></i>
@@ -260,5 +269,68 @@
             @endif
         </div>
     </div>
+    @if($incoming && $notifications->contains(fn ($item) => $item->invitation_response === null))
+        <dialog id="invitation-response-dialog" dir="rtl" aria-labelledby="invitation-response-title"
+            aria-describedby="invitation-response-description"
+            class="m-auto w-11/12 max-w-sm rounded-3xl border border-slate-200 bg-white p-6 text-center text-slate-900 shadow-2xl backdrop:bg-slate-900/55">
+            <span data-response-icon class="mx-auto mb-3 inline-flex h-11 w-11 items-center justify-center rounded-full" aria-hidden="true">
+                <i class="fas"></i>
+            </span>
+            <h2 id="invitation-response-title" class="text-lg font-bold"></h2>
+            <p id="invitation-response-description" class="mt-2 text-sm leading-relaxed text-slate-600">
+                بعد التأكيد، لا يمكنك تغيير ردك.
+            </p>
+            <div class="mt-5 flex flex-wrap gap-2">
+                <button type="button" data-confirm-response
+                    class="min-h-[44px] min-w-[8rem] flex-1 rounded-xl px-4 py-2 text-sm font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-800 disabled:opacity-60"></button>
+                <button type="button" data-cancel-response autofocus
+                    class="min-h-[44px] flex-1 rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-800">
+                    إلغاء
+                </button>
+            </div>
+        </dialog>
+        <script>
+            (() => {
+                const dialog = document.getElementById('invitation-response-dialog');
+                const title = dialog.querySelector('h2');
+                const icon = dialog.querySelector('[data-response-icon]');
+                const confirm = dialog.querySelector('[data-confirm-response]');
+                const cancel = dialog.querySelector('[data-cancel-response]');
+                let trigger;
+
+                document.querySelectorAll('[data-invitation-response]').forEach((button) => {
+                    button.addEventListener('click', () => {
+                        trigger = button;
+                        const accepted = button.dataset.invitationResponse === 'accepted';
+                        title.textContent = accepted ? 'تأكيد قبول الدعوة' : 'تأكيد رفض الدعوة';
+                        confirm.textContent = accepted ? 'تأكيد القبول' : 'تأكيد الرفض';
+                        confirm.classList.toggle('bg-emerald-700', accepted);
+                        confirm.classList.toggle('hover:bg-emerald-800', accepted);
+                        confirm.classList.toggle('bg-rose-700', !accepted);
+                        confirm.classList.toggle('hover:bg-rose-800', !accepted);
+                        icon.classList.toggle('bg-emerald-50', accepted);
+                        icon.classList.toggle('text-emerald-800', accepted);
+                        icon.classList.toggle('bg-rose-50', !accepted);
+                        icon.classList.toggle('text-rose-800', !accepted);
+                        icon.firstElementChild.className = accepted ? 'fas fa-check' : 'fas fa-times';
+                        dialog.showModal();
+                    });
+                });
+
+                cancel.addEventListener('click', () => dialog.close());
+                dialog.addEventListener('cancel', (event) => {
+                    if (confirm.disabled) event.preventDefault();
+                });
+                confirm.addEventListener('click', () => {
+                    if (!dialog.open || confirm.disabled) return;
+                    const form = trigger.form;
+                    form.elements.namedItem('response').value = trigger.dataset.invitationResponse;
+                    confirm.disabled = true;
+                    cancel.disabled = true;
+                    form.requestSubmit();
+                });
+            })();
+        </script>
+    @endif
 </body>
 </html>

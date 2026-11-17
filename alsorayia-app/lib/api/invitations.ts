@@ -87,11 +87,14 @@ export interface InvitationSendResult {
   push_jobs: number;
 }
 
+export type InvitationResponse = 'accepted' | 'declined';
+
 export interface InvitationLogRecipient {
   id: number;
   person_id?: number | null;
   recipient_name?: string | null;
   recipient_phone?: string | null;
+  invitation_response?: InvitationResponse | null;
   person?: InvitationPersonBrief | null;
   // قد يرجع التفصيل الصورة أو حالة التسليم على مستوى المستلم مباشرة
   photo_url?: string | null;
@@ -120,6 +123,7 @@ export interface InvitationLog extends InvitationLogTypography {
   created_at: string;
   sent_at?: string | null;
   sender_name?: string | null;
+  invitation_response?: InvitationResponse | null;
   targeting_filters?: (InvitationLogTypography & { requires_approval?: boolean }) | null;
   recipients?: InvitationLogRecipient[];
   recipients_count?: number | null;
@@ -466,6 +470,14 @@ export async function fetchInvitationLogDetail(
 ): Promise<InvitationsApiResponse<{ notification: InvitationLog }>> {
   return request('تعذّر جلب تفاصيل الدعوة.', () =>
     api.get(`/v1/invitations/logs/${id}`, { params: { direction }, ...skipHandler } as any)
+  );
+}
+
+export async function respondToInvitation(id: number, response: InvitationResponse): Promise<
+  InvitationsApiResponse<{ invitation_response: InvitationResponse }>
+> {
+  return request('تعذّر حفظ رد الدعوة.', () =>
+    api.put(`/v1/invitations/logs/${id}/response`, { response }, skipHandler as any)
   );
 }
 

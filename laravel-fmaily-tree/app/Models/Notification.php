@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Notification extends Model
 {
+    public const RESPONDABLE_STATUSES = ['sent', 'partial'];
+
     protected $fillable = [
         'user_id',
         'person_id',
@@ -129,8 +131,18 @@ class Notification extends Model
     public function scopeReceivedInvitations(Builder $query, int $personId): Builder
     {
         return $query->whereNotNull('person_id')
-            ->whereIn('status', ['sent', 'partial'])
+            ->whereIn('status', self::RESPONDABLE_STATUSES)
             ->whereHas('recipients', fn (Builder $recipients) => $recipients->where('person_id', $personId));
+    }
+
+    public function scopeWithInvitationResponseFor(Builder $query, int $personId): Builder
+    {
+        return $query->addSelect([
+            'invitation_response' => NotificationRecipient::query()
+                ->select('invitation_response')
+                ->whereColumn('notification_id', 'notifications.id')
+                ->where('person_id', $personId),
+        ]);
     }
 
     public function scopeApproved($query)

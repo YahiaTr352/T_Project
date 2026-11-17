@@ -9,6 +9,7 @@ use App\Models\Person;
 use App\Models\PersonContactAccount;
 use App\Services\SiteMobileAccessToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -268,6 +269,62 @@ class InvitationApiTest extends TestCase
         $this->flushSession()->withHeaders($this->identityHeaders($other))
             ->getJson("/api/v1/invitations/logs/{$sent->id}?direction=incoming")
             ->assertForbidden();
+    }
+
+    public function test_recipient_can_save_own_invitation_response_once_without_sending(): void
+    {
+        Queue::fake();
+        Http::preventStrayRequests();
+        config(['invitations.delivery_enabled' => false]);
+
+        $adult = ['birth_date' => '1990-01-01', 'death_date' => null];
+        $sender = Person::factory()->createQuietly($adult);
+        $recipient = Person::factory()->createQuietly($adult);
+        $otherRecipient = Person::factory()->createQuietly($adult);
+        $invitation = Notification::create([
+            'person_id' => $sender->id,
+            'status' => 'sent',
+            'channels' => ['whatsapp'],
+        ]);
+        $ownRow = $invitation->recipients()->create(['person_id' => $recipient->id]);
+        $otherRow = $invitation->recipients()->create(['person_id' => $otherRecipient->id]);
+        $pending = Notification::create(['person_id' => $sender->id, 'status' => 'pending_approval']);
+        $pending->recipients()->create(['person_id' => $recipient->id]);
+
+        $logUrl = "/api/v1/invitations/logs/{$invitation->id}";
+        $this->withHeaders($this->identityHeaders($sender))
+            ->putJson("{$logUrl}/response", ['response' => 'accepted'])->assertForbidden();
+
+        $this->flushSession()->withHeaders($this->identityHeaders($recipient));
+        $this->getJson("{$logUrl}?direction=incoming")
+            ->assertOk()->assertJsonPath('data.notification.invitation_response', null);
+        $this->putJson("/api/v1/invitations/logs/{$pending->id}/response", ['response' => 'accepted'])
+            ->assertForbidden();
+        $this->putJson("{$logUrl}/response", ['response' => 'invalid'])->assertUnprocessable();
+        $this->putJson("{$logUrl}/response", ['response' => 'accepted', 'person_id' => $otherRecipient->id])
+            ->assertOk()->assertJsonPath('data.invitation_response', 'accepted');
+        $this->putJson("{$logUrl}/response", ['response' => 'accepted'])->assertOk();
+        $this->putJson("{$logUrl}/response", ['response' => 'declined'])
+            ->assertConflict()->assertJsonPath('code', 'INVITATION_RESPONSE_ALREADY_RECORDED');
+
+        $this->assertSame('accepted', $ownRow->fresh()->invitation_response);
+        $this->assertNull($otherRow->fresh()->invitation_response);
+        $this->getJson('/api/v1/invitations/logs?direction=incoming')
+            ->assertOk()->assertJsonPath('data.notifications.data.0.invitation_response', 'accepted')
+            ->assertJsonMissingPath('data.notifications.data.0.recipients');
+
+        $this->flushSession()->withHeaders($this->identityHeaders($otherRecipient));
+        $this->putJson("{$logUrl}/response", ['response' => 'declined'])->assertOk();
+        $this->putJson("{$logUrl}/response", ['response' => 'accepted'])->assertConflict();
+
+        $this->flushSession()->withHeaders($this->identityHeaders($sender))
+            ->getJson("{$logUrl}?direction=outgoing")
+            ->assertOk()
+            ->assertJsonFragment(['id' => $ownRow->id, 'invitation_response' => 'accepted'])
+            ->assertJsonFragment(['id' => $otherRow->id, 'invitation_response' => 'declined']);
+
+        Queue::assertNothingPushed();
+        Http::assertNothingSent();
     }
 
     /**

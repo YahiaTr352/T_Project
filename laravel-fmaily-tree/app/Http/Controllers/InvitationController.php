@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\InvitationException;
+use App\Http\Requests\Invitations\InvitationResponseRequest;
 use App\Models\Notification;
 use App\Models\CreativeTemplate;
 use App\Models\InvitationBackground;
@@ -11,6 +12,7 @@ use App\Models\Person;
 use App\Services\Invitations\InvitationDispatchService;
 use App\Services\Invitations\InvitationGroupService;
 use App\Services\Invitations\InvitationMessageService;
+use App\Services\Invitations\InvitationResponseService;
 use App\Services\Invitations\InvitationTreePickerService;
 use App\Services\SiteIdentityResolver;
 use Illuminate\Http\JsonResponse;
@@ -165,11 +167,32 @@ class InvitationController extends Controller
         $incoming = $request->query('direction') === 'incoming';
 
         $query = $incoming
-            ? Notification::receivedInvitations($person->id)->with('person:id,first_name,last_name')
+            ? Notification::receivedInvitations($person->id)->withInvitationResponseFor($person->id)->with('person:id,first_name,last_name')
             : Notification::query()->where('person_id', $person->id)->with('recipients.person');
         $notifications = $query->latest()->orderByDesc('id')->paginate(10)->withQueryString();
 
         return view('web-site.invitations.logs', compact('notifications', 'person', 'incoming'));
+    }
+
+    public function respond(InvitationResponseRequest $request, Notification $notification, InvitationResponseService $responses): RedirectResponse
+    {
+        $person = $request->attributes->get('identity_person');
+        $redirect = redirect()->route('invitations.logs', [
+            'direction' => 'incoming',
+            'page' => max(1, $request->integer('page', 1)),
+        ]);
+
+        try {
+            $responses->save($notification, $person->id, $request->validated('response'));
+        } catch (InvitationException $exception) {
+            if ($exception->errorCode === InvitationResponseService::RESPONSE_ALREADY_RECORDED) {
+                return $redirect->with('response_error', $exception->getMessage())
+                    ->with('responded_invitation_id', $notification->id);
+            }
+            abort($exception->httpStatus, $exception->getMessage());
+        }
+
+        return $redirect->with('success', 'تم حفظ ردك.')->with('responded_invitation_id', $notification->id);
     }
 
     public function groupsIndex(Request $request): View

@@ -106,6 +106,7 @@ Route::prefix('invitations')->name('invitations.')->group(function () {
         Route::get('/send', [\App\Http\Controllers\InvitationController::class, 'send'])->name('send');
         Route::post('/send', [\App\Http\Controllers\InvitationController::class, 'sendSubmit'])->name('send.submit');
         Route::get('/logs', [\App\Http\Controllers\InvitationController::class, 'logs'])->name('logs');
+        Route::put('/logs/{notification}/response', [\App\Http\Controllers\InvitationController::class, 'respond'])->name('logs.respond');
         Route::get('/tree-picker', [\App\Http\Controllers\InvitationController::class, 'treePicker'])->name('tree-picker');
         Route::get('/persons-search', [\App\Http\Controllers\InvitationController::class, 'searchPersons'])->name('persons-search');
         Route::post('/preview-message', [\App\Http\Controllers\InvitationController::class, 'previewMessage'])->name('preview-message');

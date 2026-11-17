@@ -4,12 +4,14 @@ namespace Tests\Feature\Invitations;
 
 use App\Jobs\SendExpoPushNotificationJob;
 use App\Jobs\SendWhatsAppInvitationJob;
+use App\Models\Notification;
 use App\Models\NotificationGroup;
 use App\Models\Person;
 use App\Models\PersonContactAccount;
 use App\Models\UserDevice;
 use App\Services\SiteMobileAccessToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -189,6 +191,61 @@ class InvitationWebTest extends TestCase
         $this->actingAsIdentity($me)
             ->get('/invitations')
             ->assertOk();
+    }
+
+    public function test_web_and_mobile_share_invitation_responses_without_sending(): void
+    {
+        Queue::fake();
+        Http::preventStrayRequests();
+        config(['invitations.delivery_enabled' => false]);
+
+        $adult = ['birth_date' => '1990-01-01', 'death_date' => null];
+        $sender = Person::factory()->createQuietly($adult);
+        $recipient = Person::factory()->createQuietly($adult + ['first_name' => 'مستلم تجريبي']);
+        $other = Person::factory()->createQuietly($adult + ['first_name' => 'مستلم آخر']);
+        $waiting = Person::factory()->createQuietly($adult);
+        $invitation = Notification::create([
+            'person_id' => $sender->id, 'title' => 'دعوة اختبار', 'status' => 'sent', 'channels' => ['whatsapp'],
+        ]);
+        $recipientRow = $invitation->recipients()->create(['person_id' => $recipient->id]);
+        $invitation->recipients()->create(['person_id' => $other->id]);
+        $invitation->recipients()->create(['person_id' => $waiting->id]);
+        $invitation->recipients()->create(['recipient_name' => 'ضيف تجريبي']);
+
+        $incoming = route('invitations.logs', ['direction' => 'incoming', 'page' => 1]);
+        $replyUrl = route('invitations.logs.respond', ['notification' => $invitation, 'page' => 1]);
+        $apiUrl = "/api/v1/invitations/logs/{$invitation->id}";
+
+        $this->actingAsIdentity($sender)->put($replyUrl, ['response' => 'accepted'])->assertForbidden();
+
+        $this->actingAsIdentity($recipient)->get($incoming)->assertOk()
+            ->assertSee('قبول الدعوة')->assertSee('رفض الدعوة')->assertSee('بانتظار ردك')
+            ->assertSee('بعد التأكيد، لا يمكنك تغيير ردك.')
+            ->assertDontSee('مستلم آخر');
+        $this->from($incoming)->put($replyUrl, ['response' => 'invalid'])->assertSessionHasErrors('response');
+        $this->put($replyUrl, ['response' => 'accepted'])->assertRedirect($incoming)
+            ->assertSessionHas('responded_invitation_id', $invitation->id);
+        $this->get($incoming)->assertOk()->assertSee('قبلت الدعوة')->assertDontSee('قبول الدعوة');
+        $this->getJson("{$apiUrl}?direction=incoming")->assertOk()
+            ->assertJsonPath('data.notification.invitation_response', 'accepted');
+        $this->putJson("{$apiUrl}/response", ['response' => 'declined'])->assertConflict();
+
+        $this->actingAsIdentity($other)->putJson("{$apiUrl}/response", ['response' => 'declined'])->assertOk();
+        $this->put($replyUrl, ['response' => 'accepted'])->assertRedirect($incoming)
+            ->assertSessionHas('response_error');
+        $this->get($incoming)->assertOk()->assertSee('رفضت الدعوة')
+            ->assertDontSee('قبلت الدعوة')->assertDontSee('قبول الدعوة');
+        $this->assertSame('accepted', $recipientRow->fresh()->invitation_response);
+
+        $outgoing = $this->actingAsIdentity($sender)->get(route('invitations.logs'))->assertOk()
+            ->assertSee('موافق على الحضور')->assertSee('معتذر عن الحضور')
+            ->assertSee('خارج التطبيق')->assertDontSee('قبول الدعوة');
+        foreach (['موافق', 'معتذر', 'بانتظار الرد'] as $label) {
+            $this->assertMatchesRegularExpression('/'.$label.'<\/dt>\s*<dd[^>]*>1<\/dd>/u', $outgoing->getContent());
+        }
+
+        Queue::assertNothingPushed();
+        Http::assertNothingSent();
     }
 
     private function actingAsIdentity(Person $person)

@@ -2,7 +2,7 @@ import { PersonAvatar } from '@/components/invitations/PersonAvatar';
 import { invitationLogFontName } from '@/components/invitations/composer/typography';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { type ThemeColors } from '@/constants/theme';
+import { silaTheme, type ThemeColors } from '@/constants/theme';
 import {
   effectiveLogStatus,
   isLogCompleted,
@@ -10,6 +10,7 @@ import {
   recipientPhotoUrl,
   type InvitationChannel,
   type InvitationLog,
+  type InvitationResponse,
 } from '@/lib/api/invitations';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -27,6 +28,10 @@ import {
 
 const WHATSAPP_GREEN = '#25D366';
 const PUSH_BLUE = '#3B82F6';
+const responseOptions = [
+  { value: 'accepted', button: 'قبول الدعوة', confirm: 'تأكيد القبول', status: 'قبلت الدعوة', label: 'موافق على الحضور', icon: 'checkmark' },
+  { value: 'declined', button: 'رفض الدعوة', confirm: 'تأكيد الرفض', status: 'رفضت الدعوة', label: 'معتذر عن الحضور', icon: 'close' },
+] as const;
 
 interface LogDetailModalProps {
   visible: boolean;
@@ -35,6 +40,9 @@ interface LogDetailModalProps {
   loading: boolean;
   error: string | null;
   incoming: boolean;
+  onRespond: (response: InvitationResponse) => Promise<void>;
+  pendingResponse: InvitationResponse | null;
+  responseError?: string;
   colors: ThemeColors;
   isDark: boolean;
 }
@@ -119,9 +127,13 @@ export function LogDetailModal({
   loading,
   error,
   incoming,
+  onRespond,
+  pendingResponse,
+  responseError,
   colors,
   isDark,
 }: LogDetailModalProps) {
+  const [confirmationResponse, setConfirmationResponse] = React.useState<InvitationResponse | null>(null);
   const muted = colors.icon;
   const cardBg = isDark ? colors.card : '#FFFFFF';
   const border = isDark ? '#334155' : colors.border;
@@ -135,13 +147,29 @@ export function LogDetailModal({
     : ['إنشاء', 'إرسال', 'اكتمال'];
   const currentStep = Math.max(0, statusStepIndex(effectiveStatus) - (requiresApproval ? 0 : 1));
   const channels = normalizeChannels(log?.channels);
-  const totalRecipients =
-    log?.recipients_count ?? log?.recipients?.length ?? 0;
+  const savedResponse = log?.invitation_response;
+  const isResponding = pendingResponse !== null;
+  const acceptColor = isDark ? silaTheme.primaryLight : silaTheme.primaryDark;
+  const declineColor = isDark ? '#FCA5A5' : '#B91C1C';
+  const confirmation = responseOptions.find((option) => option.value === confirmationResponse);
+  const confirmationColor = confirmation?.value === 'declined' ? declineColor : acceptColor;
+  const recipients = log?.recipients ?? [];
+  const totalRecipients = log?.recipients_count ?? recipients.length;
+  const showResponses = !incoming && (log?.status === 'sent' || log?.status === 'partial');
+  const appRecipients = showResponses ? recipients.filter((recipient) => recipient.person_id != null) : [];
+  const responseCounts = [
+    appRecipients.filter((recipient) => recipient.invitation_response === 'accepted').length,
+    appRecipients.filter((recipient) => recipient.invitation_response === 'declined').length,
+    appRecipients.filter((recipient) => recipient.invitation_response == null).length,
+  ];
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade"
+      onRequestClose={confirmation ? () => setConfirmationResponse(null) : onClose}>
       <View style={styles.overlay}>
-        <View style={[styles.card, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC' }]}>
+        <View style={[styles.card, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC' }]}
+          accessibilityElementsHidden={Boolean(confirmation)}
+          importantForAccessibility={confirmation ? 'no-hide-descendants' : 'auto'}>
           <View style={styles.header}>
             <ThemedText style={styles.title}>{incoming ? 'تفاصيل الدعوة الواردة' : 'تفاصيل الإرسال'}</ThemedText>
             <Pressable onPress={onClose} hitSlop={12}>
@@ -245,15 +273,73 @@ export function LogDetailModal({
                 ) : null}
                 <ThemedText style={[styles.body, { fontFamily: invitationLogFontName(log, 'regular') }]}>{log.body}</ThemedText>
               </View>
+              {incoming && savedResponse !== undefined ? (
+                <View style={[styles.bodyBox, { backgroundColor: cardBg, borderColor: border }]}>
+                  <ThemedText style={styles.section}>الرد على الدعوة</ThemedText>
+                  <ThemedText style={[styles.responseStatus, {
+                    color: savedResponse === 'accepted' ? acceptColor : savedResponse === 'declined' ? declineColor : muted,
+                  }]} accessibilityLiveRegion="polite">
+                    {isResponding ? 'جارٍ حفظ ردك…'
+                      : responseOptions.find((option) => option.value === savedResponse)?.status ?? 'بانتظار ردك'}
+                  </ThemedText>
+                  {savedResponse === null ? <View style={styles.responseActions}>
+                    {responseOptions.map((option) => {
+                      const pending = pendingResponse === option.value;
+                      const primary = option.value === 'accepted';
+                      const accent = option.value === 'accepted' ? acceptColor : declineColor;
+                      const buttonColor = primary ? (isDark ? '#102418' : '#FFFFFF') : accent;
+                      return (
+                        <Pressable
+                          key={option.value}
+                          accessibilityRole="button"
+                          accessibilityLabel={option.button}
+                          accessibilityState={{ disabled: isResponding, busy: pending }}
+                          disabled={isResponding}
+                          android_ripple={{ color: buttonColor + '24' }}
+                          onPress={() => setConfirmationResponse(option.value)}
+                          style={({ pressed }) => [
+                            styles.responseButton,
+                            {
+                              borderColor: primary ? accent : border,
+                              backgroundColor: primary ? accent : cardBg,
+                              opacity: pressed || (isResponding && !pending) ? 0.7 : 1,
+                            },
+                          ]}>
+                          {pending ? <ActivityIndicator color={buttonColor} size="small" />
+                            : <Ionicons name={option.icon} size={18} color={buttonColor} />}
+                          <ThemedText align="center" style={[styles.responseButtonText, { color: buttonColor }]}>
+                            {option.button}
+                          </ThemedText>
+                        </Pressable>
+                      );
+                    })}
+                  </View> : null}
+                  {responseError ? (
+                    <ThemedText style={[styles.recipientSub, { color: isDark ? '#FCA5A5' : '#B91C1C' }]} accessibilityLiveRegion="polite">
+                      {responseError}
+                    </ThemedText>
+                  ) : null}
+                </View>
+              ) : null}
               {!incoming ? (
                 <>
                   <ThemedText style={styles.section}>
                     المستلمون{totalRecipients > 0 ? ` (${totalRecipients})` : ''}
                   </ThemedText>
-                  {(log.recipients ?? []).length === 0 ? (
+                  {appRecipients.length > 0 ? (
+                    <View style={styles.responseRow}>
+                      {['موافق', 'معتذر', 'بانتظار الرد'].map((label, index) => (
+                        <View key={label} accessible accessibilityLabel={`${responseCounts[index]} ${label}`} style={[styles.responseCount, { borderColor: border }]}>
+                          <ThemedText align="center" style={styles.responseButtonText}>{responseCounts[index]}</ThemedText>
+                          <ThemedText align="center" style={[styles.recipientSub, { color: muted }]}>{label}</ThemedText>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                  {recipients.length === 0 ? (
                     <ThemedText style={[styles.date, { color: muted }]}>لا يوجد مستلمون مسجّلون</ThemedText>
                   ) : (
-                    (log.recipients ?? []).map((r) => {
+                    recipients.map((r) => {
                       const photo = recipientPhotoUrl(r);
                       const displayName = recipientDisplayName(r);
                       return (
@@ -271,6 +357,12 @@ export function LogDetailModal({
                             {r.recipient_phone && r.person_id == null ? (
                               <ThemedText style={[styles.recipientSub, { color: muted }]}>
                                 {r.recipient_phone}
+                              </ThemedText>
+                            ) : null}
+                            {showResponses ? (
+                              <ThemedText style={[styles.recipientSub, { color: muted }]}>
+                                {r.person_id == null ? 'خارج التطبيق'
+                                  : responseOptions.find((option) => option.value === r.invitation_response)?.label ?? 'بانتظار الرد'}
                               </ThemedText>
                             ) : null}
                           </View>
@@ -293,6 +385,45 @@ export function LogDetailModal({
             <Text style={styles.closeTextNative}>إغلاق</Text>
           </TouchableOpacity>
         </View>
+        {confirmation ? (
+          <View style={[StyleSheet.absoluteFill, styles.overlay]} accessibilityViewIsModal>
+            <View style={[styles.card, styles.confirmationCard, { backgroundColor: cardBg, borderColor: border }]}>
+              <View style={[styles.confirmationIcon, { backgroundColor: confirmationColor + '18' }]}>
+                <Ionicons name={confirmation.icon} color={confirmationColor} size={24} />
+              </View>
+              <ThemedText accessibilityRole="header" align="center" style={styles.title}>
+                {`تأكيد ${confirmation.button}`}
+              </ThemedText>
+              <ThemedText align="center" style={[styles.confirmationMessage, { color: muted }]}>
+                بعد التأكيد، لا يمكنك تغيير ردك.
+              </ThemedText>
+              <View style={styles.responseActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={confirmation.confirm}
+                  onPress={() => {
+                    setConfirmationResponse(null);
+                    void onRespond(confirmation.value);
+                  }}
+                  style={({ pressed }) => [
+                    styles.responseButton,
+                    { backgroundColor: confirmationColor, borderColor: confirmationColor, opacity: pressed ? 0.7 : 1 },
+                  ]}>
+                  <ThemedText align="center" style={[styles.responseButtonText, { color: isDark ? '#0F172A' : '#FFFFFF' }]}>
+                    {confirmation.confirm}
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="إلغاء"
+                  onPress={() => setConfirmationResponse(null)}
+                  style={({ pressed }) => [styles.responseButton, { borderColor: border, opacity: pressed ? 0.7 : 1 }]}>
+                  <ThemedText align="center" style={styles.responseButtonText}>إلغاء</ThemedText>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        ) : null}
       </View>
     </Modal>
   );
@@ -309,6 +440,28 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     maxHeight: '85%',
+  },
+  confirmationCard: {
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 380,
+    padding: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  confirmationIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  confirmationMessage: {
+    fontSize: 14,
+    lineHeight: 22,
+    marginTop: 4,
+    marginBottom: 8,
   },
   header: {
     flexDirection: 'row',
@@ -412,6 +565,45 @@ const styles = StyleSheet.create({
   body: {
     fontSize: 14,
     lineHeight: 24,
+  },
+  responseRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 6,
+  },
+  responseActions: {
+    direction: 'rtl',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  responseStatus: {
+    fontSize: 13,
+    fontFamily: 'Tajawal-Medium',
+  },
+  responseButton: {
+    flex: 1,
+    flexDirection: 'row',
+    minWidth: 112,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    padding: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  responseButtonText: {
+    fontSize: 14,
+    fontFamily: 'Tajawal-Bold',
+  },
+  responseCount: {
+    flex: 1,
+    padding: 6,
+    borderWidth: 1,
+    borderRadius: 10,
   },
   section: {
     fontSize: 14,
