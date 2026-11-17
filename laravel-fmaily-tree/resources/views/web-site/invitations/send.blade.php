@@ -278,14 +278,14 @@
                 targetFullName = extName || 'زائرنا الكريم';
             }
 
-            let out = text.replaceAll('{name}', targetName)
+            let out = text.replaceAll('@{{name}}', targetName)
+                .replaceAll('@{{first_name}}', targetName)
+                .replaceAll('@{{full_name}}', targetFullName)
+                .replaceAll('@{{sender_name}}', senderName)
+                .replaceAll('{name}', targetName)
                 .replaceAll('{first_name}', targetName)
                 .replaceAll('{full_name}', targetFullName)
                 .replaceAll('{sender_name}', senderName)
-                .replaceAll('{{name}}', targetName)
-                .replaceAll('{{first_name}}', targetName)
-                .replaceAll('{{full_name}}', targetFullName)
-                .replaceAll('{{sender_name}}', senderName)
                 .replaceAll(':name', targetName)
                 .replaceAll(':first_name', targetName)
                 .replaceAll(':full_name', targetFullName)

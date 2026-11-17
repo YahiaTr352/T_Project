@@ -283,6 +283,7 @@ class WhatsAppOtpService
                     'first_name' => $person->first_name,
                     'last_name' => $person->last_name,
                     'full_name' => $person->full_name,
+                    'birth_date' => $person->birth_date?->format('Y-m-d'),
                     'avatar' => $person->avatar,
                     'phone' => $phone,
                     'gender' => $person->gender,
