@@ -27,6 +27,7 @@ interface InvitationPreviewModalProps {
   previewBg: PreviewImageSource | null;
   attachedImage: { uri: string } | null;
   previewText: string;
+  fontFamily: string;
 }
 
 export function InvitationPreviewModal({
@@ -40,6 +41,7 @@ export function InvitationPreviewModal({
   previewBg,
   attachedImage,
   previewText,
+  fontFamily,
 }: InvitationPreviewModalProps) {
   return (
     <Modal
@@ -52,8 +54,8 @@ export function InvitationPreviewModal({
           {previewCard ? (
             <Image
               source={{ uri: previewCard }}
-              style={styles.previewBg}
-              contentFit="cover"
+              style={[styles.previewBg, { height: 300 }]}
+              contentFit="contain"
             />
           ) : (previewCreative as any)?.image_url ? (
             <Image
@@ -74,7 +76,7 @@ export function InvitationPreviewModal({
               contentFit="cover"
             />
           ) : null}
-          {previewCard || (previewCreative as any)?.image_url ? (
+          {previewCard ? (
             <Text style={[styles.cardMergedHint, { color: '#059669' }]}>
               ✓ النص مدمج داخل التصميم — هكذا ستصل لكل مستلم باسمه
             </Text>
@@ -85,7 +87,7 @@ export function InvitationPreviewModal({
           ) : null}
           <Text style={[styles.previewTitleText, { color: colors.text }]}>معاينة الرسالة</Text>
           <ScrollView style={styles.previewBody}>
-            <ThemedText style={[styles.previewText, { color: colors.text }]}>
+            <ThemedText style={[styles.previewText, { color: colors.text, fontFamily }]}>
               {previewText}
             </ThemedText>
           </ScrollView>

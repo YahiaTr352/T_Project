@@ -122,6 +122,8 @@ class InvitationDispatchService
                 'template_vars' => $templateVars,
                 'background_id' => $background?->id,
                 'creative_id' => $creative?->id,
+                'font_family' => $payload['font_family'] ?? null,
+                'font_weight' => $payload['font_weight'] ?? null,
                 'requires_approval' => false,
             ],
             'status' => 'sending',

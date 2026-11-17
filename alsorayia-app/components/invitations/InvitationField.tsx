@@ -16,6 +16,7 @@ interface InvitationFieldProps {
   onSubmitEditing?: () => void;
   selection?: { start: number; end: number } | null;
   onSelectionChange?: (sel: { start: number; end: number }) => void;
+  fontFamily?: string;
 }
 
 export function InvitationField({
@@ -32,6 +33,7 @@ export function InvitationField({
   onSubmitEditing,
   selection,
   onSelectionChange,
+  fontFamily,
 }: InvitationFieldProps) {
   return (
     <View style={styles.wrap}>
@@ -55,6 +57,7 @@ export function InvitationField({
             color: textColor,
             backgroundColor: cardBg,
             borderColor,
+            ...(fontFamily ? { fontFamily } : {}),
           },
         ]}
       />

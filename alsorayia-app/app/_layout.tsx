@@ -113,6 +113,8 @@ function RootShell() {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
+    'Amiri-Regular': require('../assets/fonts/Amiri-Regular.ttf'),
+    'Amiri-Bold': require('../assets/fonts/Amiri-Bold.ttf'),
     'Tajawal-Regular': require('../assets/fonts/Tajawal-Regular.ttf'),
     'Tajawal-Medium': require('../assets/fonts/Tajawal-Medium.ttf'),
     'Tajawal-Bold': require('../assets/fonts/Tajawal-Bold.ttf'),

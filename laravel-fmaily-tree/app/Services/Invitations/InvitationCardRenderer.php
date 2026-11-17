@@ -3,6 +3,7 @@
 namespace App\Services\Invitations;
 
 use App\Models\InvitationBackground;
+use App\Models\CreativeTemplate;
 use App\Models\Notification;
 use ArPHP\I18N\Arabic as ArabicGlyphs;
 use Illuminate\Support\Facades\Log;
@@ -14,11 +15,12 @@ class InvitationCardRenderer
     public const HEIGHT = 1350;
     public const MAX_WIDTH = 920;
 
-    protected function fonts(): array
+    protected function fonts(string $family = 'amiri'): array
     {
+        $name = $family === 'tajawal' ? 'Tajawal' : 'Amiri';
         return [
-            'bold' => public_path('fonts/Amiri-Bold.ttf'),
-            'regular' => public_path('fonts/Amiri-Regular.ttf'),
+            'bold' => public_path('fonts/' . $name . '-Bold.ttf'),
+            'regular' => public_path('fonts/' . $name . '-Regular.ttf'),
         ];
     }
 
@@ -45,7 +47,7 @@ class InvitationCardRenderer
         try {
             $filters = is_array($notification->targeting_filters) ? $notification->targeting_filters : [];
             $backgroundId = $filters['background_id'] ?? null;
-            if (! $backgroundId) {
+            if (! $backgroundId && empty($filters['creative_id'])) {
                 return null;
             }
             $source = (string) ($notification->media_path ?: '');
@@ -55,7 +57,7 @@ class InvitationCardRenderer
             $key = 'n' . $notification->id . '_p' . ($personId ?: substr(md5($toNumber), 0, 10));
             $key .= '_' . md5((string) $notification->title . "\n" . $personalizedBody);
 
-            return $this->render($source, (string) ($notification->title ?: ''), $personalizedBody, $key);
+            return $this->render($source, (string) ($notification->title ?: ''), $personalizedBody, $key, $filters);
         } catch (\Throwable $e) {
             Log::channel('single')->error('[InvitationCard] renderForNotification failed: ' . $e->getMessage());
 
@@ -63,12 +65,12 @@ class InvitationCardRenderer
         }
     }
 
-    public function renderPreview(InvitationBackground $background, string $title, string $body): ?string
+    public function renderPreview(InvitationBackground|CreativeTemplate $background, string $title, string $body, array $typography = []): ?string
     {
         try {
             $key = 'preview_' . $background->id . '_' . md5($background->image_path . "\n" . $title . "\n" . $body);
 
-            return $this->render($background->image_path, $title, $body, $key);
+            return $this->render($background->image_path, $title, $body, $key, $typography);
         } catch (\Throwable $e) {
             Log::channel('single')->error('[InvitationCard] renderPreview failed: ' . $e->getMessage());
 
@@ -76,8 +78,13 @@ class InvitationCardRenderer
         }
     }
 
-    public function render(string $sourcePath, string $title, string $body, string $cacheKey): ?string
+    public function render(string $sourcePath, string $title, string $body, string $cacheKey, array $typography = []): ?string
     {
+        // Only supported bundled fonts are resolved; legacy cards keep their title/body weights.
+        $family = ($typography['font_family'] ?? null) === 'tajawal' ? 'tajawal' : 'amiri';
+        $weight = in_array($typography['font_weight'] ?? null, ['regular', 'bold'], true)
+            ? $typography['font_weight'] : null;
+        $cacheKey .= '_' . md5($sourcePath . '|' . $family . '|' . ($weight ?? 'legacy'));
         $safeKey = preg_replace('/[^a-zA-Z0-9_-]/', '', $cacheKey) ?: md5($cacheKey);
         $relative = 'notifications/cards/' . $safeKey . '.jpg';
 
@@ -90,7 +97,7 @@ class InvitationCardRenderer
                 return null;
             }
 
-            $fonts = $this->fonts();
+            $fonts = $this->fonts($family);
             if (! file_exists($fonts['bold']) || ! file_exists($fonts['regular'])) {
                 return null;
             }
@@ -114,7 +121,7 @@ class InvitationCardRenderer
                 return null;
             }
 
-            $this->drawBlock($canvas, $fonts, $title, $body);
+            $this->drawBlock($canvas, $fonts, $title, $body, $weight);
 
             if (! $disk->exists('notifications/cards')) {
                 $disk->makeDirectory('notifications/cards');
@@ -237,13 +244,15 @@ class InvitationCardRenderer
         }
     }
 
-    protected function drawBlock($canvas, array $fonts, string $title, string $body): void
+    protected function drawBlock($canvas, array $fonts, string $title, string $body, ?string $weight = null): void
     {
+        $titleFont = $fonts[$weight ?? 'bold'];
+        $bodyFont = $fonts[$weight ?? 'regular'];
         $titleSize = 78;
         $bodySize = 44;
 
-        $titleLines = $title === '' ? [] : $this->wrap($fonts['bold'], $titleSize, $title);
-        $bodyLines = $body === '' ? [] : array_slice($this->wrap($fonts['regular'], $bodySize, $body), 0, 14);
+        $titleLines = $title === '' ? [] : $this->wrap($titleFont, $titleSize, $title);
+        $bodyLines = $body === '' ? [] : array_slice($this->wrap($bodyFont, $bodySize, $body), 0, 14);
 
         $titleStep = 118;
         $bodyStep = 74;
@@ -254,7 +263,7 @@ class InvitationCardRenderer
 
         foreach ($titleLines as $line) {
             $y += $titleStep;
-            $this->drawCentered($canvas, $fonts['bold'], $titleSize, $line, $y, true);
+            $this->drawCentered($canvas, $titleFont, $titleSize, $line, $y, $weight === null);
         }
 
         if (count($titleLines) && count($bodyLines)) {
@@ -263,7 +272,7 @@ class InvitationCardRenderer
 
         foreach ($bodyLines as $line) {
             $y += $bodyStep;
-            $this->drawCentered($canvas, $fonts['regular'], $bodySize, $line, $y);
+            $this->drawCentered($canvas, $bodyFont, $bodySize, $line, $y);
         }
     }
 }

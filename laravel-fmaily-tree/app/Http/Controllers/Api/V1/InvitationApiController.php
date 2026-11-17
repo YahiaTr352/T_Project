@@ -171,6 +171,8 @@ class InvitationApiController extends Controller
             'title' => 'nullable|string|max:255',
             'background_id' => 'nullable|integer',
             'creative_id' => 'nullable|integer',
+            'font_family' => 'nullable|string|in:amiri,tajawal',
+            'font_weight' => 'nullable|string|in:regular,bold',
         ]);
 
         try {
@@ -186,7 +188,7 @@ class InvitationApiController extends Controller
             return $this->fail($e);
         }
 
-        return $this->ok('معاينة الرسالة.', ['preview' => $preview, 'background' => $background ? $background->toPickerArray() : null, 'creative' => $creative ? $creative->toPickerArray() : null, 'card_image_url' => $this->previewCard($background, $validated, $preview)]);
+        return $this->ok('معاينة الرسالة.', ['preview' => $preview, 'background' => $background ? $background->toPickerArray() : null, 'creative' => $creative ? $creative->toPickerArray() : null, 'card_image_url' => $this->previewCard($creative ?? $background, $validated, $preview)]);
     }
 
 
@@ -203,7 +205,7 @@ class InvitationApiController extends Controller
         return $creative;
     }
 
-    private function previewCard(?InvitationBackground $background, array $validated, string $preview): ?string
+    private function previewCard(InvitationBackground|CreativeTemplate|null $background, array $validated, string $preview): ?string
     {
         if (! $background) {
             return null;
@@ -212,7 +214,8 @@ class InvitationApiController extends Controller
             $rendered = app(\App\Services\Invitations\InvitationCardRenderer::class)->renderPreview(
                 $background,
                 (string) ($validated['title'] ?? ''),
-                $preview
+                $preview,
+                array_intersect_key($validated, array_flip(['font_family', 'font_weight']))
             );
             if (! $rendered) {
                 return null;
@@ -292,6 +295,8 @@ class InvitationApiController extends Controller
             'media_type' => 'nullable|string|in:image,video,voice',
             'background_id' => 'nullable|integer',
             'creative_id' => 'nullable|integer',
+            'font_family' => 'nullable|string|in:amiri,tajawal',
+            'font_weight' => 'nullable|string|in:regular,bold',
             'media' => 'nullable|file|max:16384',
         ]);
 
@@ -313,6 +318,8 @@ class InvitationApiController extends Controller
                 'media_type' => $validated['media_type'] ?? null,
                 'background_id' => $validated['background_id'] ?? null,
                 'creative_id' => $validated['creative_id'] ?? null,
+                'font_family' => $validated['font_family'] ?? null,
+                'font_weight' => $validated['font_weight'] ?? null,
                 'media' => $request->file('media'),
             ]);
         } catch (InvitationException $e) {

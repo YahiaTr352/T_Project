@@ -9,6 +9,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  StyleSheet,
 } from 'react-native';
 import { composerStyles as styles } from './composerStyles';
 
@@ -20,6 +21,7 @@ interface DesignSectionProps {
   muted: string;
   title: string;
   body: string;
+  fontFamily: string;
   selectedCreative: CreativeTemplate | null;
   attachedImage: { uri: string } | null;
   onOpenCreative: () => void;
@@ -36,6 +38,7 @@ export function DesignSection({
   muted,
   title,
   body,
+  fontFamily,
   selectedCreative,
   attachedImage,
   onOpenCreative,
@@ -47,46 +50,23 @@ export function DesignSection({
     <>
       <ThemedText style={styles.sectionLabel}>الصورة والتصميم</ThemedText>
 
-      {/* 1) مساحة الإبداع: النص يُدمج داخل التصميم ويصل لكل مستلم باسمه */}
-      <View style={[styles.card, { backgroundColor: cardBg, borderColor: selectedCreative ? colors.primary : border, borderWidth: selectedCreative ? 1.5 : 1 }]}>
-        <View style={styles.creativeHeaderRow}>
-          <View style={[styles.creativeIconWrap, { backgroundColor: colors.primary + '14' }]}>
-            <Ionicons name="color-palette-outline" size={20} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <ThemedText style={[styles.creativeBtnTitle, { color: colors.text }]}>
-              مساحة إبداع — بطاقة مصممة
-            </ThemedText>
-            <ThemedText style={[styles.hint, { color: muted, marginBottom: 0, textAlign: 'right' }]}>
-              العنوان والنص يُركّبان على القالب وتصل لكل واحد باسمه
-            </ThemedText>
-          </View>
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel="مساحة إبداع"
+        activeOpacity={0.85}
+        style={[designStyles.creativeEntry, { backgroundColor: colors.primary }]}
+        onPress={onOpenCreative}>
+        <Ionicons name="color-palette-outline" size={24} color="#FFFFFF" />
+        <View style={{ flex: 1 }}>
+          <Text style={designStyles.entryTitle}>مساحة إبداع</Text>
+          <Text style={designStyles.entrySubtitle}>
+            {selectedCreative ? `القالب المختار: ${selectedCreative.name || 'بطاقة مصممة'}` : 'اختر قالبًا للدعوة أو ارفع تصميمك'}
+          </Text>
         </View>
-        <TouchableOpacity
-          style={[styles.creativeBtn, { borderColor: colors.primary }]}
-          onPress={() => void onOpenCreative()}>
-          <View style={{ flex: 1 }}>
-            <ThemedText style={[styles.creativeBtnTitle, { color: colors.text }]}>
-              {selectedCreative ? (selectedCreative.name || 'قالب مختار') : 'اختر قالبًا جاهزًا'}
-            </ThemedText>
-            <ThemedText style={[styles.hint, { color: muted, marginBottom: 0, textAlign: 'right' }]}>
-              {selectedCreative
-                ? 'النص سيظهر داخل الصورة في المعاينة والإرسال'
-                : 'قوالب معتمدة من الإدارة أو ارفع تصميمك للمراجعة'}
-            </ThemedText>
-          </View>
-          {selectedCreative?.image_url ? (
-            <Image
-              source={{ uri: selectedCreative.image_url }}
-              style={styles.creativeThumb}
-              contentFit="cover"
-            />
-          ) : (
-            <Ionicons name="chevron-back" size={18} color={muted} />
-          )}
-        </TouchableOpacity>
+        <Ionicons name="chevron-back" size={18} color="#FFFFFF" />
+      </TouchableOpacity>
         {selectedCreative ? (
-          <View style={styles.creativeSelectedRow}>
+          <View style={[styles.creativeSelectedRow, { marginBottom: 12 }]}>
             <View style={[styles.miniBadgeOk, { backgroundColor: '#10B98118' }]}>
               <Ionicons name="checkmark-circle" size={14} color="#10B981" />
               <ThemedText style={[styles.miniBadgeOkText, { color: '#059669' }]}>
@@ -100,7 +80,6 @@ export function DesignSection({
             </TouchableOpacity>
           </View>
         ) : null}
-      </View>
 
       {/* 2) إرفاق صورة عادية — تصميم Senior: معاينة فقاعة شات توضح أن الصورة تصل مع الرسالة */}
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: attachedImage ? colors.primary : border, borderWidth: attachedImage ? 1.5 : 1 }]}>
@@ -153,10 +132,10 @@ export function DesignSection({
                   {(title.trim() || body.trim()) ? (
                     <>
                       {title.trim() ? (
-                        <Text style={styles.chatTitle} numberOfLines={1}>{title.trim()}</Text>
+                        <Text style={[styles.chatTitle, { fontFamily }]} numberOfLines={1}>{title.trim()}</Text>
                       ) : null}
                       {body.trim() ? (
-                        <Text style={styles.chatBody} numberOfLines={3}>{body.trim().slice(0, 160)}</Text>
+                        <Text style={[styles.chatBody, { fontFamily }]} numberOfLines={3}>{body.trim().slice(0, 160)}</Text>
                       ) : null}
                     </>
                   ) : (
@@ -193,3 +172,17 @@ export function DesignSection({
     </>
   );
 }
+
+const designStyles = StyleSheet.create({
+  creativeEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
+    gap: 12,
+    marginBottom: 12,
+  },
+  entryTitle: { color: '#FFFFFF', fontFamily: 'Tajawal-Bold', fontSize: 14 },
+  entrySubtitle: { color: '#FFFFFF', fontFamily: 'Tajawal-Medium', fontSize: 12, marginTop: 2 },
+});

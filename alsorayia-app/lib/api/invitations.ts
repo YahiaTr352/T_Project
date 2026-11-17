@@ -129,6 +129,8 @@ export interface InvitationLogsPage {
 }
 
 export interface PreviewInvitationInput {
+  font_family?: 'tajawal' | 'amiri';
+  font_weight?: 'regular' | 'bold';
   person_id?: number;
   external_name?: string;
   external_phone?: string;
@@ -169,6 +171,8 @@ export interface MyCreativeTemplate extends CreativeTemplate {
 }
 
 export interface SendInvitationInput {
+  font_family?: 'tajawal' | 'amiri';
+  font_weight?: 'regular' | 'bold';
   channels: InvitationChannel[];
   recipient_type: InvitationRecipientType;
   person_ids?: number[];
@@ -542,6 +546,8 @@ export async function sendInvitationWithMedia(
   if (input.external_phone) form.append('external_phone', input.external_phone);
   if (input.external_country_code) form.append('external_country_code', input.external_country_code);
   if (input.title) form.append('title', input.title);
+  if (input.font_family) form.append('font_family', input.font_family);
+  if (input.font_weight) form.append('font_weight', input.font_weight);
   // مساحة الإبداع والصورة المرفقة وضعان متنافيان، لكن نمرر المعرفات إن وجدت للتوافق
   if (input.background_id) form.append('background_id', String(input.background_id));
   if (input.creative_id) form.append('creative_id', String(input.creative_id));
