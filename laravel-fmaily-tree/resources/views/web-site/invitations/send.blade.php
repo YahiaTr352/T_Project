@@ -2,6 +2,27 @@
 
 @section('title', 'إرسال دعوة')
 
+@section('extra_styles')
+    @include('web-site.invitations.partials.typography-fonts')
+    #invitationForm {
+        --invitation-font: 'Invitation Tajawal', Tajawal, sans-serif;
+        --invitation-weight: 400;
+    }
+    #invitationForm[data-invitation-font="amiri"] {
+        --invitation-font: 'Invitation Amiri', Amiri, serif;
+    }
+    #invitationForm[data-invitation-weight="bold"] {
+        --invitation-weight: 700;
+    }
+    .invitation-typed-text {
+        font-family: var(--invitation-font);
+        font-weight: var(--invitation-weight);
+    }
+    .invitation-font-tajawal { font-family: 'Invitation Tajawal', Tajawal, sans-serif; }
+    .invitation-font-amiri { font-family: 'Invitation Amiri', Amiri, serif; }
+    .invitation-weight-sample { font-family: var(--invitation-font); }
+@endsection
+
 @section('content')
     <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
         <div>
@@ -14,7 +35,9 @@
         </div>
     </div>
 
-    <form action="{{ route('invitations.send.submit') }}" method="POST" enctype="multipart/form-data" class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+    <form id="invitationForm" action="{{ route('invitations.send.submit') }}" method="POST" enctype="multipart/form-data"
+        data-invitation-font="{{ old('font_family', 'tajawal') }}" data-invitation-weight="{{ old('font_weight', 'regular') }}"
+        class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         @csrf
         <div class="lg:col-span-8 space-y-6">
             <div class="glass-card rounded-3xl p-6">
@@ -137,9 +160,35 @@
                     @endforeach
                 </select>
                 <input type="hidden" name="template_key" id="template_key" value="">
+                <div class="max-w-md space-y-2 mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <fieldset class="min-w-0">
+                        <legend class="text-sm font-bold mb-1">نوع الخط</legend>
+                        <div class="grid grid-cols-2 rounded-xl border border-slate-200 bg-white p-1">
+                            @foreach(['tajawal' => 'عادي', 'amiri' => 'نسخ'] as $value => $label)
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="font_family" value="{{ $value }}" class="sr-only peer"
+                                        @checked(old('font_family', 'tajawal') === $value)>
+                                    <span class="invitation-font-{{ $value }} flex items-center justify-center min-h-9 px-2 rounded-lg text-sm peer-checked:bg-emerald-50 peer-checked:text-emerald-800 peer-checked:ring-1 peer-checked:ring-emerald-300 peer-focus-visible:outline peer-focus-visible:outline-emerald-700">{{ $label }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </fieldset>
+                    <fieldset class="min-w-0">
+                        <legend class="text-sm font-bold mb-1">سماكة الخط</legend>
+                        <div class="grid grid-cols-2 rounded-xl border border-slate-200 bg-white p-1">
+                            @foreach(['regular' => 'عادي', 'bold' => 'عريض'] as $value => $label)
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="font_weight" value="{{ $value }}" class="sr-only peer"
+                                        @checked(old('font_weight', 'regular') === $value)>
+                                    <span class="invitation-weight-sample {{ $value === 'bold' ? 'font-bold' : 'font-normal' }} flex items-center justify-center min-h-9 px-2 rounded-lg text-sm peer-checked:bg-emerald-50 peer-checked:text-emerald-800 peer-checked:ring-1 peer-checked:ring-emerald-300 peer-focus-visible:outline peer-focus-visible:outline-emerald-700">{{ $label }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </fieldset>
+                </div>
                 <div id="templateVars" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 hidden"></div>
-                <input type="text" name="title" id="title" value="{{ old('title') }}" placeholder="عنوان الإشعار" class="w-full px-4 py-3 border rounded-xl mb-3">
-                <textarea name="body" id="body" rows="7" placeholder="النص اختياري عند اختيار صورة" class="w-full px-4 py-3 border rounded-xl">{{ old('body') }}</textarea>
+                <input type="text" name="title" id="title" value="{{ old('title') }}" placeholder="عنوان الإشعار" class="invitation-typed-text w-full px-4 py-3 border rounded-xl mb-3">
+                <textarea name="body" id="body" rows="7" placeholder="النص اختياري عند اختيار صورة" class="invitation-typed-text w-full px-4 py-3 border rounded-xl">{{ old('body') }}</textarea>
                 <p class="text-xs text-slate-400 mt-2">المتغيرات: {name} {full_name} {sender_name}</p>
             </div>
 
@@ -206,8 +255,8 @@
                 <h3 class="font-bold mb-3">معاينة</h3>
                 <div class="rounded-[28px] bg-slate-900 p-3 text-white min-h-[280px]">
                     <img id="simBg" class="hidden w-full rounded-2xl mb-2" alt="">
-                    <p id="simTitle" class="font-bold text-sm mb-2">تنبيه عائلي</p>
-                    <p id="simBody" class="text-sm whitespace-pre-wrap text-slate-200">السلام عليكم...</p>
+                    <p id="simTitle" class="invitation-typed-text text-base mb-2">تنبيه عائلي</p>
+                    <p id="simBody" class="invitation-typed-text text-sm whitespace-pre-wrap text-slate-200">السلام عليكم...</p>
                 </div>
             </div>
         </div>
@@ -219,6 +268,16 @@
     <script>
         const templates = @json($templates);
         const senderName = @json($person->full_name ?: $person->first_name);
+        const invitationForm = document.getElementById('invitationForm');
+        invitationForm.querySelectorAll('input[name="font_family"], input[name="font_weight"]').forEach(function (option) {
+            option.addEventListener('change', function () {
+                if (option.name === 'font_family') {
+                    invitationForm.dataset.invitationFont = option.value;
+                } else {
+                    invitationForm.dataset.invitationWeight = option.value;
+                }
+            });
+        });
         const creativeInput = document.getElementById('creative_id');
         const backgroundInput = document.getElementById('background_id');
         const attachment = document.getElementById('media');

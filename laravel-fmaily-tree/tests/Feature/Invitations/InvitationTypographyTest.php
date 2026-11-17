@@ -56,7 +56,7 @@ class InvitationTypographyTest extends TestCase
         $creative = new CreativeTemplate(['image_path' => 'creative.jpg']);
         $creative->id = 7;
         $notification = new Notification([
-            'title' => 'دعوة', 'media_path' => 'creative.jpg',
+            'title' => 'دعوة', 'body' => 'مرحباً أحمد', 'media_path' => 'creative.jpg',
             'targeting_filters' => ['creative_id' => 7] + $style,
         ]);
         $notification->id = 1;

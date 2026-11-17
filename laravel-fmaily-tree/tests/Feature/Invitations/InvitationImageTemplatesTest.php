@@ -101,8 +101,13 @@ class InvitationImageTemplatesTest extends TestCase
             ->assertSee('id="creativeOpen"', false)->assertSee('id="creativeDialog"', false)
             ->assertDontSee('قوالب الصور لهذا النوع')
             ->assertSee('data-type="greeting"', false);
-        $this->post('/invitations/send', $payload)->assertRedirect(route('invitations.logs'));
-        $this->postJson('/api/v1/invitations/send', $payload)
+        $this->post('/invitations/send', array_replace($payload, [
+            'body' => 'دعوة بالخط المختار', 'font_family' => 'amiri', 'font_weight' => 'bold',
+        ]))->assertRedirect(route('invitations.logs'));
+        $webInvitation = Notification::sole();
+        $this->assertSame('amiri', $webInvitation->targeting_filters['font_family']);
+        $this->assertSame('bold', $webInvitation->targeting_filters['font_weight']);
+        $this->postJson('/api/v1/invitations/send', $payload + ['font_family' => 'tajawal', 'font_weight' => 'regular'])
             ->assertCreated()->assertJsonPath('data.notification.status', 'delivery_disabled');
         $invitation = Notification::latest('id')->firstOrFail();
         $this->assertSame('', $invitation->body);
@@ -113,14 +118,18 @@ class InvitationImageTemplatesTest extends TestCase
         $this->postJson('/api/v1/invitations/preview', [
             'creative_id' => $creative->id, 'template_key' => 'greeting', 'body' => '', 'title' => 'تهنئة',
         ])->assertOk()->assertJsonPath('data.preview', '')->assertJsonPath('data.card_image_url', null);
-        $this->get('/invitations/logs')->assertOk()->assertSee('alt="صورة الدعوة"', false);
+        $this->get('/invitations/logs')->assertOk()
+            ->assertSee('alt="صورة الدعوة"', false)
+            ->assertSee('data-invitation-font="amiri" data-invitation-weight="bold"', false);
         Queue::assertNothingPushed();
 
         // Simulate successful delivery only in the isolated database.
         $invitation->update(['status' => 'sent', 'sent_at' => now()]);
         $this->flushSession();
         $this->asIdentity($recipient);
-        $this->get('/invitations/logs?direction=incoming')->assertOk()->assertSee($invitation->media_url, false);
+        $this->get('/invitations/logs?direction=incoming')->assertOk()
+            ->assertSee($invitation->media_url, false)
+            ->assertSee('data-invitation-font="tajawal" data-invitation-weight="regular"', false);
         $this->getJson('/api/v1/invitations/logs?direction=incoming')->assertOk()
             ->assertJsonPath('data.notifications.data.0.media_url', $invitation->media_url);
         Http::assertNothingSent();

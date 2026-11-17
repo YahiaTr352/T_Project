@@ -4,6 +4,7 @@ import {
   normalizeChannels,
   statusMeta,
 } from '@/components/invitations/LogDetailModal';
+import { invitationLogFontName } from '@/components/invitations/composer/typography';
 import { effectiveLogStatus } from '@/lib/api/invitations';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -140,7 +141,7 @@ export function LogsTab({
               onPress={() => void openDetail(item)}
               style={[styles.card, { backgroundColor: cardBg, borderColor: border }]}>
               <View style={styles.cardTop}>
-                <ThemedText style={styles.cardTitle} numberOfLines={1}>
+                <ThemedText style={[styles.cardTitle, { fontFamily: invitationLogFontName(item, 'bold') }]} numberOfLines={1}>
                   {item.title || 'بدون عنوان'}
                 </ThemedText>
                 <View style={[styles.badgeRow]}>
@@ -158,7 +159,7 @@ export function LogsTab({
                     : 'المهام قيد التنفيذ في الخادم — اسحب للأسفل للتحديث'}
                 </Text>
               ) : null}
-              <ThemedText style={[styles.bodyPreview, { color: muted }]} numberOfLines={2}>
+              <ThemedText style={[styles.bodyPreview, { color: muted, fontFamily: invitationLogFontName(item, 'regular') }]} numberOfLines={2}>
                 {item.body}
               </ThemedText>
               <View style={styles.cardBottom}>
@@ -246,7 +247,6 @@ const styles = StyleSheet.create({
   cardTitle: {
     flex: 1,
     fontSize: 15,
-    fontFamily: 'Tajawal-Bold',
   },
   badge: {
     paddingHorizontal: 8,
@@ -275,7 +275,6 @@ const styles = StyleSheet.create({
   },
   bodyPreview: {
     fontSize: 13,
-    fontFamily: 'Tajawal-Regular',
     lineHeight: 20,
     marginBottom: 10,
   },

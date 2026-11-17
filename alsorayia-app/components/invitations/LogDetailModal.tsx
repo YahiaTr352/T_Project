@@ -1,4 +1,5 @@
 import { PersonAvatar } from '@/components/invitations/PersonAvatar';
+import { invitationLogFontName } from '@/components/invitations/composer/typography';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { type ThemeColors } from '@/constants/theme';
@@ -211,7 +212,7 @@ export function LogDetailModal({
                 </>
               ) : null}
               {log.title ? (
-                <ThemedText style={styles.logTitle}>{log.title}</ThemedText>
+                <ThemedText style={[styles.logTitle, { fontFamily: invitationLogFontName(log, 'bold') }]}>{log.title}</ThemedText>
               ) : null}
               {incoming ? (
                 <ThemedText style={[styles.date, { color: muted }]}>
@@ -242,7 +243,7 @@ export function LogDetailModal({
                   <Image source={{ uri: log.media_url }} contentFit="contain"
                     accessibilityLabel="صورة الدعوة" style={{ width: '100%', height: 320, marginBottom: 12 }} />
                 ) : null}
-                <ThemedText style={styles.body}>{log.body}</ThemedText>
+                <ThemedText style={[styles.body, { fontFamily: invitationLogFontName(log, 'regular') }]}>{log.body}</ThemedText>
               </View>
               {!incoming ? (
                 <>
@@ -378,7 +379,6 @@ const styles = StyleSheet.create({
   },
   logTitle: {
     fontSize: 16,
-    fontFamily: 'Tajawal-Bold',
     marginBottom: 4,
   },
   date: {
@@ -411,7 +411,6 @@ const styles = StyleSheet.create({
   },
   body: {
     fontSize: 14,
-    fontFamily: 'Tajawal-Regular',
     lineHeight: 24,
   },
   section: {

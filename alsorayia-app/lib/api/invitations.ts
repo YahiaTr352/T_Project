@@ -104,7 +104,12 @@ export interface InvitationLogRecipient {
 
 export type InvitationLogDirection = 'outgoing' | 'incoming';
 
-export interface InvitationLog {
+type InvitationLogTypography = {
+  font_family?: 'tajawal' | 'amiri' | null;
+  font_weight?: 'regular' | 'bold' | null;
+};
+
+export interface InvitationLog extends InvitationLogTypography {
   media_type?: string | null;
   media_url?: string | null;
   id: number;
@@ -115,7 +120,7 @@ export interface InvitationLog {
   created_at: string;
   sent_at?: string | null;
   sender_name?: string | null;
-  targeting_filters?: { requires_approval?: boolean } | null;
+  targeting_filters?: (InvitationLogTypography & { requires_approval?: boolean }) | null;
   recipients?: InvitationLogRecipient[];
   recipients_count?: number | null;
   delivered_count?: number | null;

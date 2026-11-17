@@ -11,6 +11,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
+        @include('web-site.invitations.partials.typography-fonts')
+
         body {
             font-family: 'Tajawal', sans-serif;
             background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 50%, #a7f3d0 100%);
@@ -20,6 +22,11 @@
         h1, h2, h3 {
             font-family: 'Amiri', serif;
         }
+
+        [data-invitation-font="tajawal"] .invitation-log-text { font-family: 'Invitation Tajawal', Tajawal, sans-serif; }
+        [data-invitation-font="amiri"] .invitation-log-text { font-family: 'Invitation Amiri', Amiri, serif; }
+        [data-invitation-weight="regular"] .invitation-log-text { font-weight: 400; }
+        [data-invitation-weight="bold"] .invitation-log-text { font-weight: 700; }
 
         .glass-card {
             background: rgba(255, 255, 255, 0.95);
@@ -84,16 +91,20 @@
             @if($notifications->count() > 0)
                 <div class="space-y-4">
                     @foreach($notifications as $notification)
+                    @php
+                        $fontWeight = $notification->targeting_filters['font_weight'] ?? '';
+                        $fontFamily = $notification->targeting_filters['font_family'] ?? ($fontWeight ? 'tajawal' : '');
+                    @endphp
                     @if($incoming)
-                    <details class="glass-card rounded-2xl p-6">
+                    <details class="glass-card rounded-2xl p-6" data-invitation-font="{{ $fontFamily }}" data-invitation-weight="{{ $fontWeight }}">
                         <summary class="cursor-pointer">
-                            <span class="text-lg font-bold text-gray-900">{{ $notification->title ?: 'دعوة بدون عنوان' }}</span>
+                            <span class="invitation-log-text text-lg font-bold text-gray-900">{{ $notification->title ?: 'دعوة بدون عنوان' }}</span>
                             <span class="mt-1 block text-sm text-gray-600">
                                 من {{ trim($notification->person?->first_name . ' ' . $notification->person?->last_name) ?: 'مرسل غير معروف' }}
                                 · {{ ($notification->sent_at ?? $notification->created_at)?->format('Y-m-d H:i') }}
                             </span>
                         </summary>
-                        <p class="mt-4 whitespace-pre-wrap border-t border-gray-100 pt-4 text-gray-800">{{ $notification->body }}</p>
+                        <p class="invitation-log-text mt-4 whitespace-pre-wrap border-t border-gray-100 pt-4 text-gray-800">{{ $notification->body }}</p>
                         @if($notification->media_type === 'image' && $notification->media_url)
                             <img src="{{ $notification->media_url }}" alt="صورة الدعوة" class="mt-4 max-h-96 max-w-full rounded-xl">
                         @endif
@@ -101,7 +112,7 @@
                     @continue
                     @endif
 
-                    <div class="glass-card rounded-2xl p-6 log-item">
+                    <div class="glass-card rounded-2xl p-6 log-item" data-invitation-font="{{ $fontFamily }}" data-invitation-weight="{{ $fontWeight }}">
                         <div class="flex items-start justify-between gap-4 mb-4">
                             <div class="flex items-start gap-4 flex-1">
                                 <div class="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0
@@ -110,10 +121,10 @@
                                         {{ $notification->status === 'sent' ? 'text-green-600' : ($notification->status === 'failed' ? 'text-red-600' : 'text-blue-600') }}"></i>
                                 </div>
                                 <div class="flex-1 min-w-0">
-                                    <h3 class="text-lg font-bold text-gray-900 mb-1">
+                                    <h3 class="invitation-log-text text-lg font-bold text-gray-900 mb-1">
                                         {{ $notification->title ?: 'رسالة واتساب' }}
                                     </h3>
-                                    <p class="text-sm text-gray-600 mb-2 line-clamp-2">
+                                    <p class="invitation-log-text text-sm text-gray-600 mb-2 line-clamp-2">
                                         {{ Str::limit($notification->body, 120) }}
                                     </p>
                                     <div class="flex items-center gap-4 text-xs text-gray-500">

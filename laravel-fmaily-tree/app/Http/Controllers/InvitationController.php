@@ -109,6 +109,8 @@ class InvitationController extends Controller
             'title' => 'nullable|string|max:255',
             'body' => 'nullable|string|max:65535',
             'creative_id' => 'nullable|integer',
+            'font_family' => 'nullable|string|in:amiri,tajawal',
+            'font_weight' => 'nullable|string|in:regular,bold',
             'template_key' => 'nullable|string|max:64',
             'template_vars' => 'nullable|array',
             'template_vars.*' => 'nullable|string|max:255',
@@ -145,6 +147,8 @@ class InvitationController extends Controller
                 'media' => $request->file('media'),
                 'background_id' => $validated['background_id'] ?? null,
                 'creative_id' => $validated['creative_id'] ?? null,
+                'font_family' => $validated['font_family'] ?? null,
+                'font_weight' => $validated['font_weight'] ?? null,
             ]);
         } catch (InvitationException $e) {
             return back()->withInput()->with('error', $e->getMessage());

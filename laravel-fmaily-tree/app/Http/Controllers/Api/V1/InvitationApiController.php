@@ -394,6 +394,8 @@ class InvitationApiController extends Controller
             'id' => $notification->id,
             'title' => $notification->title,
             'body' => $notification->body,
+            'font_family' => $notification->targeting_filters['font_family'] ?? null,
+            'font_weight' => $notification->targeting_filters['font_weight'] ?? null,
             'channels' => $notification->channels,
             'status' => $notification->status,
             'created_at' => $notification->created_at,

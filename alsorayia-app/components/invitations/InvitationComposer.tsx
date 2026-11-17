@@ -524,7 +524,6 @@ export function InvitationComposer({
           fontWeight={fontWeight}
           onFamilyChange={setFontFamily}
           onWeightChange={setFontWeight}
-          hasDesign={selectedCreativeId != null}
         />
         <InvitationField
           label="العنوان"

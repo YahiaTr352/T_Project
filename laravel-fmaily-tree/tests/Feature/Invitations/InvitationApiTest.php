@@ -219,7 +219,11 @@ class InvitationApiTest extends TestCase
             'title' => 'لقاء العائلة',
             'body' => 'أهلاً بكم',
             'status' => 'sent',
-            'targeting_filters' => ['external_recipients' => [['phone' => '+12025550199']]],
+            'targeting_filters' => [
+                'font_family' => 'amiri',
+                'font_weight' => 'regular',
+                'external_recipients' => [['phone' => '+12025550199']],
+            ],
         ]);
         $sent->recipients()->create(['person_id' => $recipient->id]);
         $sent->recipients()->create(['recipient_name' => 'ضيف آخر', 'recipient_phone' => '+12025550199']);
@@ -246,12 +250,16 @@ class InvitationApiTest extends TestCase
             ->assertJsonCount(1, 'data.notifications.data')
             ->assertJsonPath('data.notifications.data.0.id', $sent->id)
             ->assertJsonPath('data.notifications.data.0.sender_name', 'فهد التجريبي')
+            ->assertJsonPath('data.notifications.data.0.font_family', 'amiri')
+            ->assertJsonPath('data.notifications.data.0.font_weight', 'regular')
             ->assertJsonMissingPath('data.notifications.data.0.recipients')
             ->assertJsonMissingPath('data.notifications.data.0.targeting_filters');
 
         $this->getJson("/api/v1/invitations/logs/{$sent->id}?direction=incoming")
             ->assertOk()
             ->assertJsonPath('data.notification.body', 'أهلاً بكم')
+            ->assertJsonPath('data.notification.font_family', 'amiri')
+            ->assertJsonPath('data.notification.font_weight', 'regular')
             ->assertJsonMissingPath('data.notification.recipients')
             ->assertJsonMissingPath('data.notification.targeting_filters');
         $this->getJson("/api/v1/invitations/logs/{$pending->id}?direction=incoming")->assertForbidden();
