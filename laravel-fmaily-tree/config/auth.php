@@ -122,4 +122,18 @@ return [
     */
     'child_max_age' => (int) env('CHILD_MAX_AGE', 15),
 
+    /*
+    |--------------------------------------------------------------------------
+    | WhatsApp OTP Delivery
+    |--------------------------------------------------------------------------
+    |
+    | When false, WhatsApp OTP notifications are skipped and a fixed OTP
+    | ('111111') is used for WhatsApp/device-trust login flows.
+    |
+    */
+    'whatsapp_otp_send_enabled' => filter_var(
+        env('WHATSAPP_OTP_SEND_ENABLED', true),
+        FILTER_VALIDATE_BOOLEAN
+    ),
+
 ];

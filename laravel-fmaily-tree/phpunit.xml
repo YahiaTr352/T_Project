@@ -29,5 +29,6 @@
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="SITE_PASSWORD_PROTECTION_ENABLED" value="false"/>
+        <env name="WHATSAPP_OTP_SEND_ENABLED" value="true"/>
     </php>
 </phpunit>

@@ -105,7 +105,7 @@ class DeviceTrustService
         ?array $childContext = null
     ): array {
         $phone = $this->whatsappLookup->normalizePhone($rawPhone);
-        $otpCode = (string) random_int(100000, 999999);
+        $otpCode = WhatsAppOtpService::generateOtpCode();
         $challengeToken = Str::random(64);
 
         $deviceDisplay = trim(($deviceMeta['device_model'] ?? '') . ' ' . ($deviceMeta['device_name'] ?? ''));
@@ -322,7 +322,7 @@ class DeviceTrustService
             ];
         }
 
-        $newCode = (string) random_int(100000, 999999);
+        $newCode = WhatsAppOtpService::generateOtpCode();
         $deviceMeta = $data['device_meta'] ?? [];
         $deviceDisplay = trim(($deviceMeta['device_model'] ?? '') . ' ' . ($deviceMeta['device_name'] ?? ''));
         if ($deviceDisplay === '') {
@@ -553,6 +553,12 @@ class DeviceTrustService
      */
     protected function dispatchOtpMessage(string $phone, string $code, string $deviceDisplay, ?array $childContext = null): bool
     {
+        if (! WhatsAppOtpService::isOtpDeliveryEnabled()) {
+            Log::info("[DeviceTrust OTP] Skipped WhatsApp OTP delivery for {$phone} (WHATSAPP_OTP_SEND_ENABLED=false).");
+
+            return true;
+        }
+
         if (!empty($childContext['is_child'])) {
             $childName = $childContext['child_name'] ?? 'الطفل';
             $body = "رمز التحقق لتوثيق دخول طفلك ({$childName}) عبر تطبيق العائلة من جهاز جديد ({$deviceDisplay}) هو:\n";

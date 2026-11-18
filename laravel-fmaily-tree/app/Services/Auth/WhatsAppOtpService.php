@@ -16,11 +16,28 @@ class WhatsAppOtpService
      */
     public const OTP_EXPIRATION_SECONDS = 300;
 
+    /**
+     * كود التحقق الثابت عند تعطيل إرسال إشعارات الواتساب عبر WHATSAPP_OTP_SEND_ENABLED=false.
+     */
+    public const DEV_FIXED_OTP = '111111';
+
     public function __construct(
         protected WhatsappPersonLookup $whatsappLookup,
         protected UltramsgService $ultramsg,
         protected SingleSessionDisplacementService $displacementService
     ) {}
+
+    public static function isOtpDeliveryEnabled(): bool
+    {
+        return (bool) config('auth.whatsapp_otp_send_enabled', true);
+    }
+
+    public static function generateOtpCode(): string
+    {
+        return self::isOtpDeliveryEnabled()
+            ? (string) random_int(100000, 999999)
+            : self::DEV_FIXED_OTP;
+    }
 
     /**
      * توحيد وتطبيص رقم الهاتف.
@@ -68,7 +85,7 @@ class WhatsAppOtpService
             }
 
             $phone = $this->normalizePhone($rawPhone);
-            $code = (string) random_int(100000, 999999);
+            $code = self::generateOtpCode();
             $cacheKey = 'whatsapp_otp:' . md5($phone);
 
             $childName = $candidateChild->first_name ?: $candidateChild->full_name;
@@ -90,7 +107,7 @@ class WhatsAppOtpService
 
                 $body = "رمز التحقق لتسجيل دخول طفلك ({$childName}) في تطبيق العائلة هو: {$code}\nينتهي الكود خلال 5 دقائق. لا تشاركه مع أي شخص.";
 
-                if (!$this->dispatchCustomWhatsAppMessage($guardianWa, $body)) {
+                if (!$this->deliverOtpOrSkip($guardianWa, $body)) {
                     Cache::forget($cacheKey);
 
                     return [
@@ -133,7 +150,7 @@ class WhatsAppOtpService
         }
 
         $phone = $this->normalizePhone($rawPhone);
-        $code = (string) random_int(100000, 999999);
+        $code = self::generateOtpCode();
         $cacheKey = 'whatsapp_otp:' . md5($phone);
 
         try {
@@ -297,6 +314,19 @@ class WhatsAppOtpService
     {
         $body = "رمز التحقق لدخول منصّة العائلة هو: {$code}\nينتهي الكود خلال 5 دقائق. لا تشاركه مع أي شخص.";
 
+        return $this->deliverOtpOrSkip($phone, $body);
+    }
+
+    private function deliverOtpOrSkip(string $phone, string $body): bool
+    {
+        if (! self::isOtpDeliveryEnabled()) {
+            Log::info('[WhatsAppOtpService] OTP WhatsApp notification skipped (WHATSAPP_OTP_SEND_ENABLED=false).', [
+                'phone' => $phone,
+            ]);
+
+            return true;
+        }
+
         return $this->dispatchCustomWhatsAppMessage($phone, $body);
     }
 
@@ -455,7 +485,7 @@ class WhatsAppOtpService
         }
 
         $phone = $this->normalizePhone($rawPhone);
-        $code = (string) random_int(100000, 999999);
+        $code = self::generateOtpCode();
         $cacheKey = 'whatsapp_child_otp:' . md5($phone . ':' . $child->id);
 
         try {
@@ -471,7 +501,7 @@ class WhatsAppOtpService
             $childName = $child->first_name ?: $child->full_name;
             $body = "رمز التحقق لتسجيل دخول طفلك ({$childName}) في تطبيق العائلة هو: {$code}\nينتهي الكود خلال 5 دقائق. لا تشاركه مع أي شخص.";
 
-            if (!$this->dispatchCustomWhatsAppMessage($phone, $body)) {
+            if (!$this->deliverOtpOrSkip($phone, $body)) {
                 Cache::forget($cacheKey);
 
                 return [
