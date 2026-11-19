@@ -16,6 +16,12 @@ import {
   type InboxNotification,
 } from '@/lib/api/notifications';
 import {
+  extractInvitationError,
+  fetchInvitationLogDetail,
+  respondToInvitation,
+  type InvitationResponse,
+} from '@/lib/api/invitations';
+import {
   resolveNotificationAction,
   type NotificationDetailItem,
   type ResolvedNotificationAction,
@@ -24,7 +30,7 @@ import { SwipeableNotificationCard } from '@/components/notifications/SwipeableN
 import { CustomAlert } from '@/components/ui/AlertModal';
 import MediaLightbox from '@/components/quiz/MediaLightbox';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { ListSkeleton } from '@/components/ui/skeleton';
 import {
   FlatList,
@@ -97,6 +103,7 @@ function mapInboxItem(
     linkUrl: n.link_url || n.url || null,
     actionUrl: n.action_url || null,
     data: n.data || null,
+    invitation: n.invitation ?? null,
   };
 }
 
@@ -107,6 +114,11 @@ export default function NotificationsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
   const { hasIdentity, user } = useAuth();
+  const invitationViewerId = hasIdentity ? user?.id ?? null : null;
+  const currentViewerId = useRef(invitationViewerId);
+  const savedInvitationResponses = useRef(new Map<string, InvitationResponse>());
+  const responseRequests = useRef(new Set<string>());
+  const [pendingResponseKeys, setPendingResponseKeys] = useState<string[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -123,6 +135,10 @@ export default function NotificationsScreen() {
   // عارض الصور المباشر بدقة كاملة وتكبير
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [lightboxTitle, setLightboxTitle] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    currentViewerId.current = invitationViewerId;
+  }, [invitationViewerId]);
 
   const loadNotifications = useCallback(async (isRefresh = false) => {
     try {
@@ -145,11 +161,18 @@ export default function NotificationsScreen() {
       setDeletedLocalIds(deletedIds);
 
       const items = await fetchNotifications();
+      if (currentViewerId.current !== invitationViewerId) return;
 
       // فلترة الإشعارات المحذوفة ومطابقة المقروءة
       const mapped = items
         .filter((n) => !deletedIds.includes(String(n.id)))
-        .map((n) => mapInboxItem(n, localIds, user?.first_name));
+        .map((n) => {
+          const item = mapInboxItem(n, localIds, user?.first_name);
+          if (item.invitation?.response !== null || invitationViewerId === null) return item;
+
+          const response = savedInvitationResponses.current.get(`${invitationViewerId}:${item.invitation.id}`);
+          return response ? { ...item, invitation: { ...item.invitation, response } } : item;
+        });
 
       setNotifications(mapped);
 
@@ -174,11 +197,58 @@ export default function NotificationsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [params.id, user?.first_name, router]);
+  }, [invitationViewerId, params.id, user?.first_name, router]);
 
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications, hasIdentity]);
+
+  const saveInvitationResponse = async (invitationId: number, response: InvitationResponse) => {
+    if (invitationViewerId === null || currentViewerId.current !== invitationViewerId) return;
+    const key = `${invitationViewerId}:${invitationId}`;
+    if (responseRequests.current.has(key) || savedInvitationResponses.current.has(key)) return;
+
+    responseRequests.current.add(key);
+    setPendingResponseKeys(Array.from(responseRequests.current));
+
+    try {
+      const result = await respondToInvitation(invitationId, response);
+      let savedResponse = result.success ? result.data?.invitation_response : null;
+
+      if (result.code === 'INVITATION_RESPONSE_ALREADY_RECORDED') {
+        const detail = await fetchInvitationLogDetail(invitationId, 'incoming');
+        if (detail.success) savedResponse = detail.data?.notification.invitation_response;
+      }
+
+      if (currentViewerId.current !== invitationViewerId) return;
+      if (!savedResponse) {
+        CustomAlert.alert('تعذّر حفظ الرد', extractInvitationError(result));
+        return;
+      }
+
+      savedInvitationResponses.current.set(key, savedResponse);
+      setNotifications((current) => current.map((item) =>
+        item.invitation?.id === invitationId
+          ? { ...item, invitation: { ...item.invitation, response: savedResponse } }
+          : item
+      ));
+    } finally {
+      responseRequests.current.delete(key);
+      setPendingResponseKeys(Array.from(responseRequests.current));
+    }
+  };
+
+  const confirmInvitationResponse = (item: NotificationDetailItem, response: InvitationResponse) => {
+    if (invitationViewerId === null || item.invitation?.response !== null) return;
+    const invitationId = item.invitation.id;
+    const accepted = response === 'accepted';
+    const confirmLabel = accepted ? 'تأكيد القبول' : 'تأكيد الرفض';
+
+    CustomAlert.alert(confirmLabel, 'بعد التأكيد، لا يمكنك تغيير ردك.', [
+      { text: 'إلغاء', style: 'cancel' },
+      { text: confirmLabel, onPress: () => void saveInvitationResponse(invitationId, response) },
+    ]);
+  };
 
   /**
    * تبديل حالة القراءة لإشعار فردي فورياً مع تحديث الذاكرة والـ Backend
@@ -749,6 +819,8 @@ export default function NotificationsScreen() {
               }}
               onShare={() => handleShareNotification(item)}
               onDelete={() => handleDeleteNotification(item.id)}
+              onInvitationResponse={hasIdentity ? (response) => confirmInvitationResponse(item, response) : undefined}
+              invitationResponsePending={pendingResponseKeys.includes(`${invitationViewerId}:${item.invitation?.id}`)}
             />
           )}
         />

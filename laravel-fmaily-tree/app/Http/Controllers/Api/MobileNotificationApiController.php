@@ -7,6 +7,7 @@ use App\Http\Resources\MobileNotificationResource;
 use App\Models\Notification;
 use App\Models\Person;
 use App\Models\UserDevice;
+use App\Services\Invitations\InvitationEligibilityService;
 use App\Services\Notifications\MobileNotificationService;
 use App\Services\SiteIdentityResolver;
 use Illuminate\Http\JsonResponse;
@@ -106,11 +107,15 @@ class MobileNotificationApiController extends Controller
     /**
      * GET /api/notifications
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, InvitationEligibilityService $invitationEligibility): JsonResponse
     {
-        $personId = $this->resolveViewerPersonId($request);
+        $identity = $this->identityResolver->resolve($request);
+        $verifiedPersonId = $identity ? (int) $identity['person_id'] : null;
+        $personId = $verifiedPersonId ?? $this->resolvePhoneViewerId($request);
         $viewerPerson = $personId ? Person::find($personId) : null;
         $request->attributes->set('viewer_person', $viewerPerson);
+        $canRespondToInvitations = $invitationEligibility->check($viewerPerson, $verifiedPersonId !== null)['eligible'];
+        $request->attributes->set('invitation_response_person_id', $canRespondToInvitations ? $verifiedPersonId : null);
 
         $query = $this->notificationService->getInboxQueryForPerson($personId);
 
@@ -335,6 +340,11 @@ class MobileNotificationApiController extends Controller
             return (int) $identity['person_id'];
         }
 
+        return $this->resolvePhoneViewerId($request);
+    }
+
+    private function resolvePhoneViewerId(Request $request): ?int
+    {
         $phone = $request->input('phone') ?? $request->query('phone');
 
         return $this->resolvePersonIdFromPhone(is_string($phone) ? $phone : null);

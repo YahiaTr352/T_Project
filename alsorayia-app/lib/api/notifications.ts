@@ -1,4 +1,10 @@
 import { api, WEB_BASE_URL } from '@/lib/api/alsorayiaClient';
+import type { InvitationResponse } from '@/lib/api/invitations';
+
+export type InboxInvitation = {
+  id: number;
+  response: InvitationResponse | null;
+};
 
 export type InboxNotification = {
   id: number | string;
@@ -13,6 +19,7 @@ export type InboxNotification = {
   action_url?: string | null;
   url?: string | null;
   data?: Record<string, unknown> | null;
+  invitation?: InboxInvitation | null;
 };
 
 /**

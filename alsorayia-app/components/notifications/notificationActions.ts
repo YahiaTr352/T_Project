@@ -1,4 +1,5 @@
 import { type IconSymbolName } from '@/components/ui/icon-symbol';
+import type { InboxInvitation } from '@/lib/api/notifications';
 import {
   extractChatId,
   extractGroupId,
@@ -19,6 +20,7 @@ export interface NotificationDetailItem {
   linkUrl?: string | null;
   actionUrl?: string | null;
   data?: Record<string, unknown> | null;
+  invitation?: InboxInvitation | null;
 }
 
 export interface ResolvedNotificationAction {

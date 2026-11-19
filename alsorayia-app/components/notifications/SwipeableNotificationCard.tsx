@@ -16,6 +16,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 import { type ThemeColors } from '@/constants/theme';
+import type { InvitationResponse } from '@/lib/api/invitations';
 import {
   resolveNotificationAction,
   type NotificationDetailItem,
@@ -42,6 +43,10 @@ const NOTIFICATION_COLORS: Record<NotificationDetailItem['type'], string> = {
 };
 
 const REVEAL_WIDTH = 80;
+const INVITATION_ACTIONS = [
+  { value: 'accepted', label: 'قبول', accessibilityLabel: 'قبول الدعوة' },
+  { value: 'declined', label: 'رفض', accessibilityLabel: 'رفض الدعوة' },
+] as const;
 
 export interface SwipeableNotificationCardProps {
   item: NotificationDetailItem;
@@ -57,6 +62,8 @@ export interface SwipeableNotificationCardProps {
   onImagePress: (url: string) => void;
   onShare: () => void;
   onDelete: () => void;
+  onInvitationResponse?: (response: InvitationResponse) => void;
+  invitationResponsePending?: boolean;
 }
 
 export function SwipeableNotificationCard({
@@ -73,10 +80,15 @@ export function SwipeableNotificationCard({
   onImagePress,
   onShare,
   onDelete,
+  onInvitationResponse,
+  invitationResponsePending = false,
 }: SwipeableNotificationCardProps) {
   const iconName = NOTIFICATION_ICONS[item.type] || 'bell.fill';
   const accentColor = NOTIFICATION_COLORS[item.type] || colors.primary;
   const action = resolveNotificationAction(item);
+  const showInvitationResponse = item.invitation && onInvitationResponse && !isSelectionMode;
+  const savedResponse = item.invitation?.response;
+  const declineColor = isDark ? '#FCA5A5' : '#B91C1C';
 
   const hasImage = item.mediaType === 'image' && !!item.mediaUrl;
   const hasVideo = item.mediaType === 'video' && !!item.mediaUrl;
@@ -308,6 +320,7 @@ export function SwipeableNotificationCard({
         ]}
       >
         <TouchableOpacity
+          accessible={!showInvitationResponse}
           activeOpacity={isSelectionMode ? 0.75 : 0.92}
           onPress={() => {
             // إذا كانت السلة مكشوفة، أي نقرة على البطاقة تعيدها لمكانها فوراً
@@ -434,6 +447,54 @@ export function SwipeableNotificationCard({
           >
             {item.body}
           </ThemedText>
+
+          {showInvitationResponse && (
+            savedResponse ? (
+              <ThemedText
+                style={[styles.invitationStatus, { color: savedResponse === 'accepted' ? colors.primary : declineColor }]}
+                accessibilityLiveRegion="polite"
+              >
+                {savedResponse === 'accepted' ? 'تم القبول' : 'تم الرفض'}
+              </ThemedText>
+            ) : (
+              <View style={styles.invitationSection}>
+                <View style={styles.invitationActions}>
+                  {INVITATION_ACTIONS.map(({ value, label, accessibilityLabel }) => {
+                    const color = value === 'accepted' ? colors.primary : declineColor;
+                    return (
+                      <TouchableOpacity
+                        key={value}
+                        accessibilityRole="button"
+                        accessibilityLabel={accessibilityLabel}
+                        accessibilityState={{ disabled: invitationResponsePending, busy: invitationResponsePending }}
+                        disabled={invitationResponsePending}
+                        onPress={(event) => {
+                          event.stopPropagation?.();
+                          if (currentOffset.current !== 0) {
+                            closeSwipe();
+                            return;
+                          }
+                          onInvitationResponse?.(value);
+                        }}
+                        style={[
+                          styles.invitationButton,
+                          { borderColor: color, backgroundColor: color + '14' },
+                          invitationResponsePending && styles.pendingInvitationButton,
+                        ]}
+                      >
+                        <ThemedText style={[styles.invitationButtonLabel, { color }]}>{label}</ThemedText>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {invitationResponsePending && (
+                  <ThemedText style={[styles.invitationStatus, { color: colors.icon }]} accessibilityLiveRegion="polite">
+                    جارٍ حفظ الرد…
+                  </ThemedText>
+                )}
+              </View>
+            )
+          )}
 
           {/* زر عرض تفاصيل الإشعار / إخفاء التفاصيل للنصوص الطويلة */}
           {isLongText && !isSelectionMode && (
@@ -673,6 +734,35 @@ const styles = StyleSheet.create({
   },
   unreadCardBorder: {
     borderRightWidth: 4,
+  },
+  invitationSection: {
+    marginTop: 10,
+  },
+  invitationActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  invitationButton: {
+    minHeight: 44,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+  },
+  pendingInvitationButton: {
+    opacity: 0.55,
+  },
+  invitationButtonLabel: {
+    fontFamily: 'Tajawal-Bold',
+    fontSize: 14,
+  },
+  invitationStatus: {
+    marginTop: 8,
+    textAlign: 'right',
+    fontFamily: 'Tajawal-Bold',
+    fontSize: 13,
   },
   selectedCardBorder: {
     borderWidth: 2,

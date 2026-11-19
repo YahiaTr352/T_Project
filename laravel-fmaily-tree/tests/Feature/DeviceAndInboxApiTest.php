@@ -125,7 +125,7 @@ class DeviceAndInboxApiTest extends TestCase
         $this->assertContains($broadcast->id, $mineIds);
         $this->assertNotContains($forOther->id, $mineIds);
 
-        $this->flushHeaders();
+        $this->flushSession()->flushHeaders();
 
         $guest = $this->getJson('/api/notifications')
             ->assertOk()
@@ -154,11 +154,46 @@ class DeviceAndInboxApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.unread_count', 1);
 
-        $this->flushHeaders();
+        $this->flushSession()->flushHeaders();
 
         $this->getJson('/api/notifications/unread-count')
             ->assertOk()
             ->assertJsonPath('data.unread_count', 0);
+    }
+
+    public function test_inbox_exposes_invitation_response_only_to_the_verified_eligible_recipient(): void
+    {
+        $adult = ['birth_date' => '1990-01-01', 'death_date' => null];
+        $recipient = Person::factory()->createQuietly($adult);
+        $sender = Person::factory()->createQuietly($adult);
+        $minor = Person::factory()->createQuietly(['birth_date' => now()->subYears(16), 'death_date' => null]);
+        $recipient->contactAccounts()->create(['type' => 'phone', 'value' => '966500000123']);
+
+        $invitation = Notification::create(['person_id' => $sender->id, 'status' => 'sent']);
+        $invitation->recipients()->create(['person_id' => $recipient->id]);
+        $invitation->recipients()->create(['person_id' => $minor->id]);
+        $sending = Notification::create(['person_id' => $sender->id, 'status' => 'sending']);
+        $sending->recipients()->create(['person_id' => $recipient->id]);
+        $ordinary = Notification::create(['status' => 'sent']);
+        $ordinary->recipients()->create(['person_id' => $recipient->id]);
+
+        $this->withHeaders($this->identityHeaders($recipient));
+        $inbox = collect($this->getJson('/api/notifications')->assertOk()->json('data.data'))->keyBy('id');
+        $this->assertSame(['id' => $invitation->id, 'response' => null], $inbox[$invitation->id]['invitation']);
+        $this->assertNull($inbox[$sending->id]['invitation']);
+        $this->assertNull($inbox[$ordinary->id]['invitation']);
+
+        $this->putJson("/api/v1/invitations/logs/{$invitation->id}/response", ['response' => 'accepted'])->assertOk();
+        $inbox = collect($this->getJson('/api/notifications')->assertOk()->json('data.data'))->keyBy('id');
+        $this->assertSame('accepted', $inbox[$invitation->id]['invitation']['response']);
+
+        $this->flushSession()->flushHeaders();
+        $unverified = collect($this->getJson('/api/notifications?phone=966500000123')->assertOk()->json('data.data'))->keyBy('id');
+        $this->assertNull($unverified[$invitation->id]['invitation']);
+
+        $minorInbox = collect($this->withHeaders($this->identityHeaders($minor))
+            ->getJson('/api/notifications')->assertOk()->json('data.data'))->keyBy('id');
+        $this->assertNull($minorInbox[$invitation->id]['invitation']);
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -15,13 +16,15 @@ class MobileNotificationResource extends JsonResource
     public function toArray(Request $request): array
     {
         // Check if read status is loaded or determined from recipient pivot
-        $isRead = false;
-        if (isset($this->read_at)) {
-            $isRead = !is_null($this->read_at);
-        } elseif ($this->relationLoaded('recipients') && $this->recipients->isNotEmpty()) {
-            $recipient = $this->recipients->first();
-            $isRead = ! is_null($recipient->read_at);
-        }
+        $recipient = $this->relationLoaded('recipients') ? $this->recipients->first() : null;
+        $isRead = isset($this->read_at) || $recipient?->read_at !== null;
+        $respondingPersonId = $request->attributes->get('invitation_response_person_id');
+        $isReceivedInvitation = $respondingPersonId !== null
+            && $recipient !== null
+            && (int) $recipient->person_id === $respondingPersonId
+            && $this->person_id !== null
+            && (int) $this->person_id !== $respondingPersonId
+            && in_array($this->status, Notification::RESPONDABLE_STATUSES, true);
 
         $filters = is_array($this->targeting_filters) ? $this->targeting_filters : [];
         $actionUrl = $this->action_url ?? ($filters['action_url'] ?? null);
@@ -47,6 +50,10 @@ class MobileNotificationResource extends JsonResource
             'read' => $isRead,
             'action_url' => $actionUrl,
             'data' => $data,
+            'invitation' => $isReceivedInvitation ? [
+                'id' => $this->id,
+                'response' => $recipient->invitation_response,
+            ] : null,
         ];
     }
 }
