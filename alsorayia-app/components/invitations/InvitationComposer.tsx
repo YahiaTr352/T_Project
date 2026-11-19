@@ -61,8 +61,10 @@ import { ChannelToggle } from './composer/ChannelToggle';
 import { CreativePickerModal } from './composer/CreativePickerModal';
 import { InvitationPreviewModal } from './composer/InvitationPreviewModal';
 import { DesignSection } from './composer/DesignSection';
-import { TypographyControls } from './composer/TypographyControls';
-import { invitationFontName, type InvitationFontFamily, type InvitationFontWeight } from './composer/typography';
+import { invitationFontName } from './composer/typography';
+
+const invitationTypography = { font_family: 'amiri', font_weight: 'bold' } as const;
+const invitationTextFont = invitationFontName(invitationTypography.font_family, invitationTypography.font_weight);
 
 export function InvitationComposer({
   templates,
@@ -79,9 +81,6 @@ export function InvitationComposer({
   const [templateKey, setTemplateKey] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [fontFamily, setFontFamily] = useState<InvitationFontFamily>('tajawal');
-  const [fontWeight, setFontWeight] = useState<InvitationFontWeight>('regular');
-  const selectedFontName = invitationFontName(fontFamily, fontWeight);
   const [templateVars, setTemplateVars] = useState<Record<string, string>>({});
   const [channels, setChannels] = useState<InvitationChannel[]>(['whatsapp']);
   const [recipientType, setRecipientType] = useState<InvitationRecipientType>('persons');
@@ -308,8 +307,7 @@ export function InvitationComposer({
         template_vars: templateVars,
         title: title.trim() || undefined,
         creative_id: selectedCreativeId ?? undefined,
-        font_family: fontFamily,
-        font_weight: fontWeight,
+        ...invitationTypography,
       });
       setPreviewing(false);
       if (!res.success || typeof res.data?.preview !== 'string') {
@@ -337,8 +335,7 @@ export function InvitationComposer({
       template_vars: templateVars,
       title: title.trim() || undefined,
       creative_id: selectedCreativeId ?? undefined,
-      font_family: fontFamily,
-      font_weight: fontWeight,
+      ...invitationTypography,
     });
     setPreviewing(false);
     if (!res.success || typeof res.data?.preview !== 'string') {
@@ -428,8 +425,7 @@ export function InvitationComposer({
       external_country_code: recipientType === 'external' ? selectedCountry.dialCode : undefined,
       title: title.trim() || null,
       creative_id: selectedCreativeId,
-      font_family: fontFamily,
-      font_weight: fontWeight,
+      ...invitationTypography,
       body,
       template_key: templateKey,
       template_vars: templateVars,
@@ -518,16 +514,9 @@ export function InvitationComposer({
           </ScrollView>
         )}
 
-        <TypographyControls
-          colors={colors}
-          fontFamily={fontFamily}
-          fontWeight={fontWeight}
-          onFamilyChange={setFontFamily}
-          onWeightChange={setFontWeight}
-        />
         <InvitationField
           label="العنوان"
-          fontFamily={selectedFontName}
+          fontFamily={invitationTextFont}
           value={title}
           onChangeText={setTitle}
           placeholder="عنوان الدعوة"
@@ -563,7 +552,7 @@ export function InvitationComposer({
         </View>
         <InvitationField
           label="نص الرسالة"
-          fontFamily={selectedFontName}
+          fontFamily={invitationTextFont}
           value={body}
           onChangeText={setBody}
           placeholder="النص اختياري عند اختيار صورة"
@@ -625,7 +614,7 @@ export function InvitationComposer({
           title={title}
           body={body}
           selectedCreative={selectedCreative}
-          fontFamily={selectedFontName}
+          fontFamily={invitationTextFont}
           attachedImage={attachedImage}
           onOpenCreative={() => void openCreativeModal()}
           onClearCreative={() => void clearCreativeSelection()}
@@ -968,7 +957,7 @@ export function InvitationComposer({
         previewBg={previewBg}
         attachedImage={attachedImage}
         previewText={previewText}
-        fontFamily={selectedFontName}
+        fontFamily={invitationTextFont}
       />
     </View>
   );
