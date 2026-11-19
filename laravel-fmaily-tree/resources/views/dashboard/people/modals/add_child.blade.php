@@ -15,6 +15,7 @@
             </div>
             <form action="{{ route('people.store') }}" method="POST" enctype="multipart/form-data">
                 @csrf
+                <input type="hidden" name="from_outside_the_family" value="0">
                 <div class="modal-body p-4">
                     {{-- الاسم الأول والأخير --}}
                     <div class="row">

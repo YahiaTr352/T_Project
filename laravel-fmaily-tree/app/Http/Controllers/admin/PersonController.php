@@ -143,7 +143,7 @@ class PersonController extends Controller
             'cemetery_location' => 'nullable|string|max:150',
             'grave_number' => 'nullable|string|max:50',
             'gender' => 'required|in:male,female',
-            'from_outside_the_family' => 'nullable|boolean',
+            'from_outside_the_family' => 'required_unless:source_page,add_self|nullable|boolean',
             'photo' => 'nullable|image|max:2048',
             'biography' => 'nullable|string',
             'occupation' => 'nullable|string|max:100',
@@ -151,6 +151,8 @@ class PersonController extends Controller
             'parent_id' => 'nullable|exists:persons,id',
             'mother_id' => 'nullable|exists:persons,id',
             'source_page' => 'nullable|string', // للتحقق من مصدر الطلب
+        ], [
+            'from_outside_the_family.required_unless' => 'يرجى اختيار الانتماء للعائلة.',
         ]);
 
         // تأكد من أن اسم الحقل في قاعدة البيانات هو 'photo'

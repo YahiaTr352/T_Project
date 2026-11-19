@@ -3,6 +3,11 @@
     /** @var \Illuminate\Support\Collection|\Illuminate\Database\Eloquent\Collection $males */
 
     $isEdit = isset($person) && $person && $person->exists;
+    $familyStatus = match (old('from_outside_the_family', $isEdit ? $person->from_outside_the_family : null)) {
+        0, '0', false => '0',
+        1, '1', true => '1',
+        default => '',
+    };
     $selectedFatherId = old('parent_id', $isEdit ? $person->parent_id : '');
     $selectedMotherId = old('mother_id', $isEdit ? $person->mother_id : '');
 
@@ -73,11 +78,14 @@
                     <span>الانتماء للعائلة</span>
                     <span class="text-danger">*</span>
                 </label>
-                <select class="form-control ppl-form-control" id="from_outside_the_family" name="from_outside_the_family">
-                    <option value="0" @selected(old('from_outside_the_family', $isEdit ? (int) $person->from_outside_the_family : 0) == 0)>
+                <select class="form-control ppl-form-control" id="from_outside_the_family" name="from_outside_the_family" @required(!$isEdit)>
+                    @if (!$isEdit)
+                        <option value="" disabled @selected($familyStatus === '')>اختر الانتماء للعائلة</option>
+                    @endif
+                    <option value="0" @selected($familyStatus === '0')>
                         🏛️ من آل السريّع (داخل العائلة)
                     </option>
-                    <option value="1" @selected(old('from_outside_the_family', $isEdit ? (int) $person->from_outside_the_family : 0) == 1)>
+                    <option value="1" @selected($familyStatus === '1')>
                         🤝 مصاهرة أو زواج (من خارج العائلة)
                     </option>
                 </select>
