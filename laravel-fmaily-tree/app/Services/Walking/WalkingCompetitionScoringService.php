@@ -97,7 +97,8 @@ class WalkingCompetitionScoringService
             ->whereDate('date', $dateStr)
             ->whereIn('person_id', $eligiblePersonIds)
             ->groupBy('person_id')
-            ->orderByDesc('total_steps');
+            ->orderByDesc('total_steps')
+            ->orderBy('person_id');
 
         // Note: We do NOT exclude walkers with having >= minSteps in live display
         // so that active participants walking today are immediately visible!
@@ -1294,6 +1295,27 @@ class WalkingCompetitionScoringService
     }
 
     /**
+     * Award points by step rank, preserving the input order when steps are tied.
+     *
+     * @param  array<int, int>  $stepsById
+     * @param  array<int, int>  $pointsByRank
+     * @return array<int, int>
+     */
+    private function awardRaceDailyPoints(array $stepsById, array $pointsByRank, int $minSteps = 0): array
+    {
+        arsort($stepsById, SORT_NUMERIC);
+        $pointsById = [];
+        $rank = 1;
+
+        foreach ($stepsById as $id => $steps) {
+            $pointsById[$id] = $steps > 0 && $steps >= $minSteps ? ($pointsByRank[$rank] ?? 0) : 0;
+            $rank++;
+        }
+
+        return $pointsById;
+    }
+
+    /**
      * Build day-by-day frames for individual participants in one gender section.
      *
      * @param  array<string, mixed>  $config
@@ -1309,8 +1331,10 @@ class WalkingCompetitionScoringService
         array $palette
     ): array {
         $settings = $question->getWalkingSettings();
-        $calcMode = $config['calc_mode'] ?? 'cumulative';
+        $isDaily = $config['calc_mode'] === 'daily';
+        $metric = $config['metric'];
         $maxRanks = (int) ($config['max_ranks'] ?? 10);
+        $dailyPointsMap = $isDaily ? $question->getWalkingDailyPoints() : [];
         $minDailySteps = (int) ($settings['min_daily_steps'] ?? 0);
 
         $eligibleIds = $this->eligibilityService->getEligiblePersonIds();
@@ -1357,7 +1381,6 @@ class WalkingCompetitionScoringService
 
         // Map steps by [dateStr][personId] => int
         $dailyByDate = [];
-        $activePersonIds = [];
         foreach ($records as $rec) {
             $pid = (int) $rec->person_id;
             $dStr = substr((string) $rec->step_date, 0, 10);
@@ -1366,16 +1389,32 @@ class WalkingCompetitionScoringService
                 continue;
             }
             $dailyByDate[$dStr][$pid] = ($dailyByDate[$dStr][$pid] ?? 0) + $steps;
-            $activePersonIds[$pid] = true;
         }
 
-        if (empty($activePersonIds)) {
+        $recordedSteps = [];
+        $recordedPoints = [];
+        if ($isDaily) {
+            $scores = QuizCompetitionWalkingScore::query()
+                ->where('quiz_question_id', $question->id)
+                ->whereIn('person_id', $eligibleIds)
+                ->whereBetween('date', [$startDate->toDateString(), $endDate->toDateString()])
+                ->get(['person_id', 'date', 'steps', 'points_earned']);
+
+            foreach ($scores as $score) {
+                $date = $score->date->toDateString();
+                $recordedSteps[$date][$score->person_id] = $score->steps;
+                $recordedPoints[$date][$score->person_id] = $score->points_earned;
+            }
+        }
+
+        if (empty($dailyByDate) && empty($recordedSteps)) {
             return [];
         }
 
         // Compute ordered day frames in pure integer arrays first to identify appearing contestants
         $runningTotals = [];
-        $prevMetricValues = [];
+        $previousSteps = [];
+        $previousPoints = [];
         $rawDays = [];
         $appearingPersonIds = [];
 
@@ -1384,31 +1423,41 @@ class WalkingCompetitionScoringService
 
         while ($cursor->lte($endDate)) {
             $dStr = $cursor->toDateString();
-            $todayMap = $dailyByDate[$dStr] ?? [];
+            $todayMap = $recordedSteps[$dStr] ?? $dailyByDate[$dStr] ?? [];
+            $points = [];
 
-            foreach ($todayMap as $pid => $dSteps) {
-                $runningTotals[$pid] = ($runningTotals[$pid] ?? 0) + $dSteps;
+            if ($isDaily) {
+                ksort($todayMap, SORT_NUMERIC);
+                $points = $recordedPoints[$dStr] ?? $this->awardRaceDailyPoints($todayMap, $dailyPointsMap, $minDailySteps);
+            } else {
+                foreach ($todayMap as $pid => $dSteps) {
+                    $runningTotals[$pid] = ($runningTotals[$pid] ?? 0) + $dSteps;
+                }
             }
 
             $dayCandidates = [];
-            $sourcePool = ($calcMode === 'daily') ? $todayMap : $runningTotals;
+            $sourcePool = $isDaily ? $todayMap : $runningTotals;
 
-            foreach ($sourcePool as $pid => $metricVal) {
-                if ($metricVal <= 0) {
+            foreach ($sourcePool as $pid => $steps) {
+                if ($steps <= 0 && ($points[$pid] ?? 0) <= 0) {
                     continue;
                 }
-                $dSteps = $todayMap[$pid] ?? 0;
-                $dayCandidates[] = [
+                $entry = [
                     'person_id' => (int) $pid,
-                    'steps' => (int) $metricVal,
-                    'prev_steps' => (int) ($prevMetricValues[$pid] ?? 0),
-                    'daily_steps' => (int) $dSteps,
+                    'steps' => $steps,
+                    'prev_steps' => $previousSteps[$pid] ?? 0,
+                    'daily_steps' => $todayMap[$pid] ?? 0,
                 ];
+                if ($isDaily) {
+                    $entry['points'] = $points[$pid];
+                    $entry['prev_points'] = $previousPoints[$pid] ?? 0;
+                }
+                $dayCandidates[] = $entry;
             }
 
-            usort($dayCandidates, static function ($a, $b) {
-                if ($b['steps'] !== $a['steps']) {
-                    return $b['steps'] <=> $a['steps'];
+            usort($dayCandidates, static function ($a, $b) use ($metric) {
+                if ($b[$metric] !== $a[$metric]) {
+                    return $b[$metric] <=> $a[$metric];
                 }
                 if ($b['daily_steps'] !== $a['daily_steps']) {
                     return $b['daily_steps'] <=> $a['daily_steps'];
@@ -1431,12 +1480,8 @@ class WalkingCompetitionScoringService
                 'entries' => $topSlice,
             ];
 
-            // Record current day metric for smooth prev_steps -> steps interpolation on next day
-            if ($calcMode === 'cumulative') {
-                $prevMetricValues = $runningTotals;
-            } else {
-                $prevMetricValues = $todayMap;
-            }
+            $previousSteps = $sourcePool;
+            $previousPoints = $points;
 
             $cursor->addDay();
             $dayNumber++;
@@ -1474,7 +1519,6 @@ class WalkingCompetitionScoringService
         $formattedDays = [];
         foreach ($rawDays as $rd) {
             $formattedEntries = [];
-            $leaderSteps = ! empty($rd['entries']) ? max(1, (int) $rd['entries'][0]['steps']) : 1;
 
             foreach ($rd['entries'] as $rankIdx => $entry) {
                 $pid = $entry['person_id'];
@@ -1492,29 +1536,29 @@ class WalkingCompetitionScoringService
                     ? Person::anonymousAvatarFor($person?->gender)
                     : $this->resolvePersonPhotoUrl($person);
 
-                $formattedEntries[] = [
+                $formattedEntries[] = $entry + [
                     'entry_id' => 'p_' . $pid,
-                    'person_id' => $pid,
                     'rank' => $rankIdx + 1,
                     'name' => $displayName,
                     'avatar' => $avatar,
-                    'steps' => $entry['steps'],
-                    'prev_steps' => $entry['prev_steps'],
-                    'daily_steps' => $entry['daily_steps'],
                     'color' => $colorMap[$pid],
                     'is_anonymous' => $isAnon,
                     'is_viewer' => false,
                 ];
             }
 
-            $formattedDays[] = [
+            $day = [
                 'day_index' => $rd['day_index'],
                 'day_number' => $rd['day_number'],
                 'date' => $rd['date'],
                 'date_label' => $rd['date_label'],
-                'max_steps' => $leaderSteps,
+                'max_steps' => max([1, ...array_column($formattedEntries, 'steps')]),
                 'top_entries' => $formattedEntries,
             ];
+            if ($isDaily) {
+                $day['max_points'] = max(1, $formattedEntries[0]['points'] ?? 0);
+            }
+            $formattedDays[] = $day;
         }
 
         return $formattedDays;
@@ -1539,8 +1583,11 @@ class WalkingCompetitionScoringService
             return [];
         }
 
-        $calcMode = $config['calc_mode'] ?? 'cumulative';
+        $isDaily = $config['calc_mode'] === 'daily';
+        $metric = $config['metric'];
         $maxRanks = (int) ($config['max_ranks'] ?? 10);
+        $dailyPointsMap = $isDaily ? $question->getGroupDailyPoints() : [];
+        $groupSlots = array_fill_keys($groupIds, 0);
         $minMemberSteps = $question->getMinMemberDailySteps();
         $settings = $question->getWalkingSettings();
         $targetGender = $settings['target_gender'] ?? 'both_segregated';
@@ -1625,7 +1672,8 @@ class WalkingCompetitionScoringService
         $colorIdx = 0;
         $paletteCount = count($palette);
         $runningTotals = [];
-        $prevMetricValues = [];
+        $previousSteps = [];
+        $previousPoints = [];
         $formattedDays = [];
 
         $cursor = $startDate->copy();
@@ -1635,25 +1683,38 @@ class WalkingCompetitionScoringService
             $dStr = $cursor->toDateString();
             $todayMap = $dailyGroupSteps[$dStr] ?? [];
 
-            foreach ($todayMap as $gId => $dSteps) {
-                $runningTotals[$gId] = ($runningTotals[$gId] ?? 0) + $dSteps;
+            $points = [];
+            if ($isDaily) {
+                $points = $this->awardRaceDailyPoints(array_replace($groupSlots, $todayMap), $dailyPointsMap);
+            } else {
+                foreach ($todayMap as $gId => $dSteps) {
+                    $runningTotals[$gId] = ($runningTotals[$gId] ?? 0) + $dSteps;
+                }
             }
 
-            $sourcePool = ($calcMode === 'daily') ? $todayMap : $runningTotals;
+            $sourcePool = $isDaily ? $todayMap : $runningTotals;
             $dayCandidates = [];
-            foreach ($sourcePool as $gId => $metricVal) {
-                if ($metricVal <= 0 || ! $groups->has($gId)) {
+            foreach ($sourcePool as $gId => $steps) {
+                if ($steps <= 0 || ! $groups->has($gId)) {
                     continue;
                 }
-                $dayCandidates[] = [
+                $entry = [
                     'group_id' => (int) $gId,
-                    'steps' => (int) $metricVal,
-                    'prev_steps' => (int) ($prevMetricValues[$gId] ?? 0),
-                    'daily_steps' => (int) ($todayMap[$gId] ?? 0),
+                    'steps' => $steps,
+                    'prev_steps' => $previousSteps[$gId] ?? 0,
+                    'daily_steps' => $todayMap[$gId] ?? 0,
                 ];
+                if ($isDaily) {
+                    $entry['points'] = $points[$gId];
+                    $entry['prev_points'] = $previousPoints[$gId] ?? 0;
+                }
+                $dayCandidates[] = $entry;
             }
 
-            usort($dayCandidates, static function ($a, $b) {
+            usort($dayCandidates, static function ($a, $b) use ($metric) {
+                if ($b[$metric] !== $a[$metric]) {
+                    return $b[$metric] <=> $a[$metric];
+                }
                 if ($b['steps'] !== $a['steps']) {
                     return $b['steps'] <=> $a['steps'];
                 }
@@ -1663,7 +1724,6 @@ class WalkingCompetitionScoringService
 
             $sliceLimit = $maxRanks > 0 ? $maxRanks : 500;
             $topSlice = array_slice($dayCandidates, 0, $sliceLimit);
-            $leaderSteps = ! empty($topSlice) ? max(1, (int) $topSlice[0]['steps']) : 1;
             $entries = [];
 
             foreach ($topSlice as $rankIdx => $item) {
@@ -1673,31 +1733,34 @@ class WalkingCompetitionScoringService
                     $colorIdx++;
                 }
                 $group = $groups->get($gId);
-                $entries[] = [
+                unset($item['group_id']);
+                $entries[] = $item + [
                     'entry_id' => 'g_' . $gId,
                     'person_id' => $gId,
                     'rank' => $rankIdx + 1,
                     'name' => $group?->name ?? 'مجموعة',
                     'avatar' => $this->resolveGroupCoverUrl($group),
-                    'steps' => $item['steps'],
-                    'prev_steps' => $item['prev_steps'],
-                    'daily_steps' => $item['daily_steps'],
                     'color' => $colorMap[$gId],
                     'is_anonymous' => false,
                     'is_viewer' => false,
                 ];
             }
 
-            $formattedDays[] = [
+            $day = [
                 'day_index' => $dayNumber - 1,
                 'day_number' => $dayNumber,
                 'date' => $dStr,
                 'date_label' => $this->formatArabicDayMonth($cursor),
-                'max_steps' => $leaderSteps,
+                'max_steps' => max([1, ...array_column($entries, 'steps')]),
                 'top_entries' => $entries,
             ];
+            if ($isDaily) {
+                $day['max_points'] = max(1, $entries[0]['points'] ?? 0);
+            }
+            $formattedDays[] = $day;
 
-            $prevMetricValues = ($calcMode === 'cumulative') ? $runningTotals : $todayMap;
+            $previousSteps = $sourcePool;
+            $previousPoints = $points;
             $cursor->addDay();
             $dayNumber++;
         }

@@ -21,7 +21,7 @@
                 <i class="fas fa-chart-bar ml-2 text-warning" style="color: #fbbf24 !important;"></i>
                 <div>
                     <h6 class="mb-0 font-weight-bold text-white" style="color: #ffffff !important;">نافذة سباق الترتيب اليومي المتحرك (Bar Chart Race)</h6>
-                    <small class="d-block" style="color: rgba(255, 255, 255, 0.9) !important;">عرض تطور ترتيب المتسابقين وخطواتهم يومياً منذ بداية المسابقة على الويب والموبايل</small>
+                    <small class="d-block" style="color: rgba(255, 255, 255, 0.9) !important;">عرض تطور ترتيب المتسابقين يومياً منذ بداية المسابقة على الويب والموبايل</small>
                 </div>
             </div>
             <div class="custom-control custom-switch">
@@ -43,17 +43,16 @@
             <div class="row">
                 <div class="col-md-4 mb-3">
                     <label class="modern-label font-weight-bold text-gray-800">
-                        <i class="fas fa-calculator ml-1 text-primary"></i> طريقة احتساب الخطوات في السباق
+                        <i class="fas fa-calculator ml-1 text-primary"></i> طريقة الترتيب في السباق
                     </label>
                     <select name="{{ $prefix }}[race_calc_mode]" class="form-control modern-input font-weight-bold">
                         <option value="cumulative" {{ $raceCalcMode === 'cumulative' ? 'selected' : '' }}>
-                            تراكمي يوم بيوم (يجمع كل يوم على السابق)
+                            مجموع الخطوات حتى كل يوم
                         </option>
                         <option value="daily" {{ $raceCalcMode === 'daily' ? 'selected' : '' }}>
-                            خطوات كل يوم منفصلة لوحدها
+                            نقاط كل يوم على حدة
                         </option>
                     </select>
-                    <small class="text-muted d-block mt-1">التراكمي يجمع خطوات كل يوم على مجموع الأيام السابقة فيتغير الترتيب العام.</small>
                 </div>
 
                 <div class="col-md-4 mb-3">

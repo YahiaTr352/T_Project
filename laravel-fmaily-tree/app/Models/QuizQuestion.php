@@ -358,9 +358,12 @@ class QuizQuestion extends BaseModel implements Chatable
      */
     public function getWalkingRaceConfig(): array
     {
+        $calcMode = $this->getWalkingRaceCalcMode();
+
         return [
             'enabled' => $this->isWalkingRaceEnabled(),
-            'calc_mode' => $this->getWalkingRaceCalcMode(),
+            'calc_mode' => $calcMode,
+            'metric' => $calcMode === 'daily' ? 'points' : 'steps',
             'speed_ms' => $this->getWalkingRaceSpeedMs(),
             'max_ranks' => $this->getWalkingRaceMaxRanks(),
             'title' => $this->getWalkingRaceTitle(),
