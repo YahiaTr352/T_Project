@@ -57,8 +57,8 @@
             </div>
 
             <div id="wrEmptyState" class="hidden py-12 text-center">
-                <i id="wrEmptyIcon" class="fas fa-shoe-prints text-3xl mb-2" style="color: #64748b;"></i>
-                <p id="wrEmptyText" class="text-sm font-bold" style="color: #475569;">لا توجد خطوات مسجلة بعد في هذه المسابقة.</p>
+                <i class="fas fa-shoe-prints text-3xl mb-2" style="color: #64748b;"></i>
+                <p class="text-sm font-bold" style="color: #475569;">لا توجد خطوات مسجلة بعد في هذه المسابقة.</p>
             </div>
 
             <div id="wrRaceStage" class="relative w-full hidden overflow-hidden" style="min-height: 200px;"></div>
@@ -170,7 +170,7 @@
         font-size: 0.82rem;
         line-height: 1;
     }
-    .wr-value {
+    .wr-steps {
         font-weight: 700;
         font-size: 0.82rem;
         color: #1e293b;
@@ -203,7 +203,7 @@
         .wr-bar {
             height: 20px;
         }
-        .wr-value, .wr-rank {
+        .wr-steps, .wr-rank {
             font-size: 0.75rem;
         }
     }
@@ -223,12 +223,10 @@
         });
     }
 
-    function formatRaceValue(value, showPoints) {
-        const rounded = Math.max(0, Math.round(Number(value) || 0));
+    function formatArabicSteps(stepsVal) {
+        const rounded = Math.max(0, Math.round(Number(stepsVal) || 0));
         const formatted = rounded.toLocaleString('en-US');
-        const remainder = rounded % 100;
-        const unit = showPoints ? (remainder >= 3 && remainder <= 10 ? ' نقاط' : ' نقطة') : ' خطوة';
-        return toArabicDigits(formatted) + unit;
+        return toArabicDigits(formatted) + ' خطوة';
     }
 
     const state = {
@@ -239,7 +237,7 @@
         rafId: null,
         timerId: null,
         rowMap: new Map(),
-        displayedValues: new Map(),
+        displayedSteps: new Map(),
     };
 
     const elOverlay = document.getElementById('walkingRaceModalOverlay');
@@ -252,8 +250,6 @@
     const elError = document.getElementById('wrErrorState');
     const elErrorText = document.getElementById('wrErrorText');
     const elEmpty = document.getElementById('wrEmptyState');
-    const elEmptyIcon = document.getElementById('wrEmptyIcon');
-    const elEmptyText = document.getElementById('wrEmptyText');
     const elStage = document.getElementById('wrRaceStage');
     const elControls = document.getElementById('wrControlsBar');
     const elPlayPauseBtn = document.getElementById('wrPlayPauseBtn');
@@ -279,7 +275,7 @@
     function clearStage() {
         stopTimers();
         state.rowMap.clear();
-        state.displayedValues.clear();
+        state.displayedSteps.clear();
         elStage.innerHTML = '';
     }
 
@@ -352,7 +348,7 @@
         });
     }
 
-    function getOrCreateRow(entry, showPoints) {
+    function getOrCreateRow(entry) {
         let rowObj = state.rowMap.get(entry.entry_id);
         if (rowObj) {
             rowObj.bar.style.backgroundColor = entry.color || '#2176c7';
@@ -396,12 +392,12 @@
         rankEl.textContent = toArabicDigits(entry.rank);
         bar.appendChild(rankEl);
 
-        const valueEl = document.createElement('span');
-        valueEl.className = 'wr-value';
-        valueEl.textContent = formatRaceValue(showPoints ? entry.points : entry.steps, showPoints);
+        const stepsEl = document.createElement('span');
+        stepsEl.className = 'wr-steps';
+        stepsEl.textContent = formatArabicSteps(entry.steps);
 
         barLine.appendChild(bar);
-        barLine.appendChild(valueEl);
+        barLine.appendChild(stepsEl);
 
         track.appendChild(nameEl);
         track.appendChild(barLine);
@@ -410,7 +406,7 @@
         root.appendChild(track);
         elStage.appendChild(root);
 
-        rowObj = { root, avatarEl, nameEl, bar, rankEl, valueEl };
+        rowObj = { root, avatarEl, nameEl, bar, rankEl, stepsEl };
         state.rowMap.set(entry.entry_id, rowObj);
         return rowObj;
     }
@@ -434,9 +430,6 @@
         state.currentDayIdx = safeIdx;
         const day = days[safeIdx];
         const entries = Array.isArray(day.top_entries) ? day.top_entries : [];
-        const showPoints = state.timelineData?.config?.metric === 'points';
-        const valueKey = showPoints ? 'points' : 'steps';
-        const previousValueKey = showPoints ? 'prev_points' : 'prev_steps';
         const rawMaxRanks = state.timelineData?.config?.max_ranks;
         const maxRanks = (rawMaxRanks !== undefined && rawMaxRanks !== null) ? Number(rawMaxRanks) : 10;
         const speedMs = state.timelineData?.config?.speed_ms || 2800;
@@ -465,13 +458,15 @@
             }
         });
 
-        // Prepare rows and record starting values for interpolation
+        // Prepare rows and record starting step counts for interpolation
         entries.forEach(function (entry) {
-            const rowObj = getOrCreateRow(entry, showPoints);
-            const target = Number(entry[valueKey]);
-            const startVal = animateTransition
-                ? Number(state.displayedValues.get(entry.entry_id) ?? entry[previousValueKey] ?? target)
-                : target;
+            const rowObj = getOrCreateRow(entry);
+            const fallbackStart = animateTransition
+                ? (entry.prev_steps !== undefined ? Number(entry.prev_steps) : Number(entry.steps))
+                : Number(entry.steps);
+            const startVal = state.displayedSteps.has(entry.entry_id) && animateTransition
+                ? Number(state.displayedSteps.get(entry.entry_id))
+                : fallbackStart;
 
             startValues.set(entry.entry_id, startVal);
             rowObj.rankEl.textContent = toArabicDigits(entry.rank);
@@ -491,24 +486,24 @@
             const rawT = animDuration > 0 ? Math.min(1, (now - startTime) / animDuration) : 1;
             const eased = 1 - Math.pow(1 - rawT, 3);
 
-            let frameMax = 1;
+            let frameMaxSteps = 1;
             const currentVals = {};
             entries.forEach(function (entry) {
                 const s = startValues.get(entry.entry_id) || 0;
-                const target = Number(entry[valueKey] || 0);
+                const target = Number(entry.steps || 0);
                 const val = s + (target - s) * eased;
                 currentVals[entry.entry_id] = val;
-                if (val > frameMax) frameMax = val;
+                if (val > frameMaxSteps) frameMaxSteps = val;
             });
 
             entries.forEach(function (entry) {
                 const rowObj = state.rowMap.get(entry.entry_id);
                 if (!rowObj) return;
                 const val = currentVals[entry.entry_id] || 0;
-                state.displayedValues.set(entry.entry_id, val);
-                const pct = Math.max(8, (val / frameMax) * maxBarPercent);
+                state.displayedSteps.set(entry.entry_id, val);
+                const pct = Math.max(8, (val / frameMaxSteps) * maxBarPercent);
                 rowObj.bar.style.width = pct.toFixed(2) + '%';
-                rowObj.valueEl.textContent = formatRaceValue(val, showPoints);
+                rowObj.stepsEl.textContent = formatArabicSteps(rawT >= 1 ? entry.steps : val);
             });
 
             if (rawT < 1) {
@@ -601,12 +596,6 @@
 
             const data = json.data;
             state.timelineData = data;
-            const showPoints = data.config?.metric === 'points';
-            elEmptyIcon.classList.toggle('fa-shoe-prints', !showPoints);
-            elEmptyIcon.classList.toggle('fa-trophy', showPoints);
-            elEmptyText.textContent = showPoints
-                ? 'لا توجد نتائج نقاط بعد في هذه المسابقة.'
-                : 'لا توجد خطوات مسجلة بعد في هذه المسابقة.';
             if (data.config) {
                 elTitle.textContent = data.config.title || fallbackTitle || 'سباق الترتيب اليومي';
                 elSubtitle.textContent = data.config.subtitle || 'ماهي مجرد مسابقة... بل بداية عادة';
