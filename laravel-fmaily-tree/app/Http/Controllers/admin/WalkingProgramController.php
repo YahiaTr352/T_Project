@@ -1424,7 +1424,15 @@ class WalkingProgramController extends Controller
         $group->load(['creatorPerson.parent.parent.parent', 'creatorUser', 'memberships.person.parent.parent.parent']);
 
         $memberPersonIds = $group->memberships()->where('status', 'accepted')->pluck('person_id')->toArray();
-        $leaderboard = $this->leaderboardService->build(WalkingLeaderboardService::PERIOD_ALLTIME, null, $memberPersonIds, null, $group->id);
+        $period = WalkingLeaderboardService::PERIOD_ALLTIME;
+        [$defaultFrom, $today] = $this->leaderboardService->resolveDateRange($period);
+        $leaderboard = $this->leaderboardService->build(
+            period: $period,
+            restrictToPersonIds: $memberPersonIds,
+            dateRangeOverride: [$group->start_date ?? $defaultFrom, $group->end_date ?? $today],
+            groupId: $group->id,
+            minSteps: 1,
+        );
 
         return response()->json([
             'success'     => true,

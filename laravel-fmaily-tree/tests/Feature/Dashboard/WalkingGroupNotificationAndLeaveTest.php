@@ -10,11 +10,13 @@ use App\Models\User;
 use App\Models\UserDevice;
 use App\Models\WalkingGroup;
 use App\Models\WalkingGroupMember;
+use App\Models\WalkingRecord;
 use App\Services\ExpoNotificationService;
 use App\Services\SiteMobileAccessToken;
 use App\Services\UltramsgService;
 use App\Services\Walking\WalkingGroupNotificationService;
 use App\Services\Walking\WalkingGroupService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
 use Spatie\Permission\Models\Permission;
@@ -276,6 +278,56 @@ class WalkingGroupNotificationAndLeaveTest extends TestCase
 
         $this->assertEquals($this->member1->id, $group->fresh()->created_by_person_id);
     }
+    public function test_dashboard_group_ranks_only_members_with_steps_during_the_challenge(): void
+    {
+        $today = Carbon::today('Asia/Riyadh');
+        $service = $this->app->make(WalkingGroupService::class);
+        $group = $service->create([
+            'name' => 'تحدي المشي',
+            'start_date' => $today->copy()->subDay()->toDateString(),
+            'end_date' => $today->toDateString(),
+        ], creatorPersonId: $this->creator->id);
+        $service->addMember($group, $this->member1->id, shouldNotify: false);
+        $service->addMember($group, $this->member2->id, shouldNotify: false);
+
+        WalkingRecord::create([
+            'person_id' => $this->member1->id,
+            'date' => $today->copy()->subDays(2)->toDateString(),
+            'steps' => 500,
+        ]);
+        WalkingRecord::create([
+            'person_id' => $this->member1->id,
+            'date' => $today->toDateString(),
+            'steps' => 0,
+        ]);
+
+        $url = route('dashboard.walking.groups.show', $group);
+        $this->actingAs($this->adminUser)->getJson($url)
+            ->assertOk()
+            ->assertJsonCount(0, 'leaderboard.top')
+            ->assertJsonPath('leaderboard.pagination.total', 0)
+            ->assertJsonCount(3, 'members');
+
+        WalkingRecord::create([
+            'person_id' => $this->creator->id,
+            'date' => $today->toDateString(),
+            'steps' => 1,
+        ]);
+
+        $response = $this->getJson($url)
+            ->assertOk()
+            ->assertJsonCount(1, 'leaderboard.top')
+            ->assertJsonPath('leaderboard.pagination.total', 1)
+            ->assertJsonPath('leaderboard.top.0.person_id', $this->creator->id)
+            ->assertJsonPath('leaderboard.top.0.rank', 1)
+            ->assertJsonPath('leaderboard.top.0.total_steps', 1);
+
+        $this->assertEqualsCanonicalizing(
+            [$this->creator->id, $this->member1->id, $this->member2->id],
+            array_column($response->json('members'), 'person_id'),
+        );
+    }
+
     public function test_api_show_group_returns_members_and_invite_code(): void
     {
         /** @var WalkingGroupService $service */

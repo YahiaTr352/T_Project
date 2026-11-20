@@ -2137,6 +2137,20 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <h6 class="font-weight-bold mt-4 mb-2" id="groupStepLeaderboardTitle">ترتيب الخطوات خلال التحدي</h6>
+                    <div class="table-responsive" style="max-height: 350px; overflow-y: auto;">
+                        <table class="table table-bordered table-sm mb-0" aria-labelledby="groupStepLeaderboardTitle">
+                            <thead class="thead-light">
+                                <tr>
+                                    <th scope="col">المركز</th>
+                                    <th scope="col">المشارك</th>
+                                    <th scope="col">إجمالي الخطوات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="groupStepLeaderboardBody"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer bg-light">
@@ -2922,6 +2936,21 @@
                             '</td>' +
                         '</tr>';
                         tbody.append(row);
+                    });
+                }
+
+                var standings = res.leaderboard.top;
+                var standingsBody = $('#groupStepLeaderboardBody').empty();
+
+                if (standings.length === 0) {
+                    standingsBody.append('<tr><td colspan="3" class="text-center text-muted py-3">لم يسجّل أي مشارك خطوات في هذا التحدي.</td></tr>');
+                } else {
+                    standings.forEach(function(entry) {
+                        $('<tr>')
+                            .append($('<td>').text(entry.rank))
+                            .append($('<td>').text(entry.person?.name || 'مشارك'))
+                            .append($('<td>').text(Number(entry.total_steps).toLocaleString()))
+                            .appendTo(standingsBody);
                     });
                 }
 
