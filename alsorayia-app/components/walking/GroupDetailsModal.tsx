@@ -346,7 +346,7 @@ export function GroupDetailsModal({
     return ids;
   }, [displayMembers]);
 
-  // Unified Leaderboard entries: merges server top results with all display members so 0-step members always show
+  // Merge server step totals with the group membership for scoring and progress.
   const challengeLeaderboardEntries = useMemo(
     () =>
       computeChallengeLeaderboardEntries({
@@ -379,16 +379,10 @@ export function GroupDetailsModal({
     return Math.min(100, Math.round((totalChallengeSteps / group.target_steps) * 100));
   }, [group, totalChallengeSteps]);
 
-  const topThree = useMemo(() => {
-    return challengeLeaderboardEntries
-      .filter((e) => e.rank >= 1 && e.total_steps > 0)
-      .slice(0, 3);
-  }, [challengeLeaderboardEntries]);
-
-  const remainingEntries = useMemo(() => {
-    if (topThree.length === 0) return challengeLeaderboardEntries;
-    return challengeLeaderboardEntries.slice(topThree.length);
-  }, [challengeLeaderboardEntries, topThree]);
+  const rankedStepEntries = useMemo(
+    () => challengeLeaderboardEntries.filter((entry) => entry.total_steps > 0),
+    [challengeLeaderboardEntries]
+  );
 
   // ── Engine: Daily Steps Map & Tonight's Expected Points ──
   const todayStepsByPersonId = useMemo(
@@ -463,9 +457,9 @@ export function GroupDetailsModal({
     return pointsLeaderboardEntries.slice(topThreePoints.length);
   }, [pointsLeaderboardEntries, topThreePoints]);
 
-  const activeTopThree = leaderboardMetric === 'points' ? topThreePoints : topThree;
-  const activeRemainingEntries = leaderboardMetric === 'points' ? remainingPointsEntries : remainingEntries;
-  const activeLeaderboardEntries = leaderboardMetric === 'points' ? pointsLeaderboardEntries : challengeLeaderboardEntries;
+  const activeTopThree = leaderboardMetric === 'points' ? topThreePoints : rankedStepEntries.slice(0, 3);
+  const activeRemainingEntries = leaderboardMetric === 'points' ? remainingPointsEntries : rankedStepEntries.slice(3);
+  const activeLeaderboardEntries = leaderboardMetric === 'points' ? pointsLeaderboardEntries : rankedStepEntries;
 
   if (!visible) return null;
 
@@ -1363,23 +1357,6 @@ export function GroupDetailsModal({
                     </View>
                   ) : activeLeaderboardEntries.length > 0 ? (
                     <>
-                      {/* Motivational note if steps are 0 in steps mode */}
-                      {leaderboardMetric === 'steps' && totalChallengeSteps === 0 && (
-                        <View
-                          style={[
-                            styles.noticeBanner,
-                            {
-                              backgroundColor: isDark ? '#1E3A5F' : '#EFF6FF',
-                              borderColor: isDark ? '#3B82F6' : '#BFDBFE',
-                            },
-                          ]}>
-                          <IconSymbol name="figure.run" size={18} color="#3B82F6" />
-                          <ThemedText style={[styles.noticeText, { color: isDark ? '#BFDBFE' : '#1E40AF' }]}>
-                            جميع الأعضاء مضافون للتحدي. ابدأ بالمشي وسجل خطواتك لتتصدر لوحة الشرف!
-                          </ThemedText>
-                        </View>
-                      )}
-
                       {/* Step Milestone Color Tiers Legend (Only in Steps Mode) */}
                       {leaderboardMetric === 'steps' && (
                         <View style={[styles.tierLegendContainer, { backgroundColor: isDark ? '#1F2937' : '#F9FAFB', borderColor: colors.border }]}>
@@ -1637,7 +1614,6 @@ export function GroupDetailsModal({
                               const cDisplayName = cIsAnon ? 'متسابق متخفي' : (c.person?.name || 'عضو في التحدي');
                               const cAvatarUri = c.person?.avatar || null;
                               const tierConfig = getStepTierConfig(c.total_steps, isDark);
-                              const hasSteps = c.total_steps > 0;
                               const streak = (c as any).streak_10k ?? 0;
                               const isGoalDone = Boolean(
                                 (c as any).is_goal_reached ||
@@ -1810,21 +1786,15 @@ export function GroupDetailsModal({
                                         )}
                                       </View>
                                     ) : (
-                                      hasSteps ? (
-                                        <View style={[styles.contenderStepsBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#f8fafc', borderColor: tierConfig.borderColor }]}>
-                                          <AnimatedCounter
-                                            value={c.total_steps}
-                                            style={[styles.contenderStepsNum, { color: tierConfig.textColor }]}
-                                          />
-                                          <ThemedText style={[styles.contenderStepsLabel, { color: colors.icon }]}>
-                                            خطوة
-                                          </ThemedText>
-                                        </View>
-                                      ) : (
-                                        <View style={[styles.contenderZeroBadge, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9', borderColor: colors.border }]}>
-                                          <ThemedText style={[styles.contenderZeroText, { color: colors.icon }]}>0 خطوة</ThemedText>
-                                        </View>
-                                      )
+                                      <View style={[styles.contenderStepsBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#f8fafc', borderColor: tierConfig.borderColor }]}>
+                                        <AnimatedCounter
+                                          value={c.total_steps}
+                                          style={[styles.contenderStepsNum, { color: tierConfig.textColor }]}
+                                        />
+                                        <ThemedText style={[styles.contenderStepsLabel, { color: colors.icon }]}>
+                                          خطوة
+                                        </ThemedText>
+                                      </View>
                                     )}
                                   </View>
                                 </View>
@@ -1839,7 +1809,7 @@ export function GroupDetailsModal({
                       <ThemedText style={[styles.emptyText, { color: colors.icon }]}>
                         {leaderboardMetric === 'points'
                           ? 'لم يتم تسجيل نقاط في هذا التحدي بعد'
-                          : 'لم يتم تسجيل خطوات في هذا التحدي بعد'}
+                          : 'لم يسجّل أي مشارك خطوات في الفترة المحددة'}
                       </ThemedText>
                     </View>
                   )}

@@ -504,22 +504,6 @@ export const groupDetailsStyles = StyleSheet.create({
     fontFamily: 'Tajawal-Regular',
     fontSize: 12,
   },
-  noticeBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 8,
-    marginBottom: 4,
-  },
-  noticeText: {
-    fontFamily: 'Tajawal-Medium',
-    fontSize: 11,
-    flex: 1,
-    lineHeight: 16,
-
-  },
   memberRow: {
     flexDirection: 'row',
     alignItems: 'center',
