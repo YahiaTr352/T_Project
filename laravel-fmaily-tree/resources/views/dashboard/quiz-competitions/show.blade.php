@@ -475,13 +475,13 @@
 
                                         <div class="row">
                                             <div class="col-md-5 mb-3">
-                                                <label class="font-weight-bold text-dark">طريقة احتساب الخطوات في السباق</label>
+                                                <label class="font-weight-bold text-dark">طريقة ترتيب السباق</label>
                                                 <select name="race_calc_mode" class="form-control font-weight-bold" style="border-radius: 10px;">
                                                     <option value="cumulative" {{ $rCfg['calc_mode'] === 'cumulative' ? 'selected' : '' }}>
                                                         تراكمي يوم بيوم (يجمع كل يوم على السابق)
                                                     </option>
                                                     <option value="daily" {{ $rCfg['calc_mode'] === 'daily' ? 'selected' : '' }}>
-                                                        خطوات كل يوم منفصلة لوحدها
+                                                        نقاط كل يوم على حدة
                                                     </option>
                                                 </select>
                                             </div>

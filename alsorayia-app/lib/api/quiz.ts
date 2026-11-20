@@ -202,6 +202,7 @@ export interface WalkingPredictionData {
 export interface WalkingRaceConfig {
   enabled: boolean;
   calc_mode: 'cumulative' | 'daily';
+  metric?: 'steps' | 'points';
   speed_ms: number;
   max_ranks: number;
   title: string;
@@ -218,6 +219,8 @@ export interface WalkingRaceEntry {
   steps: number;
   prev_steps: number;
   daily_steps: number;
+  points?: number;
+  prev_points?: number;
   color: string;
   is_anonymous: boolean;
   is_viewer: boolean;
@@ -229,6 +232,7 @@ export interface WalkingRaceDay {
   date: string;
   date_label: string;
   max_steps: number;
+  max_points?: number;
   top_entries: WalkingRaceEntry[];
 }
 

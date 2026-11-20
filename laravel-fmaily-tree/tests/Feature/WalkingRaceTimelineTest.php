@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\Person;
 use App\Models\QuizCompetition;
+use App\Models\QuizCompetitionWalkingScore;
 use App\Models\QuizQuestion;
 use App\Models\User;
+use App\Models\WalkingGroup;
 use App\Models\WalkingRecord;
 use App\Services\SiteMobileAccessToken;
 use App\Services\Walking\WalkingCompetitionScoringService;
@@ -53,6 +55,8 @@ class WalkingRaceTimelineTest extends TestCase
             'walking_settings' => [
                 'competition_scope' => 'individuals',
                 'scoring_method' => 'daily_rank_points',
+                'daily_points' => [1 => 5, 2 => 3],
+                'min_daily_steps' => 4000,
                 'target_gender' => 'male',
                 'race_enabled' => true,
                 'race_calc_mode' => 'cumulative',
@@ -88,6 +92,7 @@ class WalkingRaceTimelineTest extends TestCase
         $timeline = $service->getDailyRaceTimeline($competition, $question, $yousef);
 
         $this->assertFalse($timeline['access_denied']);
+        $this->assertArrayNotHasKey('metric', $timeline['config']);
         $this->assertSame('male', $timeline['default_section']);
         $this->assertArrayHasKey('male', $timeline['sections']);
 
@@ -115,7 +120,20 @@ class WalkingRaceTimelineTest extends TestCase
         $this->assertSame(2, $secondDayTop[1]['rank']);
         $this->assertSame(10000, $secondDayTop[1]['steps']);
 
-        // Verify Daily Mode computes standalone day totals instead of cumulative sums
+        // The first day was finalized with a different points schedule.
+        foreach ([[$yousef, 8000, 1, 4], [$abdullah, 5000, 2, 7]] as [$person, $steps, $rank, $points]) {
+            QuizCompetitionWalkingScore::create([
+                'quiz_question_id' => $question->id,
+                'person_id' => $person->id,
+                'date' => $day1,
+                'steps' => $steps,
+                'daily_rank' => $rank,
+                'points_earned' => $points,
+                'gender' => 'male',
+            ]);
+        }
+        WalkingRecord::create(['person_id' => $yousef->id, 'date' => $now->toDateString(), 'steps' => 6000]);
+
         $settings = $question->walking_settings;
         $settings['race_calc_mode'] = 'daily';
         $question->walking_settings = $settings;
@@ -123,9 +141,67 @@ class WalkingRaceTimelineTest extends TestCase
         $service->clearCompetitionCaches($question);
 
         $dailyTimeline = $service->getDailyRaceTimeline($competition, $question, $yousef);
+        $this->assertSame('points', $dailyTimeline['config']['metric']);
         $dailyDays = $dailyTimeline['sections']['male']['days'];
+
+        $this->assertSame(7, $dailyDays[0]['max_points']);
+        $this->assertSame(8000, $dailyDays[0]['max_steps']);
+        $this->assertSame([$abdullah->id, $yousef->id], array_column($dailyDays[0]['top_entries'], 'person_id'));
+        $this->assertSame([7, 4], array_column($dailyDays[0]['top_entries'], 'points'));
+        $this->assertSame([5000, 8000], array_column($dailyDays[0]['top_entries'], 'daily_steps'));
+
+        $this->assertSame(5, $dailyDays[1]['max_points']);
+        $this->assertSame([5, 0], array_column($dailyDays[1]['top_entries'], 'points'));
+        $this->assertSame([7, 4], array_column($dailyDays[1]['top_entries'], 'prev_points'));
         $this->assertSame(7000, $dailyDays[1]['top_entries'][0]['steps']);
         $this->assertSame(2000, $dailyDays[1]['top_entries'][1]['steps']);
+
+        $today = $dailyDays[2]['top_entries'];
+        $this->assertSame([$yousef->id], array_column($today, 'person_id'));
+        $this->assertSame(5, $today[0]['points']);
+        $this->assertSame(6000, $today[0]['daily_steps']);
+        $this->assertSame(0, $today[0]['prev_points']);
+    }
+
+    public function test_daily_group_race_uses_the_configured_rank_points(): void
+    {
+        $today = Carbon::today(WalkingCompetitionScoringService::KSA_TIMEZONE);
+        $competition = QuizCompetition::create([
+            'title' => 'تحدي المجموعات',
+            'is_active' => true,
+            'start_at' => $today,
+            'end_at' => $today->copy()->endOfDay(),
+        ]);
+
+        $groupIds = [];
+        foreach ([7000, 5000] as $steps) {
+            $person = Person::create(['first_name' => 'متسابق', 'last_name' => 'المجموعة', 'gender' => 'male']);
+            $group = WalkingGroup::create(['name' => 'مجموعة ' . $steps, 'created_by_person_id' => $person->id]);
+            $groupIds[] = $group->id;
+            WalkingRecord::create(['person_id' => $person->id, 'date' => $today->toDateString(), 'steps' => $steps]);
+        }
+
+        $question = QuizQuestion::create([
+            'quiz_competition_id' => $competition->id,
+            'question_text' => 'سباق المجموعات',
+            'answer_type' => 'walking',
+            'walking_settings' => [
+                'competition_scope' => 'groups',
+                'competing_group_ids' => $groupIds,
+                'group_daily_points' => [1 => 2, 2 => 6],
+                'target_gender' => 'all',
+                'race_enabled' => true,
+                'race_calc_mode' => 'daily',
+            ],
+        ]);
+
+        $this->getJson(route('quiz-competitions.walking-race', [$competition, $question]))
+            ->assertOk()
+            ->assertJsonPath('data.config.metric', 'points')
+            ->assertJsonPath('data.sections.groups.days.0.max_points', 6)
+            ->assertJsonPath('data.sections.groups.days.0.top_entries.0.person_id', $groupIds[1])
+            ->assertJsonPath('data.sections.groups.days.0.top_entries.0.points', 6)
+            ->assertJsonPath('data.sections.groups.days.0.top_entries.0.steps', 5000);
     }
 
     public function test_privacy_enforced_for_female_race_timeline_on_public_and_api_endpoints(): void
@@ -147,7 +223,7 @@ class WalkingRaceTimelineTest extends TestCase
             'walking_settings' => [
                 'target_gender' => 'female',
                 'race_enabled' => true,
-                'race_calc_mode' => 'cumulative',
+                'race_calc_mode' => 'daily',
             ],
         ]);
 
@@ -196,9 +272,9 @@ class WalkingRaceTimelineTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.access_denied', false)
             ->assertJsonPath('data.can_view_female', true)
-            ->assertJsonPath('data.default_section', 'female');
-
-        $this->assertNotEmpty($femaleRes->json('data.sections.female.days'));
+            ->assertJsonPath('data.default_section', 'female')
+            ->assertJsonPath('data.config.metric', 'points')
+            ->assertJsonPath('data.sections.female.days.1.top_entries.0.person_id', $femaleParticipant->id);
     }
 
     public function test_admin_can_toggle_and_configure_walking_race_settings(): void
@@ -236,7 +312,7 @@ class WalkingRaceTimelineTest extends TestCase
                 'race_speed_ms' => 950,
                 'race_max_ranks' => 5,
                 'race_title' => 'سباق الأبطال',
-                'race_subtitle' => 'الخطوات اليومية',
+                'race_subtitle' => 'النقاط اليومية',
                 'race_button_text' => 'شاهد السباق المتحرك',
             ]
         );
@@ -248,7 +324,7 @@ class WalkingRaceTimelineTest extends TestCase
         $this->assertSame(950, $question->getWalkingRaceSpeedMs());
         $this->assertSame(5, $question->getWalkingRaceMaxRanks());
         $this->assertSame('سباق الأبطال', $question->getWalkingRaceTitle());
-        $this->assertSame('الخطوات اليومية', $question->getWalkingRaceSubtitle());
+        $this->assertSame('النقاط اليومية', $question->getWalkingRaceSubtitle());
         $this->assertSame('شاهد السباق المتحرك', $question->getWalkingRaceButtonText());
 
         // Public web endpoint now succeeds

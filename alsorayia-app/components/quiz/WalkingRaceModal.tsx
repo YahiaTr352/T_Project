@@ -31,7 +31,8 @@ import {
 
 const RTL_ROW = I18nManager.isRTL ? 'row' : 'row-reverse';
 const ROW_HEIGHT = 50;
-const STEP_LABEL_RESERVE = 88;
+const DAILY_ROW_HEIGHT = 60;
+const VALUE_LABEL_RESERVE = 88;
 const MIN_BAR_WIDTH = 28;
 const EASTERN_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
 
@@ -39,10 +40,12 @@ function toEasternArabicDigits(input: number | string): string {
   return String(input).replace(/\d/g, (digit) => EASTERN_DIGITS[Number(digit)] ?? digit);
 }
 
-function formatEasternSteps(steps: number): string {
-  const safe = Math.max(0, Math.round(steps));
+function formatRaceValue(value: number, showPoints: boolean): string {
+  const safe = Math.max(0, Math.round(value));
   const grouped = safe.toLocaleString('en-US');
-  return `${toEasternArabicDigits(grouped)} خطوة`;
+  const remainder = safe % 100;
+  const unit = showPoints ? (remainder >= 3 && remainder <= 10 ? 'نقاط' : 'نقطة') : 'خطوة';
+  return `${toEasternArabicDigits(grouped)} ${unit}`;
 }
 
 function resolveAvatarUri(raw?: string | null): string | null {
@@ -75,7 +78,7 @@ interface RaceTheme {
   titleColor: string;
   subtitleColor: string;
   nameColor: string;
-  stepsColor: string;
+  valueColor: string;
   dateBoxBg: string;
   dateBoxBorder: string;
   dateBoxText: string;
@@ -103,7 +106,7 @@ function getRaceTheme(isDark: boolean): RaceTheme {
       titleColor: '#f8fafc',
       subtitleColor: '#94a3b8',
       nameColor: '#f1f5f9',
-      stepsColor: '#cbd5e1',
+      valueColor: '#cbd5e1',
       dateBoxBg: '#1e293b',
       dateBoxBorder: '#475569',
       dateBoxText: '#f8fafc',
@@ -130,7 +133,7 @@ function getRaceTheme(isDark: boolean): RaceTheme {
     titleColor: '#0f2942',
     subtitleColor: '#475569',
     nameColor: '#0f172a',
-    stepsColor: '#334155',
+    valueColor: '#334155',
     dateBoxBg: '#f9f6f0',
     dateBoxBorder: '#94a3b8',
     dateBoxText: '#0f2942',
@@ -155,12 +158,13 @@ interface RaceRowSnapshot {
   targetTop: number;
   targetBarWidth: number;
   visible: boolean;
-  startSteps: number;
-  endSteps: number;
+  startValue: number;
+  endValue: number;
 }
 
 interface AnimatedRaceRowProps {
   snapshot: RaceRowSnapshot;
+  showPoints: boolean;
   animDurationMs: number;
   transitionKey: string;
   theme: RaceTheme;
@@ -168,18 +172,19 @@ interface AnimatedRaceRowProps {
 
 const AnimatedRaceRow = React.memo(function AnimatedRaceRow({
   snapshot,
+  showPoints,
   animDurationMs,
   transitionKey,
   theme,
 }: AnimatedRaceRowProps) {
-  const { entry, targetTop, targetBarWidth, visible, startSteps, endSteps } = snapshot;
+  const { entry, targetTop, targetBarWidth, visible, startValue, endValue } = snapshot;
 
   const translateY = useSharedValue(targetTop);
   const opacity = useSharedValue(visible ? 1 : 0);
   const barWidth = useSharedValue(targetBarWidth);
 
-  const [displaySteps, setDisplaySteps] = useState<number>(endSteps);
-  const lastDisplayedRef = useRef<number>(endSteps);
+  const [displayValue, setDisplayValue] = useState<number>(endValue);
+  const lastDisplayedRef = useRef<number>(endValue);
   const [imgError, setImgError] = useState(false);
 
   const avatarUri = useMemo(() => resolveAvatarUri(entry.avatar), [entry.avatar]);
@@ -199,10 +204,10 @@ const AnimatedRaceRow = React.memo(function AnimatedRaceRow({
   }, [targetTop, targetBarWidth, visible, animDurationMs, translateY, opacity, barWidth]);
 
   useEffect(() => {
-    const fromValue = lastDisplayedRef.current !== endSteps ? startSteps : lastDisplayedRef.current;
-    if (fromValue === endSteps) {
-      setDisplaySteps(endSteps);
-      lastDisplayedRef.current = endSteps;
+    const fromValue = lastDisplayedRef.current !== endValue ? startValue : lastDisplayedRef.current;
+    if (fromValue === endValue) {
+      setDisplayValue(endValue);
+      lastDisplayedRef.current = endValue;
       return;
     }
 
@@ -215,15 +220,15 @@ const AnimatedRaceRow = React.memo(function AnimatedRaceRow({
       const t = Math.min(1, elapsed / duration);
       // Cubic ease-out matches Reanimated bar width timing
       const eased = 1 - Math.pow(1 - t, 3);
-      const current = Math.round(fromValue + (endSteps - fromValue) * eased);
+      const current = Math.round(fromValue + (endValue - fromValue) * eased);
       lastDisplayedRef.current = current;
-      setDisplaySteps(current);
+      setDisplayValue(current);
 
       if (t < 1) {
         frameId = requestAnimationFrame(tick);
       } else {
-        lastDisplayedRef.current = endSteps;
-        setDisplaySteps(endSteps);
+        lastDisplayedRef.current = endValue;
+        setDisplayValue(endValue);
       }
     };
 
@@ -231,7 +236,7 @@ const AnimatedRaceRow = React.memo(function AnimatedRaceRow({
     return () => {
       if (frameId) cancelAnimationFrame(frameId);
     };
-  }, [endSteps, startSteps, animDurationMs, transitionKey]);
+  }, [endValue, startValue, animDurationMs, transitionKey]);
 
   const rowAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
@@ -245,7 +250,7 @@ const AnimatedRaceRow = React.memo(function AnimatedRaceRow({
   const showImage = Boolean(avatarUri) && !imgError;
 
   return (
-    <Animated.View style={[styles.raceRow, rowAnimatedStyle]} pointerEvents={visible ? 'auto' : 'none'}>
+    <Animated.View style={[styles.raceRow, showPoints && styles.dailyRaceRow, rowAnimatedStyle]} pointerEvents={visible ? 'auto' : 'none'}>
       {/* Avatar on the RIGHT in RTL */}
       <View
         style={[
@@ -270,7 +275,6 @@ const AnimatedRaceRow = React.memo(function AnimatedRaceRow({
         )}
       </View>
 
-      {/* Name + Bar + Steps container */}
       <View style={styles.rowBody}>
         <Text style={[styles.contestantName, { color: theme.nameColor }]} numberOfLines={1} ellipsizeMode="tail">
           {entry.name}
@@ -288,9 +292,16 @@ const AnimatedRaceRow = React.memo(function AnimatedRaceRow({
             <Text style={styles.rankInsideBar}>{toEasternArabicDigits(entry.rank)}</Text>
           </Animated.View>
 
-          <Text style={[styles.stepsLabel, { color: theme.stepsColor }]} numberOfLines={1}>
-            {formatEasternSteps(displaySteps)}
-          </Text>
+          <View style={styles.raceValues}>
+            <Text style={[styles.valueLabel, { color: theme.valueColor }]} numberOfLines={1}>
+              {formatRaceValue(displayValue, showPoints)}
+            </Text>
+            {showPoints && (
+              <Text style={[styles.stepsDetail, { color: theme.subtitleColor }]} numberOfLines={1}>
+                {formatRaceValue(entry.daily_steps, false)}
+              </Text>
+            )}
+          </View>
         </View>
       </View>
     </Animated.View>
@@ -378,6 +389,8 @@ export default function WalkingRaceModal({
 
   const safeDayIndex = Math.min(dayIndex, Math.max(0, activeDays.length - 1));
   const currentDay: WalkingRaceDay | null = activeDays[safeDayIndex] ?? null;
+  const showPoints = (timeline?.config ?? raceConfig)?.metric === 'points';
+  const rowHeight = showPoints ? DAILY_ROW_HEIGHT : ROW_HEIGHT;
   const previousDay: WalkingRaceDay | null =
     safeDayIndex > 0 ? activeDays[safeDayIndex - 1] ?? null : null;
 
@@ -429,8 +442,10 @@ export default function WalkingRaceModal({
   const rowSnapshots: RaceRowSnapshot[] = useMemo(() => {
     if (!currentDay) return [];
 
-    const maxSteps = Math.max(1, currentDay.max_steps || 1);
-    const maxBarWidth = Math.max(MIN_BAR_WIDTH + 16, trackWidth - STEP_LABEL_RESERVE);
+    const maxValue = Math.max(1, (showPoints ? currentDay.max_points : currentDay.max_steps) ?? 0);
+    const valueKey = showPoints ? 'points' : 'steps';
+    const previousValueKey = showPoints ? 'prev_points' : 'prev_steps';
+    const maxBarWidth = Math.max(MIN_BAR_WIDTH + 16, trackWidth - VALUE_LABEL_RESERVE);
 
     const prevMap = new Map<string, WalkingRaceEntry>();
     if (previousDay) {
@@ -460,10 +475,10 @@ export default function WalkingRaceModal({
       const entry = cur ?? prev ?? baseEntry;
 
       const visibleNow = Boolean(cur);
-      const targetTop = visibleNow ? (cur!.rank - 1) * ROW_HEIGHT : displayedSlotsCount * ROW_HEIGHT;
-      const targetSteps = cur ? cur.steps : prev ? prev.steps : 0;
-      const startSteps = prev ? prev.steps : cur ? cur.prev_steps : 0;
-      const fraction = maxSteps > 0 ? Math.min(1, Math.max(0, targetSteps / maxSteps)) : 0;
+      const targetTop = visibleNow ? (cur!.rank - 1) * rowHeight : displayedSlotsCount * rowHeight;
+      const targetValue = (cur ?? prev)?.[valueKey] ?? 0;
+      const startValue = prev?.[valueKey] ?? cur?.[previousValueKey] ?? 0;
+      const fraction = Math.min(1, Math.max(0, targetValue / maxValue));
       const targetBarWidth = visibleNow
         ? MIN_BAR_WIDTH + (maxBarWidth - MIN_BAR_WIDTH) * fraction
         : MIN_BAR_WIDTH;
@@ -473,13 +488,13 @@ export default function WalkingRaceModal({
         targetTop,
         targetBarWidth,
         visible: visibleNow,
-        startSteps,
-        endSteps: targetSteps,
+        startValue,
+        endValue: targetValue,
       });
     });
 
     return snapshots;
-  }, [activeDays, currentDay, previousDay, trackWidth, displayedSlotsCount]);
+  }, [activeDays, currentDay, previousDay, trackWidth, displayedSlotsCount, showPoints, rowHeight]);
 
   const totalDots = Math.max(
     timeline?.total_competition_days ?? 0,
@@ -524,7 +539,7 @@ export default function WalkingRaceModal({
   const modalSubtitle =
     timeline?.config?.subtitle ||
     raceConfig?.subtitle ||
-    'منافسة يومية في عدد الخطوات التراكمية';
+    (showPoints ? 'ترتيب المشاركين بنقاط كل يوم' : 'منافسة يومية في عدد الخطوات التراكمية');
 
   return (
     <Modal
@@ -647,8 +662,10 @@ export default function WalkingRaceModal({
             </View>
           ) : activeDays.length === 0 ? (
             <View style={styles.stateBox}>
-              <Ionicons name="footsteps-outline" size={34} color={theme.subtitleColor} />
-              <Text style={[styles.stateText, { color: theme.stateText }]}>لا توجد بيانات خطوات مسجلة لأيام المسابقة بعد.</Text>
+              <Ionicons name={showPoints ? 'trophy-outline' : 'footsteps-outline'} size={34} color={theme.subtitleColor} />
+              <Text style={[styles.stateText, { color: theme.stateText }]}>
+                {showPoints ? 'لا توجد نتائج نقاط بعد في هذه المسابقة.' : 'لا توجد بيانات خطوات مسجلة لأيام المسابقة بعد.'}
+              </Text>
             </View>
           ) : (
             <ScrollView
@@ -658,12 +675,13 @@ export default function WalkingRaceModal({
             >
               <View
                 onLayout={handleTrackLayout}
-                style={[styles.stage, { height: displayedSlotsCount * ROW_HEIGHT }]}
+                style={[styles.stage, { height: displayedSlotsCount * rowHeight }]}
               >
                 {rowSnapshots.map((snap) => (
                   <AnimatedRaceRow
                     key={snap.entry.entry_id}
                     snapshot={snap}
+                    showPoints={showPoints}
                     animDurationMs={animDurationMs}
                     transitionKey={`${activeSectionKey ?? 's'}-${safeDayIndex}`}
                     theme={theme}
@@ -976,6 +994,9 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 3,
   },
+  dailyRaceRow: {
+    height: DAILY_ROW_HEIGHT,
+  },
   avatarCircle: {
     width: 36,
     height: 36,
@@ -1034,11 +1055,18 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     paddingTop: 1,
   },
-  stepsLabel: {
+  valueLabel: {
     fontFamily: 'Tajawal-Bold',
     fontSize: 11.5,
     color: '#334155',
     flexShrink: 0,
+  },
+  raceValues: {
+    flexShrink: 0,
+  },
+  stepsDetail: {
+    fontFamily: 'Tajawal-Medium',
+    fontSize: 10.5,
   },
 
   stateBox: {

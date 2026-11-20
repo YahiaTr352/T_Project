@@ -43,14 +43,14 @@
             <div class="row">
                 <div class="col-md-4 mb-3">
                     <label class="modern-label font-weight-bold text-gray-800">
-                        <i class="fas fa-calculator ml-1 text-primary"></i> طريقة احتساب الخطوات في السباق
+                        <i class="fas fa-calculator ml-1 text-primary"></i> طريقة ترتيب السباق
                     </label>
                     <select name="{{ $prefix }}[race_calc_mode]" class="form-control modern-input font-weight-bold">
                         <option value="cumulative" {{ $raceCalcMode === 'cumulative' ? 'selected' : '' }}>
                             تراكمي يوم بيوم (يجمع كل يوم على السابق)
                         </option>
                         <option value="daily" {{ $raceCalcMode === 'daily' ? 'selected' : '' }}>
-                            خطوات كل يوم منفصلة لوحدها
+                            نقاط كل يوم على حدة
                         </option>
                     </select>
                     <small class="text-muted d-block mt-1">التراكمي يجمع خطوات كل يوم على مجموع الأيام السابقة فيتغير الترتيب العام.</small>
