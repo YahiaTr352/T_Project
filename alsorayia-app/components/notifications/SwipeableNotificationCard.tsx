@@ -1,7 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import {
   Animated,
-  I18nManager,
   PanResponder,
   StyleSheet,
   TouchableOpacity,
@@ -746,7 +745,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   invitationText: {
-    textAlign: I18nManager.isRTL ? 'auto' : 'right',
+    // Keep Android from interpreting right alignment relative to the RTL card layout.
+    ...(Platform.OS === 'android' ? { direction: 'ltr' } : {}),
+    textAlign: 'right',
     writingDirection: 'rtl',
   },
   invitationTitle: {

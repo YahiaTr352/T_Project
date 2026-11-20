@@ -2,7 +2,12 @@ import NotificationsScreen from '@/app/(app)/notifications';
 import { CustomAlert } from '@/components/ui/AlertModal';
 import { api } from '@/lib/api/alsorayiaClient';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
+jest.mock('react-native/Libraries/Utilities/Platform', () => {
+  const { default: platform } = jest.requireActual('react-native/Libraries/Utilities/Platform');
+  return { default: { ...platform, OS: 'android' } };
+});
 jest.mock('@/lib/api/alsorayiaClient', () => ({
   api: { get: jest.fn(), put: jest.fn() },
   WEB_BASE_URL: 'http://127.0.0.1:8000',
@@ -27,7 +32,10 @@ jest.mock('@/components/themed-view', () => ({ ThemedView: jest.requireActual('r
 jest.mock('@/components/ui/icon-symbol', () => ({ IconSymbol: () => null }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('expo-image', () => ({ Image: () => null }));
-jest.mock('expo-haptics', () => ({}));
+jest.mock('expo-haptics', () => ({
+  ImpactFeedbackStyle: { Light: 'light' },
+  impactAsync: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('expo-web-browser', () => ({}));
 
 const get = jest.mocked(api.get);
@@ -54,6 +62,38 @@ beforeEach(() => {
       ],
     },
   });
+});
+
+test('right-aligns the invitation title and message on Android in both card states', async () => {
+  const message = 'السلام عليكم ورحمة الله وبركاته،\nنتشرف بحضوركم.';
+  get.mockResolvedValueOnce({
+    data: {
+      data: [{
+        ...baseNotification,
+        id: 10,
+        title: 'دعوة عشاء',
+        body: message,
+        invitation: { id: 10, response: null },
+      }],
+    },
+  });
+
+  render(<NotificationsScreen />);
+  const title = await screen.findByText('دعوة عشاء', {}, { timeout: 5000 });
+  const rightAligned = {
+    direction: 'ltr',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  };
+  expect(StyleSheet.flatten(title.props.style)).toMatchObject(rightAligned);
+  expect(StyleSheet.flatten(screen.getByText(message).props.style)).toMatchObject(rightAligned);
+
+  fireEvent.press(screen.getByText('عرض تفاصيل الإشعار كاملة ▾'), { stopPropagation: jest.fn() });
+
+  expect(screen.getByText('إخفاء تفاصيل الإشعار ▴')).toBeOnTheScreen();
+  const expandedMessage = screen.getByText(message);
+  expect(expandedMessage.props.numberOfLines).toBeUndefined();
+  expect(StyleSheet.flatten(expandedMessage.props.style)).toMatchObject(rightAligned);
 });
 
 test.each([
