@@ -73,6 +73,8 @@ test('right-aligns the invitation title and message on Android in both card stat
         id: 10,
         title: 'دعوة عشاء',
         body: message,
+        created_at: '2026-11-20T14:19:38+03:00',
+        time_ago: 'منذ ٢٥ دقيقة',
         invitation: { id: 10, response: null },
       }],
     },
@@ -94,6 +96,12 @@ test('right-aligns the invitation title and message on Android in both card stat
   const expandedMessage = screen.getByText(message);
   expect(expandedMessage.props.numberOfLines).toBeUndefined();
   expect(StyleSheet.flatten(expandedMessage.props.style)).toMatchObject(rightAligned);
+  expect(screen.getByText('٢٠ نوفمبر ٢٠٢٦ في ٢:١٩ م')).toBeOnTheScreen();
+
+  const collapse = screen.getByText('طي الإشعار');
+  expect(collapse.props.numberOfLines).toBe(1);
+  fireEvent.press(collapse, { stopPropagation: jest.fn() });
+  expect(screen.queryByText('طي الإشعار')).toBeNull();
 });
 
 test.each([

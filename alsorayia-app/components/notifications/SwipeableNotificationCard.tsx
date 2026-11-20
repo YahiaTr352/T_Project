@@ -43,10 +43,25 @@ const NOTIFICATION_COLORS: Record<NotificationDetailItem['type'], string> = {
 };
 
 const REVEAL_WIDTH = 80;
+const NOTIFICATION_DATE_FORMAT = new Intl.DateTimeFormat('ar-SA', {
+  calendar: 'gregory',
+  timeZone: 'Asia/Riyadh',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
+});
 const INVITATION_ACTIONS = [
   { value: 'accepted', label: 'قبول', accessibilityLabel: 'قبول الدعوة' },
   { value: 'declined', label: 'رفض', accessibilityLabel: 'رفض الدعوة' },
 ] as const;
+
+function formatNotificationDate(timestamp: string): string {
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? timestamp : NOTIFICATION_DATE_FORMAT.format(date);
+}
 
 export interface SwipeableNotificationCardProps {
   item: NotificationDetailItem;
@@ -90,6 +105,7 @@ export function SwipeableNotificationCard({
   const showInvitationResponse = isInvitation && onInvitationResponse && !isSelectionMode;
   const savedResponse = item.invitation?.response;
   const declineColor = isDark ? '#FCA5A5' : '#B91C1C';
+  const formattedTime = item.time && (isExpanded || !item.timeAgo) ? formatNotificationDate(item.time) : '';
 
   const hasImage = item.mediaType === 'image' && !!item.mediaUrl;
   const hasVideo = item.mediaType === 'video' && !!item.mediaUrl;
@@ -400,7 +416,7 @@ export function SwipeableNotificationCard({
               <View style={styles.timeRow}>
                 <IconSymbol name="clock.fill" size={11} color={colors.icon} />
                 <ThemedText style={[styles.timeAgo, { color: colors.icon }]}>
-                  {item.timeAgo || item.time}
+                  {item.timeAgo || formattedTime}
                 </ThemedText>
               </View>
             </View>
@@ -642,11 +658,11 @@ export function SwipeableNotificationCard({
           {/* تفاصيل التوسيع: التاريخ والمشاركة */}
           {isExpanded && (
             <View style={styles.expandedFooter}>
-              {item.time ? (
+              {formattedTime ? (
                 <View style={styles.fullDateRow}>
                   <IconSymbol name="calendar" size={12} color={colors.icon} />
                   <ThemedText style={[styles.fullDateText, { color: colors.icon }]}>
-                    {item.time}
+                    {formattedTime}
                   </ThemedText>
                 </View>
               ) : null}
@@ -681,7 +697,7 @@ export function SwipeableNotificationCard({
                   ]}
                 >
                   <IconSymbol name="chevron.up" size={13} color={colors.icon} />
-                  <ThemedText style={[styles.footerActionText, { color: colors.icon }]}>
+                  <ThemedText numberOfLines={1} style={[styles.footerActionText, { color: colors.icon }]}>
                     طي الإشعار
                   </ThemedText>
                 </TouchableOpacity>
@@ -984,12 +1000,14 @@ const styles = StyleSheet.create({
   },
   expandedActionsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
     marginTop: 4,
   },
   footerActionBtn: {
     flexDirection: 'row',
+    flexShrink: 0,
     alignItems: 'center',
     gap: 5,
     paddingHorizontal: 12,
