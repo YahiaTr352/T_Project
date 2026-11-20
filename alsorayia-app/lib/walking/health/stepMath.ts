@@ -81,7 +81,8 @@ export function subtractManualFromBuckets(
   buckets: RawStepBucket[],
   manualHourly: Record<number, number>,
   manualTotal: number,
-  targetDayKey: string
+  targetDayKey: string,
+  useDeviceTime = false
 ): RawStepBucket[] {
   if (manualTotal <= 0) return buckets;
 
@@ -90,11 +91,11 @@ export function subtractManualFromBuckets(
 
   const firstPass = buckets.map((bucket) => {
     const date = parseBucketDate(bucket.start);
-    if (Number.isNaN(date.getTime()) || ksaDateKey(date) !== targetDayKey) return bucket;
+    if (Number.isNaN(date.getTime()) || (useDeviceTime ? dateKey(date) : ksaDateKey(date)) !== targetDayKey) return bucket;
     const numeric = Number(bucket.steps);
     if (!Number.isFinite(numeric) || numeric <= 0) return bucket;
 
-    const hour = ksaHour(date);
+    const hour = useDeviceTime ? date.getHours() : ksaHour(date);
     const hourManual = remainingByHour[hour] ?? 0;
     if (hourManual <= 0) return bucket;
 
@@ -110,7 +111,7 @@ export function subtractManualFromBuckets(
   return firstPass.map((bucket) => {
     if (remainingOverall <= 0) return bucket;
     const date = parseBucketDate(bucket.start);
-    if (Number.isNaN(date.getTime()) || ksaDateKey(date) !== targetDayKey) return bucket;
+    if (Number.isNaN(date.getTime()) || (useDeviceTime ? dateKey(date) : ksaDateKey(date)) !== targetDayKey) return bucket;
     const numeric = Number(bucket.steps);
     if (!Number.isFinite(numeric) || numeric <= 0) return bucket;
 

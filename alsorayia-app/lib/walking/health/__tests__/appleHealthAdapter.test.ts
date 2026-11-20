@@ -22,6 +22,7 @@ function createModule(
     isHealthDataAvailable: jest.fn(() => true),
     requestAuthorization: jest.fn(async () => true),
     queryStatisticsCollectionForQuantity: jest.fn(async () => []),
+    queryQuantitySamples: jest.fn(async () => []),
     ...overrides,
   };
 }
@@ -274,37 +275,85 @@ describe('createAppleHealthAdapter', () => {
     });
   });
 
-  it('reads personal steps and hours between device-local midnights', async () => {
+  it('excludes manual steps from the personal total and local hour where they were entered', async () => {
     const start = new Date(2025, 2, 9);
     const end = new Date(2025, 2, 10);
     const stats = jest.fn(async () => [
-      { startDate: new Date(2025, 2, 9, 22), sumQuantity: { quantity: 530 } },
+      { startDate: new Date(2025, 2, 9, 8), sumQuantity: { quantity: 2000 } },
+      { startDate: new Date(2025, 2, 9, 22), sumQuantity: { quantity: 1500 } },
+    ]);
+    const queryQuantitySamples = jest.fn(async () => [
+      { startDate: new Date(2025, 2, 9, 8, 10), quantity: 2000, metadata: { HKWasUserEntered: false } },
+      { startDate: new Date(2025, 2, 9, 22, 15), quantity: 500, metadata: { HKWasUserEntered: true } },
+      { startDate: end, quantity: 700, metadata: { HKWasUserEntered: true } },
     ]);
     const adapter = createAppleHealthAdapter({
-      loadModule: () => createModule({ queryStatisticsCollectionForQuantity: stats }),
+      loadModule: () => createModule({
+        queryStatisticsCollectionForQuantity: stats,
+        queryStatisticsForQuantity: jest.fn(async () => ({ sumQuantity: { quantity: 3500 } })),
+        queryQuantitySamples,
+      }),
       consentStore: createConsentStore('granted'),
     });
 
-    await expect(adapter.readPersonalDay(new Date(2025, 2, 9, 12))).resolves.toEqual({ total: 530, hourly: { 22: 530 } });
+    const date = { startDate: start, endDate: end, strictStartDate: true, strictEndDate: true };
+    await expect(adapter.readPersonalDay(new Date(2025, 2, 9, 12))).resolves.toEqual({
+      total: 3000,
+      hourly: { 8: 2000, 22: 1000 },
+    });
     expect(stats).toHaveBeenCalledWith(
       'HKQuantityTypeIdentifierStepCount', ['cumulativeSum'], start, { hour: 1 },
-      { filter: { date: { startDate: start, endDate: end, strictStartDate: true, strictEndDate: true } }, unit: 'count' },
+      { filter: { date }, unit: 'count' },
     );
+    expect(queryQuantitySamples).toHaveBeenCalledWith('HKQuantityTypeIdentifierStepCount', {
+      filter: {
+        date,
+        OR: [
+          { metadata: { withMetadataKey: 'HKWasUserEntered' } },
+          { metadata: { withMetadataKey: 'HKMetadataKeyWasUserEntered' } },
+        ],
+      },
+      limit: 0,
+      unit: 'count',
+    });
   });
 
-  it('distinguishes a saved zero measurement from absent history', async () => {
+  it('subtracts manual history by local date and preserves zero separately from missing data', async () => {
     const adapter = createAppleHealthAdapter({
       loadModule: () => createModule({
         queryStatisticsCollectionForQuantity: jest.fn(async () => [
           { startDate: new Date(2025, 2, 8) },
-          { startDate: new Date(2025, 2, 9), sumQuantity: { quantity: 0 } },
+          { startDate: new Date(2025, 2, 9), sumQuantity: { quantity: 3500 } },
+          { startDate: new Date(2025, 2, 10), sumQuantity: { quantity: 200 } },
+          { startDate: new Date(2025, 2, 11), sumQuantity: { quantity: 0 } },
+        ]),
+        queryQuantitySamples: jest.fn(async () => [
+          { startDate: new Date(2025, 2, 9, 23, 55), quantity: 500, metadata: { HKWasUserEntered: 1 } },
+          { startDate: new Date(2025, 2, 10, 0, 5), quantity: 200, metadata: { HKMetadataKeyWasUserEntered: 'true' } },
         ]),
       }),
       consentStore: createConsentStore('granted'),
     });
 
-    await expect(adapter.readPersonalDays(new Date(2025, 2, 8), new Date(2025, 2, 9)))
-      .resolves.toEqual({ '2025-03-09': 0 });
+    await expect(adapter.readPersonalDays(new Date(2025, 2, 8), new Date(2025, 2, 11)))
+      .resolves.toEqual({ '2025-03-09': 3000, '2025-03-10': 0, '2025-03-11': 0 });
+  });
+
+  it('allows fallback to saved activity if the manual records cannot be checked', async () => {
+    const day = new Date(2025, 2, 9);
+    const adapter = createAppleHealthAdapter({
+      loadModule: () => createModule({
+        queryStatisticsForQuantity: jest.fn(async () => ({ sumQuantity: { quantity: 3500 } })),
+        queryStatisticsCollectionForQuantity: jest.fn(async () => [
+          { startDate: day, sumQuantity: { quantity: 3500 } },
+        ]),
+        queryQuantitySamples: jest.fn().mockRejectedValue(new Error('HealthKit read failed')),
+      }),
+      consentStore: createConsentStore('granted'),
+    });
+
+    await expect(adapter.readPersonalDay(day)).resolves.toBeNull();
+    await expect(adapter.readPersonalDays(day, day)).resolves.toEqual({});
   });
 
   it('starts a new local day at zero when yesterday confirms Health access', async () => {

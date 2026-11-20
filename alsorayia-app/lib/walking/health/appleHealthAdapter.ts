@@ -50,6 +50,7 @@ export interface HealthKitSampleFilterBase {
 
 export interface HealthKitSampleFilter extends HealthKitSampleFilterBase {
   NOT?: HealthKitSampleFilterBase[];
+  OR?: HealthKitSampleFilterBase[];
 }
 
 export interface HealthKitStatistic {
@@ -252,6 +253,40 @@ async function readManualSteps(
   }
 }
 
+async function readPersonalManualSteps(
+  module: HealthKitNativeModule,
+  start: Date,
+  end: Date,
+): Promise<Record<string, HealthDaySteps> | null> {
+  if (!module.queryQuantitySamples) return null;
+
+  // Query the metadata keys for the whole range without loading every recorded step sample.
+  const samples = await module.queryQuantitySamples(STEP_COUNT_IDENTIFIER, {
+    filter: {
+      date: { startDate: start, endDate: end, strictStartDate: true, strictEndDate: true },
+      OR: [USER_ENTERED_METADATA_KEY, LEGACY_USER_ENTERED_KEY_NAME].map((withMetadataKey) => ({
+        metadata: { withMetadataKey },
+      })),
+    },
+    limit: 0,
+    unit: 'count',
+  });
+  const days: Record<string, HealthDaySteps> = {};
+  for (const sample of samples) {
+    const steps = sample.quantity;
+    if (!isUserEnteredSample(sample) || steps == null || !Number.isFinite(steps) || steps <= 0) continue;
+    const at = parseBucketDate(toIsoString(sample.startDate));
+    if (!(at >= start && at < end)) continue;
+
+    const key = dateKey(at);
+    const day = days[key] ?? (days[key] = { total: 0, hourly: {} });
+    const hour = at.getHours();
+    day.total += steps;
+    day.hourly[hour] = (day.hourly[hour] ?? 0) + steps;
+  }
+  return days;
+}
+
 interface AppleHealthProvider extends WalkingHealthProvider {
   readPersonalDay(day: Date): Promise<HealthDaySteps | null>;
   readPersonalDays(firstDay: Date, lastDay: Date): Promise<Record<string, number>>;
@@ -379,18 +414,22 @@ export function createAppleHealthAdapter(deps: AppleHealthAdapterDeps): AppleHea
       if (!module || start >= end) return null;
 
       const filter = { date: { startDate: start, endDate: end, strictStartDate: true, strictEndDate: true } };
-      const [total, stats] = await Promise.all([
+      const [total, stats, manualDays] = await Promise.all([
         readOverallTotal(module, filter),
         module.queryStatisticsCollectionForQuantity(
           STEP_COUNT_IDENTIFIER, ['cumulativeSum'], start, { hour: 1 }, { filter, unit: 'count' }
         ).catch(() => null),
+        readPersonalManualSteps(module, start, end).catch(() => null),
       ]);
+      if (!manualDays) return null;
+
+      const key = dateKey(day);
       const measured = Array.isArray(stats) ? stats.filter((item) => {
         const time = parseBucketDate(toIsoString(item.startDate));
         return time >= start && time < end && Number.isFinite(item.sumQuantity?.quantity);
       }) : [];
       if (total == null && measured.length === 0) {
-        if (!stats || dateKey(day) !== dateKey(new Date())) return null;
+        if (!stats || key !== dateKey(new Date())) return null;
 
         // A readable prior day distinguishes a fresh local day from unavailable history.
         const yesterday = new Date(day.getFullYear(), day.getMonth(), day.getDate() - 1);
@@ -400,8 +439,11 @@ export function createAppleHealthAdapter(deps: AppleHealthAdapterDeps): AppleHea
         return priorTotal == null ? null : { total: 0, hourly: {} };
       }
 
-      const { total: hourlyTotal, hourly } = aggregateHourlyBuckets(toRawBuckets(measured), dateKey(day), undefined, true);
-      return { total: total ?? hourlyTotal, hourly };
+      const manual = manualDays[key];
+      const raw = toRawBuckets(measured);
+      const buckets = manual ? subtractManualFromBuckets(raw, manual.hourly, manual.total, key, true) : raw;
+      const { total: hourlyTotal, hourly } = aggregateHourlyBuckets(buckets, key, undefined, true);
+      return { total: total == null ? hourlyTotal : Math.max(0, total - Math.round(manual?.total ?? 0)), hourly };
     },
 
     async readPersonalDays(firstDay, lastDay) {
@@ -411,18 +453,24 @@ export function createAppleHealthAdapter(deps: AppleHealthAdapterDeps): AppleHea
       if (!module || start >= end) return {};
 
       try {
-        const stats = await module.queryStatisticsCollectionForQuantity(
-          STEP_COUNT_IDENTIFIER, ['cumulativeSum'], start, { day: 1 }, {
-            filter: { date: { startDate: start, endDate: end, strictStartDate: true, strictEndDate: true } },
-            unit: 'count',
-          }
-        );
+        const [stats, manualDays] = await Promise.all([
+          module.queryStatisticsCollectionForQuantity(
+            STEP_COUNT_IDENTIFIER, ['cumulativeSum'], start, { day: 1 }, {
+              filter: { date: { startDate: start, endDate: end, strictStartDate: true, strictEndDate: true } },
+              unit: 'count',
+            }
+          ),
+          readPersonalManualSteps(module, start, end),
+        ]);
+        if (!manualDays) return {};
+
         const daily: Record<string, number> = {};
         for (const item of stats) {
           const steps = item.sumQuantity?.quantity;
           const date = parseBucketDate(toIsoString(item.startDate));
           if (steps != null && Number.isFinite(steps) && date >= start && date < end) {
-            daily[dateKey(date)] = Math.max(0, Math.round(steps));
+            const key = dateKey(date);
+            daily[key] = Math.max(0, Math.round(steps - (manualDays[key]?.total ?? 0)));
           }
         }
         return daily;
