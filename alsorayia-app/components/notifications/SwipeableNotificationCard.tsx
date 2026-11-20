@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import {
   Animated,
+  I18nManager,
   PanResponder,
   StyleSheet,
   TouchableOpacity,
@@ -86,7 +87,8 @@ export function SwipeableNotificationCard({
   const iconName = NOTIFICATION_ICONS[item.type] || 'bell.fill';
   const accentColor = NOTIFICATION_COLORS[item.type] || colors.primary;
   const action = resolveNotificationAction(item);
-  const showInvitationResponse = item.invitation && onInvitationResponse && !isSelectionMode;
+  const isInvitation = item.invitation != null;
+  const showInvitationResponse = isInvitation && onInvitationResponse && !isSelectionMode;
   const savedResponse = item.invitation?.response;
   const declineColor = isDark ? '#FCA5A5' : '#B91C1C';
 
@@ -354,7 +356,8 @@ export function SwipeableNotificationCard({
               backgroundColor: cardBgColor,
               borderColor: cardBorderColor,
             },
-            !item.read && styles.unreadCardBorder,
+            !item.read && !isInvitation && styles.unreadCardBorder,
+            isInvitation && styles.invitationCard,
             isSelected && styles.selectedCardBorder,
           ]}
         >
@@ -385,6 +388,8 @@ export function SwipeableNotificationCard({
                   style={[
                     styles.cardTitle,
                     item.read && styles.cardTitleRead,
+                    isInvitation && styles.invitationText,
+                    isInvitation && styles.invitationTitle,
                     { color: colors.text },
                   ]}
                   numberOfLines={isExpanded ? undefined : 1}
@@ -441,6 +446,7 @@ export function SwipeableNotificationCard({
               styles.cardBody,
               { color: isDark ? '#CBD5E1' : '#334155' },
               item.read && styles.cardBodyRead,
+              isInvitation && styles.invitationText,
             ]}
             numberOfLines={isExpanded ? undefined : 2}
             selectable={isExpanded && !isSelectionMode}
@@ -451,7 +457,7 @@ export function SwipeableNotificationCard({
           {showInvitationResponse && (
             savedResponse ? (
               <ThemedText
-                style={[styles.invitationStatus, { color: savedResponse === 'accepted' ? colors.primary : declineColor }]}
+                style={[styles.invitationStatus, styles.invitationText, { color: savedResponse === 'accepted' ? colors.primary : declineColor }]}
                 accessibilityLiveRegion="polite"
               >
                 {savedResponse === 'accepted' ? 'تم القبول' : 'تم الرفض'}
@@ -488,7 +494,7 @@ export function SwipeableNotificationCard({
                   })}
                 </View>
                 {invitationResponsePending && (
-                  <ThemedText style={[styles.invitationStatus, { color: colors.icon }]} accessibilityLiveRegion="polite">
+                  <ThemedText style={[styles.invitationStatus, styles.invitationText, { color: colors.icon }]} accessibilityLiveRegion="polite">
                     جارٍ حفظ الرد…
                   </ThemedText>
                 )}
@@ -735,6 +741,17 @@ const styles = StyleSheet.create({
   unreadCardBorder: {
     borderRightWidth: 4,
   },
+  invitationCard: {
+    direction: 'rtl',
+    overflow: 'hidden',
+  },
+  invitationText: {
+    textAlign: I18nManager.isRTL ? 'auto' : 'right',
+    writingDirection: 'rtl',
+  },
+  invitationTitle: {
+    flex: 1,
+  },
   invitationSection: {
     marginTop: 10,
   },
@@ -760,7 +777,6 @@ const styles = StyleSheet.create({
   },
   invitationStatus: {
     marginTop: 8,
-    textAlign: 'right',
     fontFamily: 'Tajawal-Bold',
     fontSize: 13,
   },
