@@ -10,6 +10,7 @@ import { WalkingGroupsTab } from '@/components/walking/WalkingGroupsTab';
 import { WalkingHistoryList } from '@/components/walking/WalkingHistoryList';
 import { WalkingStatsGrid } from '@/components/walking/WalkingStatsGrid';
 import { Toast } from '@/components/toast';
+import { computeBestDay } from '@/lib/walking/achievementMetrics';
 import { cleanDateYMD, formatSteps, formatEnglishNumber } from '@/lib/walking/formatters';
 import { ReviewService } from '@/lib/review/reviewService';
 import { WalkingPermissionGuideModal } from '@/components/walking/WalkingPermissionGuideModal';
@@ -87,9 +88,17 @@ export default function WalkingScreen() {
     .sort(), [walking.historyRecords, todayKey]);
   const localHistory = useLocalWalkingHistory(timeZoneKey, historyDates[0] ?? null, historyDates.at(-1) ?? null);
   const personalSteps = localToday?.total ?? walking.todaySteps;
-  const personalHistorySteps = localToday
-    ? { ...localHistory?.daily, [todayKey]: localToday.total }
-    : localHistory?.daily;
+  const personalTodayKey = localToday ? todayKey : walking.currentDateKey;
+  const personalBestDay = isIOS
+    ? computeBestDay({
+        personalStats: walking.personalStats,
+        historyRecords: walking.historyRecords,
+        ledger: walking.ledger,
+        todaySteps: personalSteps,
+        currentDateKey: walking.currentDateKey,
+        personalTodayDateKey: personalTodayKey,
+      })
+    : walking;
   // null = لم يكتمل أول فحص بعد — نتجاهل الانتقال الأول (false -> true) الناتج عن التحميل الأولي
   // حتى لا يظهر التوست في كل مرة نفتح فيها التطبيق/التاب والصلاحية ممنوحة مسبقاً.
   const prevMotionReadyRef = useRef<boolean | null>(null);
@@ -510,8 +519,8 @@ export default function WalkingScreen() {
                 dailyGoal={walking.dailyGoal}
                 familyRankToday={walking.familyRankToday}
                 familyTotalToday={walking.familyTotalToday}
-                bestDaySteps={walking.bestDaySteps}
-                bestDayDate={walking.bestDayDate}
+                bestDaySteps={personalBestDay.bestDaySteps}
+                bestDayDate={personalBestDay.bestDayDate}
                 streak10k={walking.streak10k}
                 activeDaysCount={walking.activeDaysCount}
                 avgDaily30d={walking.avgDaily30d}
@@ -536,7 +545,8 @@ export default function WalkingScreen() {
               <WalkingHistoryList
                 records={walking.historyRecords}
                 isLoading={walking.loadingHistory}
-                localSteps={personalHistorySteps}
+                localSteps={localHistory?.daily}
+                today={isIOS ? { dateKey: personalTodayKey, steps: personalSteps, isDeviceTime: !!localToday } : undefined}
                 showTimeZone={isIOS}
               />
             </View>

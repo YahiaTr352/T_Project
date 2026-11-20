@@ -1893,6 +1893,7 @@ export function useWalking() {
   return {
     // Ledger & Raw Step Store
     ledger,
+    currentDateKey,
 
     // Basic Steps & Metrics
     dailyGoal,

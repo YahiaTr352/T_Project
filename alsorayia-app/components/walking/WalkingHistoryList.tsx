@@ -10,10 +10,11 @@ type Props = {
   records: WalkingRecord[];
   isLoading: boolean;
   localSteps?: Record<string, number>;
+  today?: { dateKey: string; steps: number; isDeviceTime: boolean };
   showTimeZone?: boolean;
 };
 
-export function WalkingHistoryList({ records, isLoading, localSteps, showTimeZone }: Props) {
+export function WalkingHistoryList({ records, isLoading, localSteps, today, showTimeZone }: Props) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
   const isDark = colorScheme === 'dark';
@@ -51,11 +52,15 @@ export function WalkingHistoryList({ records, isLoading, localSteps, showTimeZon
   return (
     <View style={styles.container}>
       {records.map((rec) => {
-        const local = localSteps?.[cleanDateYMD(rec.date)];
-        const steps = local ?? rec.steps;
-        const distanceKm = local != null ? Number((steps * 0.00076).toFixed(2)) : rec.distance_km;
-        const calories = local != null ? Math.round(steps * 0.04) : rec.calories;
-        const minutes = local != null ? Math.round(steps / 100) : rec.duration_minutes;
+        const date = cleanDateYMD(rec.date);
+        const currentDay = today?.dateKey === date ? today : undefined;
+        const local = localSteps?.[date];
+        const displayedSteps = currentDay?.steps ?? local;
+        const steps = displayedSteps ?? rec.steps;
+        const distanceKm = displayedSteps != null ? Number((steps * 0.00076).toFixed(2)) : rec.distance_km;
+        const calories = displayedSteps != null ? Math.round(steps * 0.04) : rec.calories;
+        const minutes = displayedSteps != null ? Math.round(steps / 100) : rec.duration_minutes;
+        const isDeviceTime = currentDay?.isDeviceTime ?? (local != null);
         const tier = getStepTierConfig(steps, isDark);
 
         return (
@@ -73,7 +78,7 @@ export function WalkingHistoryList({ records, isLoading, localSteps, showTimeZon
                 <ThemedText style={styles.dateText}>{formatDateAr(rec.date, { includeWeekday: true })}</ThemedText>
                 {showTimeZone && (
                   <ThemedText style={[styles.metricText, { color: colors.icon }]}>
-                    {local != null ? 'بتوقيت الجهاز' : 'بتوقيت الرياض'}
+                    {isDeviceTime ? 'بتوقيت الجهاز' : 'بتوقيت الرياض'}
                   </ThemedText>
                 )}
               </View>

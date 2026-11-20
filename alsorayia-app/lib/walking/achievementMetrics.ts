@@ -1,4 +1,5 @@
 import type { PersonalStats, WalkingRecord } from '@/lib/api/walkingApi';
+import { cleanDateYMD } from '@/lib/walking/formatters';
 import { dateKey, type WalkingLedger } from '@/lib/walking/ledger';
 
 export interface AchievementMetricsInput {
@@ -19,35 +20,50 @@ export function computeBestDay({
   ledger,
   todaySteps,
   currentDateKey,
-}: AchievementMetricsInput): { bestDaySteps: number; bestDayDate: string } {
+  personalTodayDateKey,
+}: AchievementMetricsInput & { personalTodayDateKey?: string }): {
+  bestDaySteps: number;
+  bestDayDate: string | null;
+} {
+  const todayKey = personalTodayDateKey ?? currentDateKey;
+  const usePersonalToday = personalTodayDateKey != null;
   const rawServerBest = personalStats?.best_day_steps || 0;
-  let maxSteps = Number.isFinite(rawServerBest) ? Math.max(0, rawServerBest) : 0;
-  let bDate = maxSteps > 0 ? (personalStats?.best_day_date || null) : null;
+  const serverBestDate = cleanDateYMD(personalStats?.best_day_date);
+  const serverStatsDate = cleanDateYMD(personalStats?.date) || currentDateKey;
+  // Older stats responses give the all-time total without its date.
+  const serverBestCouldBeToday = serverBestDate
+    ? serverBestDate >= todayKey
+    : serverStatsDate >= todayKey && rawServerBest === personalStats?.today_steps;
+  let maxSteps = Number.isFinite(rawServerBest) && !(usePersonalToday && serverBestCouldBeToday)
+    ? Math.max(0, rawServerBest)
+    : 0;
+  let bestDayDate = maxSteps > 0 ? serverBestDate || null : null;
 
-  if (historyRecords && historyRecords.length > 0) {
-    for (const rec of historyRecords) {
-      if (rec.steps > maxSteps) {
-        maxSteps = rec.steps;
-        bDate = rec.date;
-      }
+  for (const record of historyRecords ?? []) {
+    const recordDate = cleanDateYMD(record.date);
+    if (usePersonalToday && recordDate >= todayKey) continue;
+    if (record.steps > maxSteps || (usePersonalToday && !bestDayDate && record.steps === maxSteps && maxSteps > 0)) {
+      maxSteps = record.steps;
+      bestDayDate = recordDate;
     }
   }
 
-  for (const [k, v] of Object.entries(ledger.daily)) {
-    if (v > maxSteps) {
-      maxSteps = v;
-      bDate = k;
+  for (const [date, steps] of Object.entries(ledger.daily)) {
+    if (usePersonalToday && date >= todayKey) continue;
+    if (steps > maxSteps || (usePersonalToday && !bestDayDate && steps === maxSteps && maxSteps > 0)) {
+      maxSteps = steps;
+      bestDayDate = date;
     }
   }
 
   if (todaySteps >= maxSteps && todaySteps > 0) {
     maxSteps = todaySteps;
-    bDate = currentDateKey;
+    bestDayDate = todayKey;
   }
 
   return {
-    bestDaySteps: Math.max(maxSteps, todaySteps),
-    bestDayDate: bDate || currentDateKey,
+    bestDaySteps: maxSteps,
+    bestDayDate: bestDayDate || (usePersonalToday && maxSteps > 0 ? null : todayKey),
   };
 }
 
