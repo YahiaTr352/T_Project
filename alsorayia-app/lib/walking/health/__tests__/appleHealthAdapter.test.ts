@@ -273,4 +273,55 @@ describe('createAppleHealthAdapter', () => {
       '2026-10-21': 5000,
     });
   });
+
+  it('reads personal steps and hours between device-local midnights', async () => {
+    const start = new Date(2025, 2, 9);
+    const end = new Date(2025, 2, 10);
+    const stats = jest.fn(async () => [
+      { startDate: new Date(2025, 2, 9, 22), sumQuantity: { quantity: 530 } },
+    ]);
+    const adapter = createAppleHealthAdapter({
+      loadModule: () => createModule({ queryStatisticsCollectionForQuantity: stats }),
+      consentStore: createConsentStore('granted'),
+    });
+
+    await expect(adapter.readPersonalDay(new Date(2025, 2, 9, 12))).resolves.toEqual({ total: 530, hourly: { 22: 530 } });
+    expect(stats).toHaveBeenCalledWith(
+      'HKQuantityTypeIdentifierStepCount', ['cumulativeSum'], start, { hour: 1 },
+      { filter: { date: { startDate: start, endDate: end, strictStartDate: true, strictEndDate: true } }, unit: 'count' },
+    );
+  });
+
+  it('distinguishes a saved zero measurement from absent history', async () => {
+    const adapter = createAppleHealthAdapter({
+      loadModule: () => createModule({
+        queryStatisticsCollectionForQuantity: jest.fn(async () => [
+          { startDate: new Date(2025, 2, 8) },
+          { startDate: new Date(2025, 2, 9), sumQuantity: { quantity: 0 } },
+        ]),
+      }),
+      consentStore: createConsentStore('granted'),
+    });
+
+    await expect(adapter.readPersonalDays(new Date(2025, 2, 8), new Date(2025, 2, 9)))
+      .resolves.toEqual({ '2025-03-09': 0 });
+  });
+
+  it('starts a new local day at zero when yesterday confirms Health access', async () => {
+    const today = new Date(2026, 10, 20, 0, 15);
+    jest.useFakeTimers({ now: today });
+    try {
+      const adapter = createAppleHealthAdapter({
+        loadModule: () => createModule({
+          queryStatisticsForQuantity: jest.fn().mockResolvedValueOnce({})
+            .mockResolvedValueOnce({ sumQuantity: { quantity: 4700 } }),
+        }),
+        consentStore: createConsentStore('granted'),
+      });
+
+      await expect(adapter.readPersonalDay(today)).resolves.toEqual({ total: 0, hourly: {} });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

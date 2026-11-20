@@ -2,16 +2,18 @@ import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors, silaTheme } from '@/constants/theme';
 import type { WalkingRecord } from '@/lib/api/walkingApi';
-import { formatDateAr, formatSteps, getStepTierConfig } from '@/lib/walking/formatters';
+import { cleanDateYMD, formatDateAr, formatSteps, getStepTierConfig } from '@/lib/walking/formatters';
 import React from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View, useColorScheme } from 'react-native';
 
 type Props = {
   records: WalkingRecord[];
   isLoading: boolean;
+  localSteps?: Record<string, number>;
+  showTimeZone?: boolean;
 };
 
-export function WalkingHistoryList({ records, isLoading }: Props) {
+export function WalkingHistoryList({ records, isLoading, localSteps, showTimeZone }: Props) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
   const isDark = colorScheme === 'dark';
@@ -49,7 +51,12 @@ export function WalkingHistoryList({ records, isLoading }: Props) {
   return (
     <View style={styles.container}>
       {records.map((rec) => {
-        const tier = getStepTierConfig(rec.steps, isDark);
+        const local = localSteps?.[cleanDateYMD(rec.date)];
+        const steps = local ?? rec.steps;
+        const distanceKm = local != null ? Number((steps * 0.00076).toFixed(2)) : rec.distance_km;
+        const calories = local != null ? Math.round(steps * 0.04) : rec.calories;
+        const minutes = local != null ? Math.round(steps / 100) : rec.duration_minutes;
+        const tier = getStepTierConfig(steps, isDark);
 
         return (
           <View
@@ -62,7 +69,14 @@ export function WalkingHistoryList({ records, isLoading }: Props) {
               },
             ]}>
             <View style={styles.headerRow}>
-              <ThemedText style={styles.dateText}>{formatDateAr(rec.date, { includeWeekday: true })}</ThemedText>
+              <View style={styles.dateColumn}>
+                <ThemedText style={styles.dateText}>{formatDateAr(rec.date, { includeWeekday: true })}</ThemedText>
+                {showTimeZone && (
+                  <ThemedText style={[styles.metricText, { color: colors.icon }]}>
+                    {local != null ? 'بتوقيت الجهاز' : 'بتوقيت الرياض'}
+                  </ThemedText>
+                )}
+              </View>
               <View
                 style={[
                   styles.stepsPill,
@@ -73,35 +87,35 @@ export function WalkingHistoryList({ records, isLoading }: Props) {
                   },
                 ]}>
                 <ThemedText style={[styles.stepsVal, { color: tier.textColor }]}>
-                  {formatSteps(rec.steps)} خطوة
+                  {formatSteps(steps)} خطوة
                 </ThemedText>
               </View>
             </View>
 
             <View style={styles.metricsRow}>
-              {rec.distance_km != null && (
+              {distanceKm != null && (
                 <View style={styles.metricItem}>
                   <IconSymbol name="mappin.circle.fill" size={14} color="#10B981" />
                   <ThemedText style={[styles.metricText, { color: colors.icon }]}>
-                    {rec.distance_km} كم
+                    {distanceKm} كم
                   </ThemedText>
                 </View>
               )}
 
-              {rec.calories != null && (
+              {calories != null && (
                 <View style={styles.metricItem}>
                   <ThemedText style={{ fontSize: 12 }}>🔥</ThemedText>
                   <ThemedText style={[styles.metricText, { color: colors.icon }]}>
-                    {formatSteps(rec.calories)} ك.س
+                    {formatSteps(calories)} ك.س
                   </ThemedText>
                 </View>
               )}
 
-              {rec.duration_minutes != null && (
+              {minutes != null && (
                 <View style={styles.metricItem}>
                   <IconSymbol name="clock.fill" size={14} color="#3B82F6" />
                   <ThemedText style={[styles.metricText, { color: colors.icon }]}>
-                    {rec.duration_minutes} دقيقة
+                    {minutes} دقيقة
                   </ThemedText>
                 </View>
               )}
@@ -117,6 +131,9 @@ const styles = StyleSheet.create({
   container: {
     gap: 10,
     marginVertical: 10,
+  },
+  dateColumn: {
+    flexShrink: 1,
   },
   loadingBox: {
     paddingVertical: 40,

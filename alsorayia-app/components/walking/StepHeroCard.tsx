@@ -24,6 +24,7 @@ type Props = {
   isSyncing?: boolean;
   onSyncPress?: () => void;
   lastSyncTime?: Date | null;
+  stepTimeZoneLabel?: string;
 };
 
 export function StepHeroCard({
@@ -36,6 +37,7 @@ export function StepHeroCard({
   isSyncing = false,
   onSyncPress,
   lastSyncTime,
+  stepTimeZoneLabel,
 }: Props) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -131,7 +133,9 @@ export function StepHeroCard({
           <ThemedText style={styles.stepsNumber}>
             {formatSteps(todaySteps)}
           </ThemedText>
-          <ThemedText style={styles.stepLabel}>خطوة</ThemedText>
+          <ThemedText style={styles.stepLabel}>
+            {stepTimeZoneLabel ? `خطوة · ${stepTimeZoneLabel}` : 'خطوة'}
+          </ThemedText>
         </View>
 
         <View style={styles.goalInfoWrap}>

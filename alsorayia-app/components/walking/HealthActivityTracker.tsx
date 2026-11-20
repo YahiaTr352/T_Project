@@ -1,6 +1,7 @@
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors, silaTheme } from '@/constants/theme';
+import { useLocalWalkingHistory } from '@/hooks/use-local-walking-activity';
 import type { WalkingRecord } from '@/lib/api/walkingApi';
 import {
   computeDaySummary,
@@ -15,7 +16,8 @@ import {
   type ActivityPeriod,
 } from '@/lib/walking/activityAnalytics';
 import { formatSteps } from '@/lib/walking/formatters';
-import type { WalkingLedger } from '@/lib/walking/ledger';
+import type { HealthDaySteps } from '@/lib/walking/health/types';
+import { dateKey, type WalkingLedger } from '@/lib/walking/ledger';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -33,6 +35,18 @@ export interface HealthActivityTrackerProps {
   todaySteps: number;
   dailyGoal?: number;
   onLoadHourlyForDate?: (date: Date) => Promise<void> | void;
+  localTodayKey?: string;
+  localToday?: HealthDaySteps | null;
+  timeZoneKey?: string | null;
+}
+
+function periodDates(date: Date, period: ActivityPeriod): [Date, Date] {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  if (period === 'year') return [new Date(year, 0, 1), new Date(year, 11, 31)];
+  if (period === 'month') return [new Date(year, month, 1), new Date(year, month + 1, 0)];
+  if (period === 'week') return [new Date(year, month, date.getDate() - 6), date];
+  return [date, date];
 }
 
 export function HealthActivityTracker({
@@ -41,6 +55,9 @@ export function HealthActivityTracker({
   todaySteps,
   dailyGoal = 10000,
   onLoadHourlyForDate,
+  localTodayKey,
+  localToday,
+  timeZoneKey = null,
 }: HealthActivityTrackerProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
@@ -50,7 +67,25 @@ export function HealthActivityTracker({
   const [selectedPeriod, setSelectedPeriod] = useState<ActivityPeriod>('day');
 
   // 2. التاريخ المحدد للتنقل التاريخي
-  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
+  const [historicalDate, setHistoricalDate] = useState<Date | null>(null);
+  const todayKey = localTodayKey ?? dateKey(new Date());
+  const todayDate = useMemo(() => new Date(), [todayKey, timeZoneKey]);
+  const selectedDate = historicalDate ?? todayDate;
+
+  const [periodStart, periodEnd] = periodDates(selectedDate, selectedPeriod);
+  const from = dateKey(periodStart);
+  const to = dateKey(periodEnd);
+  const yesterday = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate() - 1);
+  const through = to < dateKey(yesterday) ? to : dateKey(yesterday);
+  const isSelectedDayToday = dateKey(selectedDate) === localTodayKey;
+  const localHistory = useLocalWalkingHistory(timeZoneKey, from <= through ? from : null, through, selectedPeriod === 'day');
+  const localDay = isSelectedDayToday ? localToday : localHistory?.day;
+  const localDaily = useMemo(() => {
+    if (localToday && localTodayKey && from <= localTodayKey && localTodayKey <= to) {
+      return { ...localHistory?.daily, [localTodayKey]: localToday.total };
+    }
+    return localHistory?.daily;
+  }, [from, to, localTodayKey, localToday, localHistory]);
 
   // 3. النقطة المحددة حالياً للتفاصيل (Inspector)
   const [selectedBarIndex, setSelectedBarIndex] = useState<number | null>(null);
@@ -69,39 +104,39 @@ export function HealthActivityTracker({
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       } catch {}
-      setSelectedDate((prev) => navigatePeriod(prev, selectedPeriod, direction));
+      setHistoricalDate((prev) => navigatePeriod(prev ?? todayDate, selectedPeriod, direction));
       setSelectedBarIndex(null);
     },
-    [selectedPeriod]
+    [selectedPeriod, todayDate]
   );
 
   const handleResetToToday = useCallback(() => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } catch {}
-    setSelectedDate(new Date());
+    setHistoricalDate(null);
     setSelectedBarIndex(null);
   }, []);
 
   // حساب ملخصات الفترات بدقة وسرعة عبر useMemo
   const daySummary = useMemo(
-    () => computeDaySummary(selectedDate, ledger, historyRecords, todaySteps),
-    [selectedDate, ledger, historyRecords, todaySteps]
+    () => computeDaySummary(selectedDate, ledger, historyRecords, todaySteps, localDay),
+    [selectedDate, ledger, historyRecords, todaySteps, localDay]
   );
 
   const weekSummary = useMemo(
-    () => computeWeekSummary(selectedDate, ledger, historyRecords, todaySteps, dailyGoal),
-    [selectedDate, ledger, historyRecords, todaySteps, dailyGoal]
+    () => computeWeekSummary(selectedDate, ledger, historyRecords, todaySteps, dailyGoal, localDaily),
+    [selectedDate, ledger, historyRecords, todaySteps, dailyGoal, localDaily]
   );
 
   const monthSummary = useMemo(
-    () => computeMonthSummary(selectedDate, ledger, historyRecords, todaySteps, dailyGoal),
-    [selectedDate, ledger, historyRecords, todaySteps, dailyGoal]
+    () => computeMonthSummary(selectedDate, ledger, historyRecords, todaySteps, dailyGoal, localDaily),
+    [selectedDate, ledger, historyRecords, todaySteps, dailyGoal, localDaily]
   );
 
   const yearSummary = useMemo(
-    () => computeYearSummary(selectedDate, ledger, historyRecords, todaySteps),
-    [selectedDate, ledger, historyRecords, todaySteps]
+    () => computeYearSummary(selectedDate, ledger, historyRecords, todaySteps, localDaily),
+    [selectedDate, ledger, historyRecords, todaySteps, localDaily]
   );
 
   const canGoForward = useMemo(
@@ -655,6 +690,15 @@ export function HealthActivityTracker({
 
       {/* 3️⃣ ملخص الأرقام العلوية (Hero Metrics Header) */}
       <View style={styles.metricsSummaryWrap}>
+        {Platform.OS === 'ios' && (
+          <ThemedText style={[styles.primaryLabel, { color: colors.icon }]}>
+            {selectedPeriod === 'day'
+              ? (localDay ? 'بتوقيت الجهاز' : 'بتوقيت الرياض')
+              : localDaily && Object.keys(localDaily).length > 0
+                ? 'صحتي بتوقيت الجهاز، والسجل المحفوظ بتوقيت الرياض'
+                : 'بتوقيت الرياض'}
+          </ThemedText>
+        )}
         <View style={styles.metricsTopRow}>
           <View style={styles.primaryMetricCol}>
             <ThemedText style={styles.primaryNumber}>

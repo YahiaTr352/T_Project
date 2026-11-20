@@ -1,4 +1,5 @@
 import {
+  dateKey,
   ksaDateKey,
   ksaHour,
   ksaStartOfDay,
@@ -36,7 +37,8 @@ export function parseBucketDate(startStr: string): Date {
 export function aggregateHourlyBuckets(
   buckets: RawStepBucket[],
   targetDayKey: string,
-  authoritativeTotal?: number | null
+  authoritativeTotal?: number | null,
+  useDeviceTime = false
 ): { total: number; hourly: Record<number, number> } {
   const rawHourly: Record<number, number> = {};
   let rawTotalFromBuckets = 0;
@@ -44,12 +46,12 @@ export function aggregateHourlyBuckets(
   for (const bucket of buckets) {
     const date = parseBucketDate(bucket.start);
     if (Number.isNaN(date.getTime())) continue;
-    if (ksaDateKey(date) !== targetDayKey) continue;
+    if ((useDeviceTime ? dateKey(date) : ksaDateKey(date)) !== targetDayKey) continue;
 
     const numericSteps = Number(bucket.steps);
     if (!Number.isFinite(numericSteps) || numericSteps <= 0) continue;
 
-    const hour = ksaHour(date);
+    const hour = useDeviceTime ? date.getHours() : ksaHour(date);
     rawHourly[hour] = (rawHourly[hour] ?? 0) + numericSteps;
     rawTotalFromBuckets += numericSteps;
   }
@@ -146,6 +148,13 @@ export function resolveDayRange(
   const endOfDay = new Date(start.getTime() + DAY_MS - 1000);
   const end = options?.fullDay || !isToday ? endOfDay : now;
   return { start, end, dayKey };
+}
+
+/** Local calendar boundaries can be 23, 24, or 25 hours apart. */
+export function resolveDeviceDayRange(day: Date, now: Date = new Date()) {
+  const start = startOfDay(day);
+  const nextDay = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+  return { start, end: new Date(Math.min(nextDay.getTime(), now.getTime())) };
 }
 
 export function resolveRecentRange(

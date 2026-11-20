@@ -1,5 +1,6 @@
 import type { WalkingRecord } from '@/lib/api/walkingApi';
 import { cleanDateYMD, getStepColorTier, type StepColorTier } from '@/lib/walking/formatters';
+import type { HealthDaySteps } from '@/lib/walking/health/types';
 import {
   dateKey,
   ksaDateKey,
@@ -324,18 +325,19 @@ export function computeDaySummary(
   selectedDate: Date,
   ledger: WalkingLedger,
   historyRecords?: WalkingRecord[],
-  todayStepsOverride?: number
+  todayStepsOverride?: number,
+  deviceDay?: HealthDaySteps | null
 ): DaySummary {
   const now = new Date();
-  const isToday = dateKey(selectedDate) === dateKey(now) || ksaDateKey(selectedDate) === ksaDateKey(now);
+  const isToday = dateKey(selectedDate) === dateKey(now) || (!deviceDay && ksaDateKey(selectedDate) === ksaDateKey(now));
   const kKey = ksaDateKey(selectedDate);
   const lKey = dateKey(selectedDate);
   const dKey = isToday ? ksaDateKey(now) : (ledger.hourly?.[kKey] || ledger.daily[kKey] != null ? kKey : lKey);
   const fallbackKey = dKey === kKey ? lKey : kKey;
-  const totalSteps = getStepsForDate(dKey, ledger.daily, historyRecords, todayStepsOverride, fallbackKey);
-  const hourlyMap = getHourlyStepsForDate(dKey, totalSteps, ledger.hourly, fallbackKey);
+  const totalSteps = deviceDay?.total ?? getStepsForDate(dKey, ledger.daily, historyRecords, todayStepsOverride, fallbackKey);
+  const hourlyMap = deviceDay?.hourly ?? getHourlyStepsForDate(dKey, totalSteps, ledger.hourly, fallbackKey);
 
-  const curHour = ksaHour(now);
+  const curHour = deviceDay ? now.getHours() : ksaHour(now);
   const points: HourlyBarPoint[] = [];
 
   let activeHoursCount = 0;
@@ -394,7 +396,8 @@ export function computeWeekSummary(
   ledger: WalkingLedger,
   historyRecords?: WalkingRecord[],
   todayStepsOverride?: number,
-  dailyGoal = 10000
+  dailyGoal = 10000,
+  deviceDaily?: Record<string, number>
 ): WeekSummary {
   const now = new Date();
   const nowKey = dateKey(now);
@@ -414,7 +417,7 @@ export function computeWeekSummary(
     const isFuture = k > nowKey;
     const isToday = k === nowKey;
 
-    const steps = isFuture ? 0 : getStepsForDate(k, ledger.daily, historyRecords, todayStepsOverride);
+    const steps = isFuture ? 0 : deviceDaily?.[k] ?? getStepsForDate(k, ledger.daily, historyRecords, todayStepsOverride);
     if (!isFuture) {
       daysElapsed++;
       totalSteps += steps;
@@ -475,7 +478,8 @@ export function computeMonthSummary(
   ledger: WalkingLedger,
   historyRecords?: WalkingRecord[],
   todayStepsOverride?: number,
-  dailyGoal = 10000
+  dailyGoal = 10000,
+  deviceDaily?: Record<string, number>
 ): MonthSummary {
   const now = new Date();
   const nowKey = dateKey(now);
@@ -498,7 +502,7 @@ export function computeMonthSummary(
     const isFuture = k > nowKey;
     const isToday = k === nowKey;
 
-    const steps = isFuture ? 0 : getStepsForDate(k, ledger.daily, historyRecords, todayStepsOverride);
+    const steps = isFuture ? 0 : deviceDaily?.[k] ?? getStepsForDate(k, ledger.daily, historyRecords, todayStepsOverride);
 
     if (!isFuture) {
       daysElapsed++;
@@ -560,7 +564,8 @@ export function computeYearSummary(
   selectedDate: Date,
   ledger: WalkingLedger,
   historyRecords?: WalkingRecord[],
-  todayStepsOverride?: number
+  todayStepsOverride?: number,
+  deviceDaily?: Record<string, number>
 ): YearSummary {
   const now = new Date();
   const year = selectedDate.getFullYear();
@@ -588,7 +593,7 @@ export function computeYearSummary(
       for (let day = 1; day <= daysToCheck; day++) {
         const dayDate = new Date(year, m, day);
         const k = dateKey(dayDate);
-        const steps = getStepsForDate(k, ledger.daily, historyRecords, todayStepsOverride);
+        const steps = deviceDaily?.[k] ?? getStepsForDate(k, ledger.daily, historyRecords, todayStepsOverride);
         monthSteps += steps;
       }
 

@@ -10,7 +10,7 @@ import { WalkingGroupsTab } from '@/components/walking/WalkingGroupsTab';
 import { WalkingHistoryList } from '@/components/walking/WalkingHistoryList';
 import { WalkingStatsGrid } from '@/components/walking/WalkingStatsGrid';
 import { Toast } from '@/components/toast';
-import { formatSteps, formatEnglishNumber } from '@/lib/walking/formatters';
+import { cleanDateYMD, formatSteps, formatEnglishNumber } from '@/lib/walking/formatters';
 import { ReviewService } from '@/lib/review/reviewService';
 import { WalkingPermissionGuideModal } from '@/components/walking/WalkingPermissionGuideModal';
 import { SmartwatchGuideModal } from '@/components/walking/SmartwatchGuideModal';
@@ -18,8 +18,9 @@ import { useWalkingTrek } from '@/hooks/use-walking-trek';
 import { Colors, silaTheme } from '@/constants/theme';
 import { storage } from '@/contexts/auth-context';
 import { useWalking } from '@/hooks/use-walking';
+import { useLocalWalkingHistory, useLocalWalkingToday } from '@/hooks/use-local-walking-activity';
 import * as Haptics from 'expo-haptics';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useCallback, useRef, useState } from 'react';
 import {
@@ -74,6 +75,21 @@ export default function WalkingScreen() {
   const [toastVisible, setToastVisible] = useState(false);
 
   const walking = useWalking();
+  const isFocused = useIsFocused();
+  const isIOS = Platform.OS === 'ios';
+  const { todayKey, timeZoneKey, today: localToday } = useLocalWalkingToday(
+    isIOS && isFocused && currentTab === 'overview' && walking.isHealthSource,
+    walking.lastSyncTime?.getTime() ?? null,
+  );
+  const historyDates = React.useMemo(() => walking.historyRecords
+    .map((record) => cleanDateYMD(record.date))
+    .filter((key) => key && key < todayKey)
+    .sort(), [walking.historyRecords, todayKey]);
+  const localHistory = useLocalWalkingHistory(timeZoneKey, historyDates[0] ?? null, historyDates.at(-1) ?? null);
+  const personalSteps = localToday?.total ?? walking.todaySteps;
+  const personalHistorySteps = localToday
+    ? { ...localHistory?.daily, [todayKey]: localToday.total }
+    : localHistory?.daily;
   // null = لم يكتمل أول فحص بعد — نتجاهل الانتقال الأول (false -> true) الناتج عن التحميل الأولي
   // حتى لا يظهر التوست في كل مرة نفتح فيها التطبيق/التاب والصلاحية ممنوحة مسبقاً.
   const prevMotionReadyRef = useRef<boolean | null>(null);
@@ -438,12 +454,12 @@ export default function WalkingScreen() {
           {currentTab === 'overview' && (
             <View style={styles.tabSection}>
               <StepHeroCard
-                todaySteps={walking.todaySteps}
+                todaySteps={personalSteps}
                 dailyGoal={walking.dailyGoal}
-                progress={walking.progress}
-                distanceKm={walking.distanceKm}
-                calories={walking.calories}
-                activeMinutes={walking.activeMinutes}
+                distanceKm={localToday ? Number((personalSteps * 0.00076).toFixed(2)) : walking.distanceKm}
+                calories={localToday ? Math.round(personalSteps * 0.04) : walking.calories}
+                activeMinutes={localToday ? Math.round(personalSteps / 100) : walking.activeMinutes}
+                stepTimeZoneLabel={isIOS ? (localToday ? 'بتوقيت الجهاز' : 'بتوقيت الرياض') : undefined}
                 currentStreak={walking.streak10k ?? walking.currentStreak}
                 isSyncing={walking.isSyncing}
                 onSyncPress={handleManualSync}
@@ -481,13 +497,16 @@ export default function WalkingScreen() {
                 todaySteps={walking.todaySteps}
                 dailyGoal={walking.dailyGoal}
                 onLoadHourlyForDate={walking.loadHourlyForDate}
+                localTodayKey={isIOS ? todayKey : undefined}
+                localToday={localToday}
+                timeZoneKey={timeZoneKey}
               />
 
               <ThemedText type="subtitle" style={[styles.sectionTitle, { marginTop: 20 }]}>
                 إحصائيات الإنجاز
               </ThemedText>
               <WalkingStatsGrid
-                todaySteps={walking.todaySteps}
+                todaySteps={personalSteps}
                 dailyGoal={walking.dailyGoal}
                 familyRankToday={walking.familyRankToday}
                 familyTotalToday={walking.familyTotalToday}
@@ -517,6 +536,8 @@ export default function WalkingScreen() {
               <WalkingHistoryList
                 records={walking.historyRecords}
                 isLoading={walking.loadingHistory}
+                localSteps={personalHistorySteps}
+                showTimeZone={isIOS}
               />
             </View>
           )}

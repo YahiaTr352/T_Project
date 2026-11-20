@@ -12,11 +12,12 @@ import {
   aggregateHourlyBuckets,
   parseBucketDate,
   resolveDayRange,
+  resolveDeviceDayRange,
   resolveRecentRange,
   subtractManualFromBuckets,
   type RawStepBucket,
 } from './stepMath';
-import { ksaDateKey, ksaHour } from '@/lib/walking/ledger';
+import { dateKey, ksaDateKey, ksaHour, startOfDay } from '@/lib/walking/ledger';
 
 const APPLE_HEALTH_CONSENT_KEY = 'walking_apple_health_consent_v1';
 const STEP_COUNT_IDENTIFIER = 'HKQuantityTypeIdentifierStepCount';
@@ -251,7 +252,12 @@ async function readManualSteps(
   }
 }
 
-export function createAppleHealthAdapter(deps: AppleHealthAdapterDeps): WalkingHealthProvider {
+interface AppleHealthProvider extends WalkingHealthProvider {
+  readPersonalDay(day: Date): Promise<HealthDaySteps | null>;
+  readPersonalDays(firstDay: Date, lastDay: Date): Promise<Record<string, number>>;
+}
+
+export function createAppleHealthAdapter(deps: AppleHealthAdapterDeps): AppleHealthProvider {
   const { loadModule, consentStore } = deps;
 
   return {
@@ -364,6 +370,64 @@ export function createAppleHealthAdapter(deps: AppleHealthAdapterDeps): WalkingH
         );
       } catch {
         return null;
+      }
+    },
+
+    async readPersonalDay(day) {
+      const module = loadModule();
+      const { start, end } = resolveDeviceDayRange(day);
+      if (!module || start >= end) return null;
+
+      const filter = { date: { startDate: start, endDate: end, strictStartDate: true, strictEndDate: true } };
+      const [total, stats] = await Promise.all([
+        readOverallTotal(module, filter),
+        module.queryStatisticsCollectionForQuantity(
+          STEP_COUNT_IDENTIFIER, ['cumulativeSum'], start, { hour: 1 }, { filter, unit: 'count' }
+        ).catch(() => null),
+      ]);
+      const measured = Array.isArray(stats) ? stats.filter((item) => {
+        const time = parseBucketDate(toIsoString(item.startDate));
+        return time >= start && time < end && Number.isFinite(item.sumQuantity?.quantity);
+      }) : [];
+      if (total == null && measured.length === 0) {
+        if (!stats || dateKey(day) !== dateKey(new Date())) return null;
+
+        // A readable prior day distinguishes a fresh local day from unavailable history.
+        const yesterday = new Date(day.getFullYear(), day.getMonth(), day.getDate() - 1);
+        const priorTotal = await readOverallTotal(module, {
+          date: { startDate: yesterday, endDate: start, strictStartDate: true, strictEndDate: true },
+        });
+        return priorTotal == null ? null : { total: 0, hourly: {} };
+      }
+
+      const { total: hourlyTotal, hourly } = aggregateHourlyBuckets(toRawBuckets(measured), dateKey(day), undefined, true);
+      return { total: total ?? hourlyTotal, hourly };
+    },
+
+    async readPersonalDays(firstDay, lastDay) {
+      const module = loadModule();
+      const start = startOfDay(firstDay);
+      const { end } = resolveDeviceDayRange(lastDay);
+      if (!module || start >= end) return {};
+
+      try {
+        const stats = await module.queryStatisticsCollectionForQuantity(
+          STEP_COUNT_IDENTIFIER, ['cumulativeSum'], start, { day: 1 }, {
+            filter: { date: { startDate: start, endDate: end, strictStartDate: true, strictEndDate: true } },
+            unit: 'count',
+          }
+        );
+        const daily: Record<string, number> = {};
+        for (const item of stats) {
+          const steps = item.sumQuantity?.quantity;
+          const date = parseBucketDate(toIsoString(item.startDate));
+          if (steps != null && Number.isFinite(steps) && date >= start && date < end) {
+            daily[dateKey(date)] = Math.max(0, Math.round(steps));
+          }
+        }
+        return daily;
+      } catch {
+        return {};
       }
     },
 
