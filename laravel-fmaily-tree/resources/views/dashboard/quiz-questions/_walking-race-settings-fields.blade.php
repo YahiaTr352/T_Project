@@ -47,13 +47,13 @@
                     </label>
                     <select name="{{ $prefix }}[race_calc_mode]" class="form-control modern-input font-weight-bold">
                         <option value="cumulative" {{ $raceCalcMode === 'cumulative' ? 'selected' : '' }}>
-                            تراكمي يوم بيوم (يجمع كل يوم على السابق)
+                            إجمالي الخطوات حتى كل يوم
                         </option>
                         <option value="daily" {{ $raceCalcMode === 'daily' ? 'selected' : '' }}>
-                            نقاط كل يوم على حدة
+                            إجمالي النقاط حتى كل يوم
                         </option>
                     </select>
-                    <small class="text-muted d-block mt-1">التراكمي يجمع خطوات كل يوم على مجموع الأيام السابقة فيتغير الترتيب العام.</small>
+                    <small class="text-muted d-block mt-1">يعرض السباق إجمالي الخطوات أو النقاط من بداية المسابقة حتى التاريخ المعروض.</small>
                 </div>
 
                 <div class="col-md-4 mb-3">

@@ -298,7 +298,7 @@ const AnimatedRaceRow = React.memo(function AnimatedRaceRow({
             </Text>
             {showPoints && (
               <Text style={[styles.stepsDetail, { color: theme.subtitleColor }]} numberOfLines={1}>
-                {formatRaceValue(entry.daily_steps, false)}
+                {formatRaceValue(entry.steps, false)}
               </Text>
             )}
           </View>
@@ -539,7 +539,7 @@ export default function WalkingRaceModal({
   const modalSubtitle =
     timeline?.config?.subtitle ||
     raceConfig?.subtitle ||
-    (showPoints ? 'ترتيب المشاركين بنقاط كل يوم' : 'منافسة يومية في عدد الخطوات التراكمية');
+    (showPoints ? 'الترتيب بإجمالي النقاط حتى اليوم المعروض' : 'منافسة يومية في عدد الخطوات التراكمية');
 
   return (
     <Modal

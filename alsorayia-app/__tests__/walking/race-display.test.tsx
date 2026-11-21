@@ -44,11 +44,11 @@ test.each(['daily', 'cumulative'] as const)('renders the correct race totals in 
             day_number: 1,
             date: '2026-11-20',
             date_label: '٢٠ نوفمبر',
-            max_steps: 8000,
-            max_points: 10,
+            max_steps: 15000,
+            max_points: 20,
             top_entries: [{
               entry_id: 'p_1', person_id: 1, rank: 1, name: 'أحمد', avatar: null,
-              steps: 8000, prev_steps: 0, daily_steps: 8000, points: 10, prev_points: 0,
+              steps: 15000, prev_steps: 7000, daily_steps: 8000, points: 20, prev_points: 10,
               color: '#2176c7', is_anonymous: false, is_viewer: false,
             }],
           }],
@@ -59,10 +59,11 @@ test.each(['daily', 'cumulative'] as const)('renders the correct race totals in 
 
   render(<WalkingRaceModal visible questionId={209} onClose={jest.fn()} />);
 
-  expect(await screen.findByText('٨,٠٠٠ خطوة')).toBeOnTheScreen();
+  expect(await screen.findByText('١٥,٠٠٠ خطوة')).toBeOnTheScreen();
+  expect(screen.queryByText('٨,٠٠٠ خطوة')).toBeNull();
   if (mode === 'daily') {
-    expect(screen.getByText('١٠ نقاط')).toBeOnTheScreen();
+    expect(screen.getByText('٢٠ نقطة')).toBeOnTheScreen();
   } else {
-    expect(screen.queryByText('١٠ نقاط')).toBeNull();
+    expect(screen.queryByText('٢٠ نقطة')).toBeNull();
   }
 });

@@ -492,7 +492,7 @@
         entries.forEach(function (entry) {
             const rowObj = getOrCreateRow(entry, showPoints, rowHeight);
             if (rowObj.stepsEl) {
-                rowObj.stepsEl.textContent = formatRaceValue(entry.daily_steps, false);
+                rowObj.stepsEl.textContent = formatRaceValue(entry.steps, false);
             }
             const target = Number(entry[valueKey]);
             const startVal = animateTransition
@@ -635,7 +635,9 @@
                 : 'لا توجد خطوات مسجلة بعد في هذه المسابقة.';
             if (data.config) {
                 elTitle.textContent = data.config.title || fallbackTitle || 'سباق الترتيب اليومي';
-                elSubtitle.textContent = data.config.subtitle || 'ماهي مجرد مسابقة... بل بداية عادة';
+                elSubtitle.textContent = data.config.subtitle || (showPoints
+                    ? 'الترتيب بإجمالي النقاط حتى اليوم المعروض'
+                    : 'ماهي مجرد مسابقة... بل بداية عادة');
             }
 
             const sectionKeys = Object.keys(data.sections || {});

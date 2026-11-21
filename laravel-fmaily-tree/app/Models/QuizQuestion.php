@@ -340,8 +340,13 @@ class QuizQuestion extends BaseModel implements Chatable
     public function getWalkingRaceSubtitle(): string
     {
         $subtitle = trim((string) data_get($this->walking_settings, 'race_subtitle', ''));
+        if ($subtitle !== '') {
+            return $subtitle;
+        }
 
-        return $subtitle !== '' ? $subtitle : 'ماهي مجرد مسابقة... بل بداية عادة';
+        return $this->getWalkingRaceCalcMode() === 'daily'
+            ? 'الترتيب بإجمالي النقاط حتى اليوم المعروض'
+            : 'ماهي مجرد مسابقة... بل بداية عادة';
     }
 
     public function getWalkingRaceButtonText(): string
