@@ -3,7 +3,10 @@
 namespace App\Services\Invitations;
 
 use App\Exceptions\InvitationException;
+use App\Jobs\SendExpoPushNotificationJob;
 use App\Models\Notification;
+use App\Models\UserDevice;
+use App\Support\NotificationSettings;
 use Illuminate\Support\Facades\DB;
 
 class InvitationResponseService
@@ -51,6 +54,30 @@ class InvitationResponseService
             ],
         ]);
 
-        $notification->recipients()->create(['person_id' => $invitation->person_id]);
+        $senderId = (int) $invitation->person_id;
+        $notification->recipients()->create(['person_id' => $senderId]);
+
+        if (! config('invitations.delivery_enabled') || ! NotificationSettings::canSendPush()) {
+            return;
+        }
+
+        $tokens = UserDevice::query()->where('person_id', $senderId)
+            ->where('expo_push_token', '!=', '')
+            ->pluck('expo_push_token');
+
+        foreach ($tokens as $token) {
+            SendExpoPushNotificationJob::dispatch(
+                $notification->id,
+                $senderId,
+                $token,
+                $notification->title,
+                $notification->body,
+                [
+                    'type' => Notification::INVITATION_RESPONSE_TYPE,
+                    'notification_id' => $notification->id,
+                ],
+                isSenderNotice: true,
+            )->afterCommit();
+        }
     }
 }
