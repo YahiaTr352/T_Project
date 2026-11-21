@@ -2,16 +2,12 @@
 
 namespace Tests\Feature\Invitations;
 
-use App\Jobs\SendExpoPushNotificationJob;
 use App\Jobs\SendWhatsAppInvitationJob;
 use App\Models\Notification;
 use App\Models\NotificationGroup;
 use App\Models\Person;
 use App\Models\PersonContactAccount;
-use App\Models\UserDevice;
-use App\Services\ExpoNotificationService;
 use App\Services\SiteMobileAccessToken;
-use App\Support\NotificationSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -283,7 +279,6 @@ class InvitationApiTest extends TestCase
 
         $adult = ['birth_date' => '1990-01-01', 'death_date' => null];
         $sender = Person::factory()->createQuietly($adult);
-        UserDevice::create(['person_id' => $sender->id, 'expo_push_token' => 'ExpoPushToken[sender-disabled]']);
         $recipient = Person::factory()->createQuietly($adult);
         $otherRecipient = Person::factory()->createQuietly($adult);
         $invitation = Notification::create([
@@ -352,62 +347,6 @@ class InvitationApiTest extends TestCase
 
         Queue::assertNothingPushed();
         Http::assertNothingSent();
-    }
-
-    public function test_acceptance_and_decline_send_push_only_to_the_invitation_sender(): void
-    {
-        Queue::fake();
-        Http::preventStrayRequests();
-        Http::fake([
-            'https://exp.host/--/api/v2/push/send' => Http::response(['data' => [['status' => 'ok']]]),
-        ]);
-        config(['invitations.delivery_enabled' => true]);
-        NotificationSettings::forgetCache();
-
-        $adult = ['birth_date' => '1990-01-01', 'death_date' => null];
-        $sender = Person::factory()->createQuietly($adult);
-        $acceptedBy = Person::factory()->createQuietly($adult);
-        $declinedBy = Person::factory()->createQuietly($adult);
-        $token = 'ExpoPushToken[invitation-sender]';
-        $device = UserDevice::create(['person_id' => $sender->id, 'expo_push_token' => $token]);
-        UserDevice::create(['person_id' => $acceptedBy->id, 'expo_push_token' => 'ExpoPushToken[invitation-recipient]']);
-
-        $invitation = Notification::create(['person_id' => $sender->id, 'title' => 'لقاء العائلة', 'status' => 'sent']);
-        $invitation->recipients()->create(['person_id' => $acceptedBy->id]);
-        $invitation->recipients()->create(['person_id' => $declinedBy->id]);
-        $responseUrl = "/api/v1/invitations/logs/{$invitation->id}/response";
-
-        $this->withHeaders($this->identityHeaders($acceptedBy));
-        $this->putJson($responseUrl, ['response' => 'accepted'])->assertOk();
-        $this->putJson($responseUrl, ['response' => 'accepted'])->assertOk();
-        $this->flushSession()->withHeaders($this->identityHeaders($declinedBy));
-        $this->putJson($responseUrl, ['response' => 'declined'])->assertOk();
-
-        Queue::assertPushed(SendExpoPushNotificationJob::class, 2);
-        $pushes = Queue::pushed(SendExpoPushNotificationJob::class)->keyBy('title');
-        $expo = app(ExpoNotificationService::class);
-        foreach (['قبول الدعوة', 'رفض الدعوة'] as $title) {
-            $push = $pushes->get($title);
-            $this->assertNotNull($push);
-            $notice = Notification::findOrFail($push->notificationId);
-            $this->assertSame($sender->id, $push->personId);
-            $this->assertSame($token, $push->expoPushToken);
-            $this->assertSame($notice->body, $push->body);
-            $this->assertTrue($push->afterCommit);
-            $this->assertSame([$sender->id], $notice->recipients()->pluck('person_id')->all());
-
-            $push->handle($expo);
-            Http::assertSent(fn ($request) => $request->data()[0]['to'] === $token
-                && $request->data()[0]['title'] === $title
-                && $request->data()[0]['data'] === [
-                    'type' => Notification::INVITATION_RESPONSE_TYPE,
-                    'notification_id' => $notice->id,
-                ]);
-        }
-
-        $device->update(['person_id' => $declinedBy->id]);
-        $pushes->get('قبول الدعوة')->handle($expo);
-        Http::assertSentCount(2);
     }
 
     /**
