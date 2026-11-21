@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Person; // تأكد من أن مسار المودل صحيح
 use App\Models\Marriage; // **مهم: استيراد موديل الزواج**
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class OutsideFamilyPersonController extends Controller
 {
@@ -29,8 +30,15 @@ class OutsideFamilyPersonController extends Controller
             'biography' => 'nullable|string',
             'occupation' => 'nullable|string|max:255',
             'location_id' => 'nullable|exists:locations,id',
+            'parent_id' => ['required', 'integer', Rule::exists('persons', 'id')->where('gender', 'male')],
+            'mother_id' => ['required', 'integer', Rule::exists('persons', 'id')->where('gender', 'female')],
             // تم تغيير الاسم ليعبر عن الغرض بشكل أفضل
             'marrying_person_id' => 'nullable|exists:persons,id',
+        ], [
+            'parent_id.required' => 'يرجى اختيار الأب.',
+            'mother_id.required' => 'يرجى اختيار الأم.',
+            'parent_id.exists' => 'يرجى اختيار أب مسجل.',
+            'mother_id.exists' => 'يرجى اختيار أم مسجلة.',
         ]);
 
         if ($validator->fails()) {

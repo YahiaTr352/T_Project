@@ -77,38 +77,7 @@
                         </small>
                     </div>
 
-                    {{-- PARENT SELECTION --}}
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label for="create_parent_id">الأب</label>
-                                {{-- This dropdown triggers the JavaScript --}}
-                                <select class="form-control js-father-select" id="create_parent_id" name="parent_id">
-                                    <option value="">-- اختر الأب --</option>
-                                    {{-- The $males variable is passed from the controller --}}
-                                    @foreach ($males as $father)
-                                        <option value="{{ $father->id }}" @selected(old('parent_id') == $father->id)>
-                                            {{ $father->full_name }}
-                                        </option>
-                                    @endforeach
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label for="create_mother_id">الأم</label>
-                                {{--
-                                    ### CORRECTED SECTION ###
-                                    This dropdown now starts empty. The JavaScript will populate it
-                                    based on the father selection. The previous logic using a non-existent
-                                    '$person' variable has been removed.
-                                --}}
-                                <select class="form-control js-mother-select" id="create_mother_id" name="mother_id">
-                                    <option value="">-- اختر الأب أولاً --</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
+                    @include('dashboard.people.partials.required-parents', ['idPrefix' => 'create_'])
 
                     {{-- Other Fields --}}
                     <div class="form-group">

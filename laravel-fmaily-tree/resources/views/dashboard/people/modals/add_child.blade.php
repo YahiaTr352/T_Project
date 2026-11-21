@@ -52,49 +52,7 @@
                         </select>
                     </div>
 
-                    {{-- الأب والأم المحددان تلقائياً --}}
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <div class="form-group mb-0">
-                                <label class="ppl-form-label text-primary">
-                                    <i class="fas fa-male"></i> الأب
-                                </label>
-                                @if ($person->gender == 'male')
-                                    <input type="hidden" name="parent_id" value="{{ $person->id }}">
-                                    <input type="text" class="form-control ppl-form-control" value="{{ $person->full_name }}" disabled>
-                                @else
-                                    <select class="form-control select2 js-father-select ppl-form-control" id="child_parent_id" name="parent_id">
-                                        <option value="">-- اختر الأب --</option>
-                                        @foreach ($males as $father)
-                                            <option value="{{ $father->id }}" @selected(old('parent_id') == $father->id)>
-                                                {{ $father->full_name }}
-                                            </option>
-                                        @endforeach
-                                    </select>
-                                @endif
-                            </div>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <div class="form-group mb-0">
-                                <label class="ppl-form-label text-pink">
-                                    <i class="fas fa-female"></i> الأم
-                                </label>
-                                @if ($person->gender == 'female')
-                                    <input type="hidden" name="mother_id" value="{{ $person->id }}">
-                                    <input type="text" class="form-control ppl-form-control" value="{{ $person->full_name }}" disabled>
-                                @else
-                                    <select class="form-control js-mother-select ppl-form-control" id="child_mother_id" name="mother_id" required>
-                                        <option value="">-- اختر الأم من زوجات الأب --</option>
-                                        @foreach ($person->wives as $wife)
-                                            <option value="{{ $wife->id }}" @selected(old('mother_id') == $wife->id)>
-                                                {{ $wife->full_name }}
-                                            </option>
-                                        @endforeach
-                                    </select>
-                                @endif
-                            </div>
-                        </div>
-                    </div>
+                    @include('dashboard.people.partials.required-parents', ['idPrefix' => 'child_', 'knownParent' => $person])
 
                     {{-- تاريخ الميلاد --}}
                     <div class="form-group mb-3">

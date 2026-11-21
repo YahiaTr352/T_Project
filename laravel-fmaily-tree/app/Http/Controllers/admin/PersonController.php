@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\Rule;
 use App\Exports\PersonsExport;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -124,14 +125,18 @@ class PersonController extends Controller
 
     public function create()
     {
-        $males = Person::where('gender', 'male')->get();
+        $people = Person::allWithParentLinks();
 
-        return view('dashboard.people.create', compact('males'));
+        return view('dashboard.people.create', [
+            'males' => $people->where('gender', 'male'),
+            'females' => $people->where('gender', 'female'),
+        ]);
     }
 
     public function store(Request $request)
     {
-        // أضفنا source_page إلى التحقق
+        $isSelfRegistration = $request->routeIs('people.store.self');
+
         $validated = $request->validate([
             'first_name' => 'required|string|max:100',
             'last_name' => 'nullable|string|max:100',
@@ -143,16 +148,23 @@ class PersonController extends Controller
             'cemetery_location' => 'nullable|string|max:150',
             'grave_number' => 'nullable|string|max:50',
             'gender' => 'required|in:male,female',
-            'from_outside_the_family' => 'required_unless:source_page,add_self|nullable|boolean',
+            'from_outside_the_family' => $isSelfRegistration ? 'nullable|boolean' : 'required|boolean',
             'photo' => 'nullable|image|max:2048',
             'biography' => 'nullable|string',
             'occupation' => 'nullable|string|max:100',
             'location_id' => 'nullable|exists:locations,id',
-            'parent_id' => 'nullable|exists:persons,id',
-            'mother_id' => 'nullable|exists:persons,id',
-            'source_page' => 'nullable|string', // للتحقق من مصدر الطلب
+            'parent_id' => $isSelfRegistration
+                ? 'nullable|exists:persons,id'
+                : ['required', 'integer', Rule::exists('persons', 'id')->where('gender', 'male')],
+            'mother_id' => $isSelfRegistration
+                ? 'nullable|exists:persons,id'
+                : ['required', 'integer', Rule::exists('persons', 'id')->where('gender', 'female')],
         ], [
-            'from_outside_the_family.required_unless' => 'يرجى اختيار الانتماء للعائلة.',
+            'from_outside_the_family.required' => 'يرجى اختيار الانتماء للعائلة.',
+            'parent_id.required' => 'يرجى اختيار الأب.',
+            'mother_id.required' => 'يرجى اختيار الأم.',
+            'parent_id.exists' => 'يرجى اختيار أب مسجل.',
+            'mother_id.exists' => 'يرجى اختيار أم مسجلة.',
         ]);
 
         // تأكد من أن اسم الحقل في قاعدة البيانات هو 'photo'
@@ -181,7 +193,7 @@ class PersonController extends Controller
         }
 
         // ✨ التحقق من مصدر الطلب لتحديد وجهة إعادة التوجيه
-        if ($request->input('source_page') === 'add_self') {
+        if ($isSelfRegistration) {
             // إذا كان الطلب من صفحة "إضافة نفسك"، وجهه إلى صفحة عرض الشخص الجديد
             return redirect()->route('people.show', $person->id)
                 ->with('success', 'تمت إضافة بياناتك بنجاح! مرحباً بك في تواصل العائلة.');
@@ -373,10 +385,6 @@ class PersonController extends Controller
         // تحميل علاقة location
         $person->load(['location', 'contactAccounts', 'personLocations', 'locations']);
         
-        // جلب قوائم الذكور والإناث اللازمة لمودال التعديل والنماذج
-        $males = Person::where('gender', 'male')->with('location')->get();
-        $females = Person::where('gender', 'female')->with('location')->get();
-
         $orderService = app(\App\Services\MarriageOrderService::class);
 
         // جلب الأبناء بناءً على جنس الشخص — مرتبين حسب ترتيب الزوجة عند الأب
@@ -408,7 +416,7 @@ class PersonController extends Controller
             $spouses = $marriages->pluck('husband');
         }
 
-        $persons = Person::all();
+        $persons = Person::allWithParentLinks();
 
         // تمرير كل البيانات اللازمة إلى الـ view
         return view('dashboard.people.show', [
@@ -417,10 +425,11 @@ class PersonController extends Controller
             'children' => $children,
             'spouses'  => $spouses,
             'marriages' => $marriages, // إضافة تفاصيل الزواج
-            'males'    => $males,    // <-- إضافة قائمة الذكور
-            'females'  => $females,  // <-- إضافة قائمة الإناث
+            'males'    => $persons->where('gender', 'male'),
+            'females'  => $persons->where('gender', 'female'),
         ]);
     }
+
 
 
     public function getWives(Person $father)

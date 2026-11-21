@@ -103,6 +103,9 @@
         <h4 class="ppl-form-card-title">2. النسب والوالدان في شجرة العائلة</h4>
     </div>
 
+    @if (!$isEdit)
+        @include('dashboard.people.partials.required-parents', ['idPrefix' => ''])
+    @else
     <div class="row">
         {{-- اختيار الأب --}}
         <div class="col-md-6 mb-3">
@@ -146,6 +149,7 @@
             </div>
         </div>
     </div>
+    @endif
 </div>
 
 {{-- ====================================================================

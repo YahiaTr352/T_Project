@@ -62,8 +62,6 @@
 @endsection
 
 @push('scripts')
-    @include('dashboard.people.partials.father-wives-script')
-
     <script>
         $(function () {
             $('.custom-file-input').on('change', function () {

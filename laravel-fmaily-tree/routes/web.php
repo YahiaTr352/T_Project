@@ -82,6 +82,8 @@ Route::get('/family-tree', [FamilyTreeController::class, 'index'])->name('family
 // برنامج المشي والتحديات العائلية
 Route::get('/walking', [\App\Http\Controllers\WalkingPublicController::class, 'index'])->name('walking.index');
 Route::get('/add-self', [FamilyTreeController::class, 'addSelf'])->name('add.self');
+Route::post('/add-self', [PersonController::class, 'store'])->name('people.store.self')
+    ->middleware(['auth', 'permission:people.view|people.create|people.update|people.delete']);
 
 // User Registration Routes
 Route::get('/register-person', [\App\Http\Controllers\UserRegistrationController::class, 'show'])->name('users.register');

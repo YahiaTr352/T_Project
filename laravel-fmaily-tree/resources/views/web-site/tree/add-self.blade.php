@@ -430,10 +430,8 @@
         </div>
 
         <!-- Form -->
-        <form action="{{ route('people.store') }}" method="POST" enctype="multipart/form-data" id="multiStepForm">
+        <form action="{{ route('people.store.self') }}" method="POST" enctype="multipart/form-data" id="multiStepForm">
             @csrf
-            {{-- ✨ This hidden input identifies the form's source --}}
-            <input type="hidden" name="source_page" value="add_self">
 
             <!-- Step 1: Basic Information -->
             <div class="form-step active" id="step1">

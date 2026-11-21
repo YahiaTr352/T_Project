@@ -98,6 +98,9 @@ class MarriageController extends Controller
         // الأشخاص المختارون للفلترة (لتعبئة Select2 المبدئية فقط)
         $selectedHusband = $request->filled('husband_id') ? Person::find($request->husband_id) : null;
         $selectedWife = $request->filled('wife_id') ? Person::find($request->wife_id) : null;
+        $people = Person::allWithParentLinks();
+        $males = $people->where('gender', 'male');
+        $females = $people->where('gender', 'female');
 
         return view('dashboard.marriages.index', compact(
             'marriages',
@@ -108,6 +111,8 @@ class MarriageController extends Controller
             'unknownStatusMarriages',
             'selectedHusband',
             'selectedWife',
+            'males',
+            'females',
             'wifeOrderLabels'
         ));
     }

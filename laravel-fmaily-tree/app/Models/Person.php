@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Kalnoy\Nestedset\NodeTrait;
 use App\Models\Scopes\OrderedScope;
@@ -613,6 +614,17 @@ class Person extends BaseModel
     public function parent()
     {
         return $this->belongsTo(Person::class, 'parent_id');
+    }
+
+    public static function allWithParentLinks(): Collection
+    {
+        $people = static::all()->keyBy('id');
+
+        foreach ($people as $person) {
+            $person->setRelation('parent', $people->get($person->parent_id));
+        }
+
+        return $people;
     }
 
     public function mother()
