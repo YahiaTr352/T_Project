@@ -30,6 +30,27 @@ class InvitationResponseService
 
             $recipient->invitation_response = $response;
             $recipient->save();
+
+            $this->notifySender($received, $recipient->person?->full_name ?: 'أحد المدعوين', $response);
         });
+    }
+
+    private function notifySender(Notification $invitation, string $memberName, string $response): void
+    {
+        $invitationTitle = trim((string) $invitation->title) ?: 'دعوة عائلية';
+        $accepted = $response === 'accepted';
+        $notification = Notification::create([
+            'title' => $accepted ? 'قبول الدعوة' : 'رفض الدعوة',
+            'body' => $accepted
+                ? "تأكيد الحضور من {$memberName} لدعوتك «{$invitationTitle}»."
+                : "اعتذار {$memberName} عن حضور دعوتك «{$invitationTitle}».",
+            'status' => 'sent',
+            'sent_at' => now(),
+            'targeting_filters' => [
+                'data' => ['type' => Notification::INVITATION_RESPONSE_TYPE],
+            ],
+        ]);
+
+        $notification->recipients()->create(['person_id' => $invitation->person_id]);
     }
 }

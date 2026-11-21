@@ -27,6 +27,12 @@ class MobileNotificationService
                         $sub->where('targeting_filters->data->type', 'not like', '%chat%')
                             ->orWhereNull('targeting_filters->data->type');
                     });
+            })
+            ->where(function (Builder $query) {
+                // Keep invitation replies private even if a sender account is deleted.
+                $query->whereNull('targeting_filters->data->type')
+                    ->orWhere('targeting_filters->data->type', '!=', Notification::INVITATION_RESPONSE_TYPE)
+                    ->orWhereHas('recipients');
             });
     }
 

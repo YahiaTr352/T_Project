@@ -11,6 +11,8 @@ class Notification extends Model
 {
     public const RESPONDABLE_STATUSES = ['sent', 'partial'];
 
+    public const INVITATION_RESPONSE_TYPE = 'invitation_response';
+
     protected $fillable = [
         'user_id',
         'person_id',

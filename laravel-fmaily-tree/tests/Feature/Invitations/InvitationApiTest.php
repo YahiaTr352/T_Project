@@ -271,7 +271,7 @@ class InvitationApiTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_recipient_can_save_own_invitation_response_once_without_sending(): void
+    public function test_recipient_can_save_own_response_once_and_notify_the_sender_in_app(): void
     {
         Queue::fake();
         Http::preventStrayRequests();
@@ -283,6 +283,7 @@ class InvitationApiTest extends TestCase
         $otherRecipient = Person::factory()->createQuietly($adult);
         $invitation = Notification::create([
             'person_id' => $sender->id,
+            'title' => 'لقاء العائلة',
             'status' => 'sent',
             'channels' => ['whatsapp'],
         ]);
@@ -316,12 +317,33 @@ class InvitationApiTest extends TestCase
         $this->flushSession()->withHeaders($this->identityHeaders($otherRecipient));
         $this->putJson("{$logUrl}/response", ['response' => 'declined'])->assertOk();
         $this->putJson("{$logUrl}/response", ['response' => 'accepted'])->assertConflict();
+        $this->getJson('/api/notifications')->assertOk()
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.id', $invitation->id);
 
         $this->flushSession()->withHeaders($this->identityHeaders($sender))
             ->getJson("{$logUrl}?direction=outgoing")
             ->assertOk()
             ->assertJsonFragment(['id' => $ownRow->id, 'invitation_response' => 'accepted'])
             ->assertJsonFragment(['id' => $otherRow->id, 'invitation_response' => 'declined']);
+
+        $notices = $this->getJson('/api/notifications')->assertOk()
+            ->assertJsonCount(2, 'data.data')
+            ->json('data.data');
+        $byTitle = collect($notices)->keyBy('title');
+        $this->assertSame("تأكيد الحضور من {$recipient->full_name} لدعوتك «لقاء العائلة».", $byTitle['قبول الدعوة']['body']);
+        $this->assertSame("اعتذار {$otherRecipient->full_name} عن حضور دعوتك «لقاء العائلة».", $byTitle['رفض الدعوة']['body']);
+        foreach ($notices as $notice) {
+            $this->assertNull($notice['invitation']);
+            $this->assertFalse($notice['read']);
+        }
+        $this->getJson('/api/notifications/unread-count')->assertOk()->assertJsonPath('data.unread_count', 2);
+        $this->getJson('/api/v1/invitations/logs?direction=outgoing')->assertOk()
+            ->assertJsonCount(2, 'data.notifications.data');
+
+        $sender->deleteQuietly();
+        $this->flushSession()->flushHeaders()
+            ->getJson('/api/notifications')->assertOk()->assertJsonCount(0, 'data.data');
 
         Queue::assertNothingPushed();
         Http::assertNothingSent();
