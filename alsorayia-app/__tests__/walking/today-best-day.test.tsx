@@ -89,3 +89,45 @@ it('uses the device date when it differs from the Riyadh date', () => {
 it('lets a verified zero replace the saved count for today', () => {
   expect(computeBestDay({ ...input, todaySteps: 0 })).toEqual({ bestDaySteps: 800, bestDayDate: yesterday });
 });
+
+it('uses the iOS history count for a past best day in both places', () => {
+  const date = '2026-11-17';
+  const historyRecords = [
+    { ...todayRecord, id: 2, date: `${date}T00:00:00Z`, steps: 14924 },
+    { ...todayRecord, id: 3, date: '2026-11-05', steps: 14269 },
+  ];
+  const personalHistorySteps = { [date]: 14831 };
+  const best = computeBestDay({
+    ...input,
+    personalStats: { ...personalStats, best_day_steps: 14924 },
+    historyRecords,
+    ledger: { daily: { [date]: 14924 } },
+    personalHistorySteps,
+  });
+
+  expect(best).toEqual({ bestDaySteps: 14831, bestDayDate: date });
+  render(<WalkingHistoryList records={historyRecords} isLoading={false} localSteps={personalHistorySteps} />);
+  expect(screen.getByText(`${formatSteps(best.bestDaySteps)} خطوة`)).toBeOnTheScreen();
+  expect(screen.queryByText(`${formatSteps(14924)} خطوة`)).toBeNull();
+});
+
+it('chooses the next best displayed day when a past best has zero iOS steps', () => {
+  expect(computeBestDay({
+    ...input,
+    personalStats: { ...personalStats, best_day_steps: 2000, best_day_date: yesterday },
+    historyRecords: [
+      { ...todayRecord, id: 2, date: yesterday, steps: 2000 },
+      { ...todayRecord, id: 3, date: '2026-11-19', steps: 1500 },
+    ],
+    ledger: { daily: { [yesterday]: 2000, '2026-11-19': 1900 } },
+    personalHistorySteps: { [yesterday]: 0 },
+  })).toEqual({ bestDaySteps: 1500, bestDayDate: '2026-11-19' });
+});
+
+it('keeps a dated server best from before the iOS history window', () => {
+  expect(computeBestDay({
+    ...input,
+    personalStats: { ...personalStats, best_day_steps: 2000, best_day_date: '2026-10-01' },
+    personalHistorySteps: { [yesterday]: 900 },
+  })).toEqual({ bestDaySteps: 2000, bestDayDate: '2026-10-01' });
+});

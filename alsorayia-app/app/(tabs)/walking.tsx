@@ -97,6 +97,7 @@ export default function WalkingScreen() {
         todaySteps: personalSteps,
         currentDateKey: walking.currentDateKey,
         personalTodayDateKey: personalTodayKey,
+        personalHistorySteps: localHistory?.daily ?? {},
       })
     : walking;
   // null = لم يكتمل أول فحص بعد — نتجاهل الانتقال الأول (false -> true) الناتج عن التحميل الأولي
