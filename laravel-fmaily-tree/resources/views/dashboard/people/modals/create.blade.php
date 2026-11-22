@@ -77,7 +77,7 @@
                         </small>
                     </div>
 
-                    @include('dashboard.people.partials.required-parents', ['idPrefix' => 'create_'])
+                    @include('dashboard.people.partials.parent-fields', ['idPrefix' => 'create_', 'parentsRequired' => old('from_outside_the_family', '0') == '0'])
 
                     {{-- Other Fields --}}
                     <div class="form-group">

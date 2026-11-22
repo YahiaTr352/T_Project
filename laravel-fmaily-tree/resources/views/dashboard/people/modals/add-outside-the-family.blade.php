@@ -37,7 +37,7 @@
                         </div>
                     </div>
 
-                    @include('dashboard.people.partials.required-parents', ['idPrefix' => 'outside_'])
+                    @include('dashboard.people.partials.parent-fields', ['idPrefix' => 'outside_', 'parentsRequired' => false])
 
                     {{-- تواريخ الميلاد والوفاة --}}
                     <div class="row">

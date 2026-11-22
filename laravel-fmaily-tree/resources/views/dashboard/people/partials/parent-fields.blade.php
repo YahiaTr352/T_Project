@@ -1,4 +1,4 @@
-<div class="row">
+<div class="row js-parent-fields">
     @foreach (['parent_id' => ['الأب', 'male', $males], 'mother_id' => ['الأم', 'female', $females]] as $field => [$label, $gender, $options])
         @php
             $fieldId = $idPrefix . $field;
@@ -7,13 +7,13 @@
         <div class="col-md-6 mb-3">
             <div class="form-group mb-0">
                 <label for="{{ $fieldId }}" class="ppl-form-label">
-                    {{ $label }} <span class="text-danger">*</span>
+                    {{ $label }} <span class="text-danger js-parent-required-marker" @if (!$parentsRequired) hidden @endif>*</span>
                 </label>
                 @if ($fixed)
                     <input type="hidden" name="{{ $field }}" value="{{ $knownParent->id }}">
                     <input type="text" id="{{ $fieldId }}" class="form-control ppl-form-control" value="{{ $knownParent->full_name }}" readonly>
                 @else
-                    <select id="{{ $fieldId }}" name="{{ $field }}" class="form-control ppl-form-control js-required-parent" required>
+                    <select id="{{ $fieldId }}" name="{{ $field }}" class="form-control ppl-form-control js-parent-select" @required($parentsRequired)>
                         <option value="">-- اختر {{ $label }} --</option>
                         @foreach ($options as $option)
                             <option value="{{ $option->id }}" @selected((string) old($field) === (string) $option->id)>
@@ -34,15 +34,23 @@
     @push('scripts')
         <script>
             $(function () {
-                $('.js-required-parent').each(function () {
-                    const $select = $(this);
-                    const $modal = $select.closest('.modal');
+                $('.js-parent-fields').each(function () {
+                    const $fields = $(this);
+                    const $parents = $fields.find('.js-parent-select');
+                    const $modal = $fields.closest('.modal');
+                    const $affiliation = $fields.closest('form').find('select[name="from_outside_the_family"]');
 
-                    $select.select2({
+                    $parents.select2({
                         theme: 'bootstrap4',
                         width: '100%',
                         dropdownParent: $modal.length ? $modal : $(document.body),
                     });
+
+                    $affiliation.on('change', function () {
+                        const required = this.value === '0';
+                        $parents.prop('required', required);
+                        $fields.find('.js-parent-required-marker').prop('hidden', !required);
+                    }).trigger('change');
                 });
             });
         </script>

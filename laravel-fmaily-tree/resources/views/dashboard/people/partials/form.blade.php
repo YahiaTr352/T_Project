@@ -104,7 +104,7 @@
     </div>
 
     @if (!$isEdit)
-        @include('dashboard.people.partials.required-parents', ['idPrefix' => ''])
+        @include('dashboard.people.partials.parent-fields', ['idPrefix' => '', 'parentsRequired' => $familyStatus === '0'])
     @else
     <div class="row">
         {{-- اختيار الأب --}}

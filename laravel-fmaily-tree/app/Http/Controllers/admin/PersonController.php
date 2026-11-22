@@ -136,6 +136,7 @@ class PersonController extends Controller
     public function store(Request $request)
     {
         $isSelfRegistration = $request->routeIs('people.store.self');
+        $requiresParents = in_array($request->input('from_outside_the_family'), [false, 0, '0'], true);
 
         $validated = $request->validate([
             'first_name' => 'required|string|max:100',
@@ -155,10 +156,10 @@ class PersonController extends Controller
             'location_id' => 'nullable|exists:locations,id',
             'parent_id' => $isSelfRegistration
                 ? 'nullable|exists:persons,id'
-                : ['required', 'integer', Rule::exists('persons', 'id')->where('gender', 'male')],
+                : [Rule::requiredIf($requiresParents), 'nullable', 'integer', Rule::exists('persons', 'id')->where('gender', 'male')],
             'mother_id' => $isSelfRegistration
                 ? 'nullable|exists:persons,id'
-                : ['required', 'integer', Rule::exists('persons', 'id')->where('gender', 'female')],
+                : [Rule::requiredIf($requiresParents), 'nullable', 'integer', Rule::exists('persons', 'id')->where('gender', 'female')],
         ], [
             'from_outside_the_family.required' => 'يرجى اختيار الانتماء للعائلة.',
             'parent_id.required' => 'يرجى اختيار الأب.',

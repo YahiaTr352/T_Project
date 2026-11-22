@@ -52,7 +52,7 @@
                         </select>
                     </div>
 
-                    @include('dashboard.people.partials.required-parents', ['idPrefix' => 'child_', 'knownParent' => $person])
+                    @include('dashboard.people.partials.parent-fields', ['idPrefix' => 'child_', 'knownParent' => $person, 'parentsRequired' => true])
 
                     {{-- تاريخ الميلاد --}}
                     <div class="form-group mb-3">
