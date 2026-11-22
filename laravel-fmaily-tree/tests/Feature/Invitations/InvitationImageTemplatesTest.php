@@ -72,6 +72,8 @@ class InvitationImageTemplatesTest extends TestCase
     public function test_local_member_upload_preserves_category_without_sending_review_notices(): void
     {
         $this->asIdentity($this->person());
+        $this->postJson('/api/v1/invitations/creatives', ['image' => $this->image()])
+            ->assertUnprocessable()->assertJsonValidationErrors('invitation_type');
         $this->postJson('/api/v1/invitations/creatives', [
             'image' => $this->image(),
             'invitation_type' => 'condolences',
@@ -81,11 +83,66 @@ class InvitationImageTemplatesTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_approved_wedding_submission_becomes_a_personalized_attachment(): void
+    {
+        $sender = $this->person();
+        $recipient = $this->person();
+        $this->asIdentity($sender);
+        $this->post('/invitations/creatives', [
+            'image' => UploadedFile::fake()->image('wedding.png', 500, 900),
+            'name' => 'بطاقة زفاف', 'invitation_type' => 'wedding',
+        ])->assertRedirect(route('invitations.send'))->assertSessionHas('creative_success');
+
+        $design = CreativeTemplate::sole();
+        $this->getJson('/api/v1/invitations/creatives?invitation_type=wedding')->assertJsonCount(0, 'data.templates');
+        $admin = User::factory()->createQuietly();
+        $admin->assignRole(Role::findOrCreate('super_admin', 'web'));
+        $this->actingAs($admin)->postJson("/dashboard/creative-templates/{$design->id}/approve")
+            ->assertOk()->assertJsonPath('data.template.invitation_type', 'wedding');
+        $this->getJson('/api/v1/invitations/creatives?invitation_type=wedding')->assertJsonPath('data.templates.0.id', $design->id);
+        $this->getJson('/api/v1/invitations/creatives?invitation_type=greeting')->assertJsonCount(0, 'data.templates');
+
+        $payload = [
+            'template_key' => 'wedding', 'creative_id' => $design->id,
+            'title' => 'دعوة زفاف', 'body' => 'زفاف {groom} في {location}',
+            'template_vars' => ['hosts' => 'عائلة إبراهيم', 'groom' => 'خالد', 'date' => '2026-12-01', 'time' => '8:00', 'location' => 'قاعة الفرح'],
+        ];
+        $this->postJson('/api/v1/invitations/preview', array_replace($payload, ['template_key' => 'greeting']))
+            ->assertUnprocessable()->assertJsonPath('code', 'CREATIVE_TYPE_MISMATCH');
+        $preview = $this->postJson('/api/v1/invitations/preview', $payload)->assertOk()->json('data.card_image_url');
+        $this->postJson('/invitations/preview-message', $payload)->assertOk()->assertJsonPath('card_image_url', $preview);
+        $this->postJson('/api/v1/invitations/send', $payload + [
+            'channels' => ['push', 'whatsapp'], 'recipient_type' => 'persons', 'person_ids' => [$recipient->id],
+        ])->assertCreated();
+
+        $notification = Notification::sole();
+        $this->assertSame('image', $notification->media_type);
+        $this->assertTrue($notification->targeting_filters['creative_card_rendered']);
+        $this->assertSame(Storage::disk('public')->url($notification->media_path), $preview);
+        $firstImage = Storage::disk('public')->get($notification->media_path);
+        $this->assertNotSame(Storage::disk('public')->get($design->image_path), $firstImage);
+        $this->assertNull(app(InvitationCardRenderer::class)->renderForNotification($notification, 'زفاف خالد', $recipient->id, ''));
+
+        $payload['template_vars']['groom'] = 'أحمد';
+        $another = $this->postJson('/api/v1/invitations/preview', $payload)->assertOk()->json('data.card_image_url');
+        $this->assertNotSame($preview, $another);
+        $this->assertNotSame($firstImage, Storage::disk('public')->get('notifications/cards/'.basename($another)));
+        $notification->update(['status' => 'sent', 'sent_at' => now()]);
+        $this->flushSession();
+        $this->asIdentity($recipient);
+        $this->getJson('/api/notifications')->assertOk()
+            ->assertJsonPath('data.data.0.body', 'زفاف خالد في قاعة الفرح')
+            ->assertJsonPath('data.data.0.media_url', asset('storage/'.$notification->media_path));
+        Queue::assertNothingPushed();
+        Http::assertNothingSent();
+    }
+
     public function test_image_only_invitations_work_from_web_and_api_and_display_to_recipient(): void
     {
         $sender = $this->person();
         $recipient = $this->person();
-        Storage::disk('public')->put('greeting.png', base64_decode(self::PNG));
+        $sourceImage = UploadedFile::fake()->image('greeting.png', 500, 650)->getContent();
+        Storage::disk('public')->put('greeting.png', $sourceImage);
         $creative = CreativeTemplate::create([
             'name' => 'صورة تهنئة',
             'image_path' => 'greeting.png',
@@ -113,7 +170,7 @@ class InvitationImageTemplatesTest extends TestCase
         $this->assertSame('', $invitation->body);
         $this->assertSame('image', $invitation->media_type);
         Storage::disk('public')->assertExists($invitation->media_path);
-        $this->assertSame(base64_decode(self::PNG), Storage::disk('public')->get($invitation->media_path));
+        $this->assertSame($sourceImage, Storage::disk('public')->get($invitation->media_path));
         $this->assertNull(app(InvitationCardRenderer::class)->renderForNotification($invitation, '', $recipient->id, ''));
         $this->postJson('/api/v1/invitations/preview', [
             'creative_id' => $creative->id, 'template_key' => 'greeting', 'body' => '', 'title' => 'تهنئة',

@@ -46,6 +46,9 @@ class InvitationCardRenderer
     ): ?string {
         try {
             $filters = is_array($notification->targeting_filters) ? $notification->targeting_filters : [];
+            if (! empty($filters['creative_card_rendered'])) {
+                return null;
+            }
             if (trim((string) $notification->body) === '') {
                 return null;
             }
@@ -71,7 +74,10 @@ class InvitationCardRenderer
     public function renderPreview(InvitationBackground|CreativeTemplate $background, string $title, string $body, array $typography = []): ?string
     {
         try {
-            $key = 'preview_' . $background->id . '_' . md5($background->image_path . "\n" . $title . "\n" . $body);
+            if ($background instanceof CreativeTemplate && $background->invitation_type !== null) {
+                $typography['invitation_type'] = $background->invitation_type;
+            }
+            $key = 'preview_' . $background->id . '_' . hash('sha256', serialize([$background->image_path, $title, $body, $typography]));
 
             return $this->render($background->image_path, $title, $body, $key, $typography);
         } catch (\Throwable $e) {
@@ -110,36 +116,79 @@ class InvitationCardRenderer
                 return null;
             }
 
-            $canvas = $this->cover($image);
+            $type = $typography['invitation_type'] ?? null;
+            $canvas = $type === 'wedding' ? $this->fitArtwork($image) : $this->cover($image);
             imagedestroy($image);
 
-            $this->overlay($canvas);
-            $this->border($canvas);
+            if ($type === null) {
+                $this->overlay($canvas);
+                $this->border($canvas);
+            }
 
             $title = $this->clean($title);
             $body = $this->clean($body);
-            if ($title === '' && $body === '') {
+            $fields = $typography['template_vars'] ?? [];
+            if ($title === '' && $body === '' && ($type !== 'wedding' || array_filter($fields) === [])) {
                 imagedestroy($canvas);
 
                 return null;
             }
 
-            $this->drawBlock($canvas, $fonts, $title, $body, $weight);
+            if ($type === 'wedding') {
+                $this->drawWedding($canvas, $fonts[$weight ?? 'regular'], $fields);
+            } else {
+                $this->drawBlock($canvas, $fonts, $title, $body, $weight);
+            }
 
             if (! $disk->exists('notifications/cards')) {
                 $disk->makeDirectory('notifications/cards');
             }
-            $tmp = tempnam(sys_get_temp_dir(), 'invc') . '.jpg';
-            imagejpeg($canvas, $tmp, 88);
-            imagedestroy($canvas);
-            $disk->putFileAs('notifications/cards', new \Illuminate\Http\File($tmp), basename($relative));
-            @unlink($tmp);
+            ob_start();
+            try {
+                $written = imagejpeg($canvas, null, 88);
+            } finally {
+                $jpeg = ob_get_clean();
+                imagedestroy($canvas);
+            }
 
-            return $relative;
+            return $written && $disk->put($relative, $jpeg) ? $relative : null;
         } catch (\Throwable $e) {
             Log::channel('single')->error('[InvitationCard] render failed: ' . $e->getMessage());
 
             return null;
+        }
+    }
+
+    protected function fitArtwork($image)
+    {
+        $width = imagesx($image);
+        $height = imagesy($image);
+        $scale = min(self::WIDTH / $width, 1920 / $height);
+
+        return imagescale($image, max(1, (int) round($width * $scale)), max(1, (int) round($height * $scale)));
+    }
+
+    protected function drawWedding($canvas, string $font, array $fields): void
+    {
+        $slots = [
+            ['يتشرف بدعوتكم', .38, 46],
+            [$fields['hosts'] ?? '', .46, 74],
+            ['لحضور حفل زفاف', .54, 46],
+            [$fields['groom'] ?? '', .63, 84],
+            [implode('   ', array_filter([$fields['date'] ?? null, $fields['time'] ?? null])), .77, 49],
+            [$fields['location'] ?? '', .86, 52],
+        ];
+
+        foreach ($slots as [$value, $baseline, $size]) {
+            $line = trim(preg_replace('/\s+/u', ' ', $this->clean(is_scalar($value) ? (string) $value : '')) ?? '');
+            if ($line === '') {
+                continue;
+            }
+            $size = max(10, (int) round($size * imagesx($canvas) / self::WIDTH));
+            $maxWidth = imagesx($canvas) * .86;
+            $width = $this->lineWidth($font, $size, $this->shape($line));
+            $size = max(1, (int) floor($size * min(1, $maxWidth / max(1, $width))));
+            $this->drawCentered($canvas, $font, $size, $line, (int) round(imagesy($canvas) * $baseline));
         }
     }
 
@@ -231,7 +280,7 @@ class InvitationCardRenderer
         $box = imagettfbbox($size, 0, $font, $shaped);
         $minX = $box[0] ?? 0;
         $maxX = $box[2] ?? 0;
-        $x = (int) ((self::WIDTH - ($maxX - $minX)) / 2 - $minX);
+        $x = (int) ((imagesx($canvas) - ($maxX - $minX)) / 2 - $minX);
 
         $white = imagecolorallocate($canvas, 255, 255, 255);
         $shadow = imagecolorallocatealpha($canvas, 0, 0, 0, 90);

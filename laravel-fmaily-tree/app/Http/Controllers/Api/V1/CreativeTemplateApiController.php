@@ -59,14 +59,16 @@ class CreativeTemplateApiController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'image' => 'required|image|max:16384',
+            'image' => CreativeTemplateService::ARTWORK_RULES,
             'name' => 'nullable|string|max:255',
             'description' => 'nullable|string|max:1000',
-            'invitation_type' => ['nullable', Rule::in(array_column(config('invitation_templates.templates', []), 'key'))],
+            'invitation_type' => ['required', Rule::in(array_column(config('invitation_templates.templates', []), 'key'))],
         ], [
             'image.required' => 'يرجى اختيار صورة التصميم.',
             'image.image' => 'الملف المرفوع يجب ان يكون صورة.',
             'image.max' => 'حجم الصورة يجب الا يتجاوز 16 ميجابايت.',
+            'image.dimensions' => 'عرض الصورة وارتفاعها لازم يكونوا 4096 بكسل أو أقل.',
+            'invitation_type.required' => 'يرجى اختيار نوع الدعوة.',
         ]);
 
         try {
@@ -75,7 +77,7 @@ class CreativeTemplateApiController extends Controller
                 $request->file('image'),
                 $validated['name'] ?? null,
                 $validated['description'] ?? null,
-                $validated['invitation_type'] ?? null
+                $validated['invitation_type']
             );
         } catch (InvitationException $e) {
             return $this->fail($e);
@@ -84,6 +86,7 @@ class CreativeTemplateApiController extends Controller
         return $this->ok('تم رفع التصميم وهو قيد المراجعة.', ['template' => [
             'id' => $template->id,
             'name' => $template->name,
+            'invitation_type' => $template->invitation_type,
             'image_url' => $template->image_url,
             'status' => $template->status,
             'status_label' => $template->status_label,
@@ -105,6 +108,10 @@ class CreativeTemplateApiController extends Controller
                 'data' => null,
                 'errors' => null,
             ], 404);
+        }
+
+        if ($template->status === CreativeTemplate::STATUS_APPROVED) {
+            return $this->fail(new InvitationException('القالب المعتمد تديره الإدارة.', 'CREATIVE_ALREADY_APPROVED', 403));
         }
 
         $this->creatives->destroy($template);

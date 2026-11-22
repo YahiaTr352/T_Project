@@ -26,6 +26,7 @@ interface DesignSectionProps {
   selectedCreative: CreativeTemplate | null;
   attachedImage: { uri: string } | null;
   onOpenCreative: () => void;
+  onSubmitDesign: () => void;
   onClearCreative: () => void;
   onPickAttachment: () => void;
   onRemoveAttachment: () => void;
@@ -44,6 +45,7 @@ export function DesignSection({
   selectedCreative,
   attachedImage,
   onOpenCreative,
+  onSubmitDesign,
   onClearCreative,
   onPickAttachment,
   onRemoveAttachment,
@@ -52,25 +54,23 @@ export function DesignSection({
     <>
       <ThemedText style={styles.sectionLabel}>الصورة والتصميم</ThemedText>
 
-      <TouchableOpacity
+      {invitationTypeName ? <TouchableOpacity
         accessibilityRole="button"
-        accessibilityLabel="مساحة إبداع"
+        accessibilityLabel="قوالب الصور"
         activeOpacity={0.85}
         style={[designStyles.creativeEntry, { backgroundColor: colors.primary }]}
         onPress={onOpenCreative}>
-        <Ionicons name="color-palette-outline" size={24} color="#FFFFFF" />
+        <Ionicons name="images-outline" size={24} color="#FFFFFF" />
         <View style={{ flex: 1 }}>
-          <Text style={designStyles.entryTitle}>مساحة إبداع</Text>
+          <Text style={designStyles.entryTitle}>قوالب الصور</Text>
           <Text style={designStyles.entrySubtitle}>
             {selectedCreative
               ? `القالب المختار: ${selectedCreative.name || 'بطاقة مصممة'}`
-              : invitationTypeName
-                ? `صور ${invitationTypeName} والتصاميم العامة`
-                : 'اختر قالبًا للدعوة أو ارفع تصميمك'}
+              : `صور ${invitationTypeName}`}
           </Text>
         </View>
         <Ionicons name="chevron-back" size={18} color="#FFFFFF" />
-      </TouchableOpacity>
+      </TouchableOpacity> : null}
         {selectedCreative ? (
           <View style={[styles.creativeSelectedRow, { marginBottom: 12 }]}>
             <View style={[styles.miniBadgeOk, { backgroundColor: '#10B98118' }]}>
@@ -87,7 +87,10 @@ export function DesignSection({
           </View>
         ) : null}
 
-      {/* 2) إرفاق صورة عادية — تصميم Senior: معاينة فقاعة شات توضح أن الصورة تصل مع الرسالة */}
+      <TouchableOpacity onPress={onSubmitDesign} accessibilityRole="button" style={[styles.clearVisual, { marginBottom: 12 }]}>
+        <Ionicons name="color-palette-outline" size={18} color={colors.primary} />
+        <ThemedText style={{ color: colors.primary }}>مساحة إبداع</ThemedText>
+      </TouchableOpacity>
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: attachedImage ? colors.primary : border, borderWidth: attachedImage ? 1.5 : 1 }]}>
         <View style={styles.creativeHeaderRow}>
           <View style={[styles.creativeIconWrap, { backgroundColor: '#3B82F618' }]}>
@@ -124,7 +127,7 @@ export function DesignSection({
             {selectedCreative ? (
               <View style={[styles.conflictBar, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
                 <Ionicons name="warning-outline" size={14} color="#D97706" />
-                <Text style={styles.conflictText}>اختيار صورة سيلغي قالب مساحة الإبداع المختار</Text>
+                <Text style={styles.conflictText}>اختيار صورة سيلغي قالب الصورة المختار</Text>
               </View>
             ) : null}
           </TouchableOpacity>

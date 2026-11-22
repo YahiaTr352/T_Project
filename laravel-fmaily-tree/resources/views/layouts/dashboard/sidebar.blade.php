@@ -527,7 +527,7 @@
         =========================================== --}}
         @can('notifications.view')
             @php
-                $notifActive = request()->routeIs(['dashboard.notifications.*', 'dashboard.notification-groups.*', 'dashboard.backgrounds.*']);
+                $notifActive = request()->routeIs(['dashboard.notifications.*', 'dashboard.notification-groups.*', 'dashboard.backgrounds.*', 'dashboard.creatives.*']);
                 $pendingInvitationsCount = $pendingInvitationsCount ?? 0;
             @endphp
 
@@ -601,6 +601,15 @@
                                     </a>
                                 </li>
                                 @endif
+
+                                <li class="nav-item w-100 {{ request()->routeIs('dashboard.creatives.*') ? 'active' : '' }}">
+                                    <a class="nav-link sub-nav-link" href="{{ route('dashboard.creatives.index') }}">
+                                        <span class="sub-item-content">
+                                            <i class="fe fe-edit-3 sub-item-icon"></i>
+                                            <span class="item-text">مساحة الإبداع</span>
+                                        </span>
+                                    </a>
+                                </li>
                                 
                                 @if(Route::has('dashboard.notifications.logs'))
                                 <li class="nav-item w-100 {{ request()->routeIs('dashboard.notifications.logs*') ? 'active' : '' }}">

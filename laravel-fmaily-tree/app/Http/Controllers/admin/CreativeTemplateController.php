@@ -42,10 +42,10 @@ class CreativeTemplateController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'image' => 'required|image|max:16384',
+            'image' => CreativeTemplateService::ARTWORK_RULES,
             'name' => 'nullable|string|max:255',
             'description' => 'nullable|string|max:1000',
-            'invitation_type' => ['nullable', Rule::in(array_column(config('invitation_templates.templates', []), 'key'))],
+            'invitation_type' => ['required', Rule::in(array_column(config('invitation_templates.templates', []), 'key'))],
         ]);
 
         $template = $this->creatives->upload(

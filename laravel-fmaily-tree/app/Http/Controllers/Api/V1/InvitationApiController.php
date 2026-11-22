@@ -167,6 +167,7 @@ class InvitationApiController extends Controller
             'body' => 'nullable|string',
             'template_key' => 'nullable|string',
             'template_vars' => 'nullable|array',
+            'template_vars.*' => 'nullable|string|max:255',
             'person_id' => 'nullable|integer|exists:persons,id',
             'external_name' => 'nullable|string|max:255',
             'external_country_code' => 'nullable|string|max:10',
@@ -180,32 +181,27 @@ class InvitationApiController extends Controller
 
         try {
             $background = $this->previewBackground($validated);
-            $creative = $this->previewCreative($validated);
+            $creative = $this->dispatcher->creativeFor($validated);
             $preview = $this->dispatcher->preview(
                 $this->person($request),
                 $validated,
                 ! empty($validated['person_id']) ? (int) $validated['person_id'] : null,
                 $validated['external_name'] ?? null
             );
+            $typedCreative = $creative && $creative->invitation_type !== null;
+            $card = $typedCreative ? $this->dispatcher->creativeCard($creative, $this->person($request), $validated) : null;
         } catch (InvitationException $e) {
             return $this->fail($e);
         }
 
-        return $this->ok('معاينة الرسالة.', ['preview' => $preview, 'background' => $background ? $background->toPickerArray() : null, 'creative' => $creative ? $creative->toPickerArray() : null, 'card_image_url' => $this->previewCard($creative ?? $background, $validated, $preview)]);
-    }
-
-
-    private function previewCreative(array $validated): ?CreativeTemplate
-    {
-        if (empty($validated['creative_id'])) {
-            return null;
-        }
-        $creative = CreativeTemplate::approved()->find((int) $validated['creative_id']);
-        if (! $creative) {
-            throw new \App\Exceptions\InvitationException('__CT_NOT_AVAILABLE__', 'CREATIVE_NOT_AVAILABLE', 422);
-        }
-
-        return $creative;
+        return $this->ok('معاينة الرسالة.', [
+            'preview' => $preview,
+            'background' => $background?->toPickerArray(),
+            'creative' => $creative?->toPickerArray(),
+            'card_image_url' => $typedCreative
+                ? ($card ? \Illuminate\Support\Facades\Storage::disk('public')->url($card) : null)
+                : $this->previewCard($creative ?? $background, $validated, $preview),
+        ]);
     }
 
     private function previewCard(InvitationBackground|CreativeTemplate|null $background, array $validated, string $preview): ?string
@@ -294,6 +290,7 @@ class InvitationApiController extends Controller
             'body' => 'nullable|string|max:65535',
             'template_key' => 'nullable|string|max:64',
             'template_vars' => 'nullable|array',
+            'template_vars.*' => 'nullable|string|max:255',
             'exclude_deceased' => 'nullable|boolean',
             'media_type' => 'nullable|string|in:image,video,voice',
             'background_id' => 'nullable|integer',

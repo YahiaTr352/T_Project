@@ -79,8 +79,8 @@
                     @if ($invitationTypes)
                         <div class="form-group mb-3">
                             <label class="font-bold notif-title mb-2 d-block" for="{{ $formId }}Type">نوع الدعوة</label>
-                            <select id="{{ $formId }}Type" class="dashboard-input" data-visual-invitation-type>
-                                <option value="">تصميم عام</option>
+                            <select id="{{ $formId }}Type" class="dashboard-input" data-visual-invitation-type required>
+                                <option value="">اختر نوع الدعوة</option>
                                 @foreach ($invitationTypes as $type)
                                     <option value="{{ $type['key'] }}">{{ $type['name'] }}</option>
                                 @endforeach

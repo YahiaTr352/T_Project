@@ -343,6 +343,8 @@ export function extractTemplateVarKeys(body: string): string[] {
 }
 
 export const TEMPLATE_VAR_LABELS: Record<string, string> = {
+  hosts: 'أصحاب الدعوة',
+  groom: 'اسم العريس',
   event_name: 'اسم المناسبة',
   date: 'التاريخ',
   time: 'الوقت',

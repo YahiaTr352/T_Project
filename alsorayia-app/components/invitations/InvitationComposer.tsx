@@ -97,7 +97,7 @@ export function InvitationComposer({
   const [previewing, setPreviewing] = useState(false);
   const [previewCard, setPreviewCard] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  // ── مساحة الإبداع: قالب يُدمج فيه العنوان+النص داخل الصورة (card_image_url) ──
+  // قوالب الصور المعتمدة وتصاميم العضو المرسلة للمراجعة.
   const [creatives, setCreatives] = useState<CreativeTemplate[]>([]);
   const [myCreatives, setMyCreatives] = useState<MyCreativeTemplate[]>([]);
   const [creativeLoading, setCreativeLoading] = useState(false);
@@ -109,11 +109,16 @@ export function InvitationComposer({
   // ── إرفاق صورة: صورة عادية تُرسل بجانب النص كما هي بدون دمج ──
   const [attachedImage, setAttachedImage] = useState<{ uri: string } | null>(null);
   const [creativeModalVisible, setCreativeModalVisible] = useState(false);
+  const [submittingDesign, setSubmittingDesign] = useState(false);
+  const [submissionType, setSubmissionType] = useState<string | null>(null);
   const [bodySel, setBodySel] = useState<{ start: number; end: number } | null>(null);
   const [previewBg, setPreviewBg] = useState<{ id: number; name?: string | null; image_url?: string | null } | null>(null);
   const [previewCreative, setPreviewCreative] = useState<{ id: number; name?: string | null; image_url?: string | null } | null>(null);
 
-  const varKeys = useMemo(() => extractTemplateVarKeys(body), [body]);
+  const varKeys = useMemo(() => {
+    const weddingBody = templateKey === 'wedding' ? templates.find((item) => item.key === templateKey)?.body ?? '' : '';
+    return extractTemplateVarKeys(`${body}\n${weddingBody}`);
+  }, [body, templateKey, templates]);
   const selectedGroup = groups.find((g) => g.id === groupId) ?? null;
 
   const insets = useSafeAreaInsets();
@@ -147,7 +152,7 @@ export function InvitationComposer({
   };
 
   const selectedCreative = creatives.find((b) => b.id === selectedCreativeId) ?? null;
-  const visibleCreatives = creatives.filter((item) => !item.invitation_type || item.invitation_type === templateKey);
+  const visibleCreatives = creatives.filter((item) => templateKey && item.invitation_type === templateKey);
   const invitationTypeName = templates.find((item) => item.key === templateKey)?.name;
 
   const loadCreatives = useCallback(async () => {
@@ -176,20 +181,25 @@ export function InvitationComposer({
 
   // فتح المودال ينسخ الاختيار الحالي إلى المؤقت حتى لا يُعتمد إلا بالتأكيد
   const openCreativeModal = useCallback(() => {
+    setSubmittingDesign(false);
     setTempCreativeId(selectedCreativeId);
     setCreativeModalVisible(true);
-  }, [selectedCreativeId]);
+    void loadCreatives();
+  }, [selectedCreativeId, loadCreatives]);
+
+  const openSubmissionModal = () => {
+    setSubmittingDesign(true);
+    setSubmissionType(templateKey);
+    setCreativeModalVisible(true);
+    void loadCreatives();
+  };
 
   const confirmCreativeSelection = useCallback(() => {
     setSelectedCreativeId(tempCreativeId);
-    if (tempCreativeId !== selectedCreativeId && creatives.find((item) => item.id === tempCreativeId)?.invitation_type) {
-      setBody('');
-      setTemplateVars({});
-    }
     // فصل ذكي: اختيار قالب إبداعي يلغي الصورة المرفقة العادية والعكس
     if (tempCreativeId != null) setAttachedImage(null);
     setCreativeModalVisible(false);
-  }, [tempCreativeId, selectedCreativeId, creatives]);
+  }, [tempCreativeId]);
 
   const clearCreativeSelection = useCallback(() => {
     setSelectedCreativeId(null);
@@ -208,7 +218,7 @@ export function InvitationComposer({
   };
 
   const handleCreativeUpload = async () => {
-    if (creativeUploading) return;
+    if (creativeUploading || !submissionType) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       CustomAlert.alert('صلاحية مطلوبة', 'يرجى السماح بالوصول الى معرض الصور لرفع تصميم.');
@@ -216,13 +226,13 @@ export function InvitationComposer({
     }
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.8,
     });
     if (picked.canceled || !picked.assets?.[0]?.uri) return;
     setCreativeUploading(true);
     try {
-      const res = await uploadCreative(picked.assets[0].uri, undefined, templateKey);
+      const res = await uploadCreative(picked.assets[0].uri, undefined, submissionType);
       if (!res.success) {
         CustomAlert.alert('رفع تصميم', extractInvitationError(res));
         return;
@@ -482,7 +492,7 @@ export function InvitationComposer({
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
-        <ThemedText style={styles.sectionLabel}>القالب</ThemedText>
+        <ThemedText style={styles.sectionLabel}>نوع الدعوة</ThemedText>
         {templatesLoading ? (
           <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
         ) : (
@@ -617,6 +627,7 @@ export function InvitationComposer({
           fontFamily={invitationTextFont}
           attachedImage={attachedImage}
           onOpenCreative={() => void openCreativeModal()}
+          onSubmitDesign={openSubmissionModal}
           onClearCreative={() => void clearCreativeSelection()}
           onPickAttachment={() => void pickAttachment()}
           onRemoveAttachment={() => setAttachedImage(null)}
@@ -917,6 +928,10 @@ export function InvitationComposer({
       />
 
       <CreativePickerModal
+        submitting={submittingDesign}
+        types={templates}
+        submissionType={submissionType}
+        onSubmissionTypeChange={setSubmissionType}
         invitationTypeName={invitationTypeName}
         visible={creativeModalVisible}
         onClose={() => setCreativeModalVisible(false)}

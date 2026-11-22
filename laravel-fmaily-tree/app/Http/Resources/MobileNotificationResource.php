@@ -36,8 +36,10 @@ class MobileNotificationResource extends JsonResource
         }
 
         $messageService = app(\App\Services\Invitations\InvitationMessageService::class);
-        $resolvedTitle = $messageService->replacePlaceholders($this->title ?? 'تنبيه عائلي', $viewerPerson);
-        $resolvedBody = $messageService->replacePlaceholders($this->body ?? '', $viewerPerson);
+        $templateVars = is_array($filters['template_vars'] ?? null) ? $filters['template_vars'] : [];
+        $sender = $this->person_id !== null ? $this->person : null;
+        $resolvedTitle = $messageService->replacePlaceholders($this->title ?? 'تنبيه عائلي', $viewerPerson, $sender, $templateVars);
+        $resolvedBody = $messageService->replacePlaceholders($this->body ?? '', $viewerPerson, $sender, $templateVars);
 
         return [
             'id' => $this->id,

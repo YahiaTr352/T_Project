@@ -152,14 +152,14 @@
 
             <div class="glass-card rounded-3xl p-6">
                 <h2 class="text-xl font-bold mb-4">٣. محتوى الرسالة</h2>
-                <label class="block text-sm font-bold mb-2">قالب جاهز أو اكتب رسالتك</label>
+                <label for="template_select" class="block text-sm font-bold mb-2">نوع الدعوة</label>
                 <select id="template_select" class="w-full px-4 py-3 border rounded-xl mb-4">
                     <option value="">— رسالة مخصصة —</option>
                     @foreach($templates as $tpl)
-                        <option value="{{ $tpl['key'] }}" data-title="{{ $tpl['title'] }}" data-body="{{ $tpl['body'] }}">{{ $tpl['name'] }}</option>
+                        <option value="{{ $tpl['key'] }}" @selected(old('template_key') === $tpl['key'])>{{ $tpl['name'] }}</option>
                     @endforeach
                 </select>
-                <input type="hidden" name="template_key" id="template_key" value="">
+                <input type="hidden" name="template_key" id="template_key" value="{{ old('template_key') }}">
                 <div class="max-w-md space-y-2 mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                     <fieldset class="min-w-0">
                         <legend class="text-sm font-bold mb-1">نوع الخط</legend>
@@ -196,22 +196,27 @@
                 <h2 class="text-xl font-bold mb-4">الصورة والتصميم</h2>
                 <input type="hidden" name="creative_id" id="creative_id" value="{{ old('creative_id') }}">
                 <input type="hidden" name="background_id" id="background_id" value="{{ old('background_id') }}">
-                <button type="button" id="creativeOpen" aria-haspopup="dialog" aria-controls="creativeDialog"
+                <button type="button" id="creativeOpen" aria-haspopup="dialog" aria-controls="creativeDialog" style="display:none"
                     class="w-full flex items-center gap-3 rounded-2xl bg-emerald-600 p-4 text-white text-right">
                     <i class="fas fa-palette text-xl" aria-hidden="true"></i>
                     <span class="flex-1">
-                        <span class="block font-bold">مساحة إبداع</span>
+                        <span class="block font-bold">قوالب الصور</span>
                         <span id="creativeSelectionLabel" class="block text-xs mt-1">اختر قالبًا للدعوة</span>
                     </span>
                     <i class="fas fa-chevron-left" aria-hidden="true"></i>
                 </button>
-                <button type="button" id="creativeClear" class="text-xs underline mt-2">إزالة قالب الصورة</button>
+                <div class="flex flex-wrap gap-4 mt-2">
+                    <button type="button" id="creativeClear" class="text-xs underline" hidden>إزالة قالب الصورة</button>
+                    <button type="button" id="previewCreative" class="text-xs underline" hidden>معاينة صورة الدعوة</button>
+                    <button type="button" id="designSubmissionOpen" aria-haspopup="dialog" aria-controls="designSubmission" class="text-sm font-bold text-emerald-700">مساحة إبداع</button>
+                </div>
+                <p id="previewCreativeStatus" role="status" class="text-sm text-slate-600"></p>
 
                 <dialog id="creativeDialog" aria-labelledby="creativeDialogTitle" dir="rtl"
                     class="rounded-3xl p-6 shadow-xl" style="width:min(92vw,720px);max-height:85vh;overflow:auto">
                     <div class="flex items-center justify-between gap-4 mb-3">
-                        <h3 id="creativeDialogTitle" class="font-bold text-xl">مساحة إبداع</h3>
-                        <button type="button" id="creativeClose" aria-label="إغلاق مساحة إبداع"
+                        <h3 id="creativeDialogTitle" class="font-bold text-xl">قوالب الصور</h3>
+                        <button type="button" id="creativeClose" aria-label="إغلاق قوالب الصور"
                             class="px-3 py-2 rounded-xl border">إغلاق</button>
                     </div>
                     <p id="creativeLibraryLabel" class="text-sm text-slate-600 mb-4"></p>
@@ -226,8 +231,10 @@
                         @endforeach
                     </div>
                     <p id="creativeEmpty" class="text-xs text-slate-500 mt-2"></p>
-                    @if($backgrounds->isNotEmpty())
-                        <h4 class="font-bold text-sm my-4">خلفيات عامة</h4>
+                </dialog>
+                @if($backgrounds->isNotEmpty())
+                    <details class="mt-4">
+                        <summary class="font-bold text-sm mb-2">خلفيات عامة</summary>
                         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                             @foreach($backgrounds as $bg)
                                 <button type="button" data-bg-id="{{ $bg->id }}" data-bg-url="{{ $bg->image_url }}"
@@ -237,8 +244,8 @@
                                 </button>
                             @endforeach
                         </div>
-                    @endif
-                </dialog>
+                    </details>
+                @endif
 
                 <label for="media" class="block font-bold text-sm mt-5 mb-2">مرفق اختياري من جهازك</label>
                 <input type="file" id="media" name="media" accept="image/*,video/*,audio/*" class="w-full">
@@ -261,6 +268,48 @@
             </div>
         </div>
     </form>
+    <dialog id="designSubmission" aria-labelledby="designSubmissionTitle" dir="rtl"
+        class="rounded-3xl p-6 shadow-xl" style="width:min(92vw,560px);max-height:85vh;overflow:auto">
+        <div class="flex items-center justify-between gap-4 mb-3">
+            <h2 id="designSubmissionTitle" class="font-bold text-xl">مساحة إبداع</h2>
+            <button type="button" id="designSubmissionClose" class="px-3 py-2 rounded-xl border">إغلاق</button>
+        </div>
+        <p class="text-sm text-slate-600 mb-4">حدّد نوع الدعوة وارفع خلفية التصميم بمساحات فارغة للنص. تراجع الإدارة التصميم قبل إضافته للقوالب.</p>
+        @if (session('creative_success'))
+            <p role="status" class="mb-3 text-emerald-700">{{ session('creative_success') }}</p>
+        @endif
+        @foreach ($errors->creative->all() as $error)
+            <p role="alert" class="mb-2 text-rose-700">{{ $error }}</p>
+        @endforeach
+        <form action="{{ route('invitations.creatives.submit') }}" method="POST" enctype="multipart/form-data" class="space-y-3">
+            @csrf
+            <label class="block text-sm font-bold" for="submissionType">نوع الدعوة</label>
+            <select id="submissionType" name="invitation_type" required class="w-full rounded-xl border p-2">
+                <option value="">اختر نوع الدعوة</option>
+                @foreach($templates as $tpl)
+                    <option value="{{ $tpl['key'] }}" @selected(old('invitation_type') === $tpl['key'])>{{ $tpl['name'] }}</option>
+                @endforeach
+            </select>
+            <label class="block text-sm font-bold" for="submissionName">اسم التصميم</label>
+            <input id="submissionName" name="name" value="{{ old('name') }}" maxlength="255" class="w-full rounded-xl border p-2">
+            <label class="block text-sm font-bold" for="submissionImage">صورة التصميم</label>
+            <input id="submissionImage" name="image" type="file" accept="image/*" required class="w-full">
+            <button type="submit" class="rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white">إرسال للمراجعة</button>
+        </form>
+        @if ($myCreatives->isNotEmpty())
+            <h3 class="font-bold mt-5 mb-2">تصاميمي</h3>
+            <ul class="space-y-2 text-sm">
+                @foreach($myCreatives as $design)
+                    <li class="rounded-xl border p-2">
+                        <strong>{{ $design->name }}</strong> · {{ $design->status_label }}
+                        @if ($design->rejection_reason)
+                            <p class="text-rose-700">{{ $design->rejection_reason }}</p>
+                        @endif
+                    </li>
+                @endforeach
+            </ul>
+        @endif
+    </dialog>
 @endsection
 
 @section('scripts')
@@ -284,7 +333,14 @@
         const previewImage = document.getElementById('simBg');
         let attachmentUrl = null;
         const creativeDialog = document.getElementById('creativeDialog');
-        document.getElementById('creativeOpen').addEventListener('click', function () {
+        const creativeOpen = document.getElementById('creativeOpen');
+        const previewCreative = document.getElementById('previewCreative');
+        const creativeStatus = document.getElementById('previewCreativeStatus');
+        const submissionDialog = document.getElementById('designSubmission');
+        document.getElementById('designSubmissionOpen').addEventListener('click', () => submissionDialog.showModal());
+        document.getElementById('designSubmissionClose').addEventListener('click', () => submissionDialog.close());
+        if (@json((bool) session('creative_success') || $errors->creative->any())) submissionDialog.showModal();
+        creativeOpen.addEventListener('click', function () {
             refreshImages();
             creativeDialog.showModal();
         });
@@ -293,9 +349,13 @@
         });
 
         function refreshImages() {
+            const type = document.getElementById('template_select').value;
+            creativeOpen.style.display = type ? '' : 'none';
+            previewCreative.hidden = !creativeInput.value;
+            document.getElementById('creativeClear').hidden = !creativeInput.value && !backgroundInput.value;
             let count = 0;
             document.querySelectorAll('.creative-pick').forEach(function (button) {
-                const show = !button.dataset.type || button.dataset.type === document.getElementById('template_select').value;
+                const show = Boolean(type) && button.dataset.type === type;
                 button.classList.toggle('hidden', !show);
                 if (show) count++;
                 const selected = creativeInput.value === button.dataset.id;
@@ -307,8 +367,8 @@
                 return item.key === document.getElementById('template_select').value;
             });
             document.getElementById('creativeLibraryLabel').textContent = selectedType
-                ? 'صور ' + selectedType.name + ' والتصاميم العامة'
-                : 'التصاميم العامة';
+                ? 'صور ' + selectedType.name
+                : '';
             document.querySelectorAll('.bg-pick').forEach(function (button) {
                 button.setAttribute('aria-pressed', String(backgroundInput?.value === button.dataset.bgId));
                 button.classList.toggle('ring-2', backgroundInput?.value === button.dataset.bgId);
@@ -319,7 +379,7 @@
                 ? document.querySelector('.bg-pick[data-bg-id="' + backgroundInput.value + '"]') : null;
             document.getElementById('creativeSelectionLabel').textContent = creative || background
                 ? 'القالب المختار: ' + (creative || background).dataset.name
-                : selectedType ? 'صور ' + selectedType.name + ' والتصاميم العامة' : 'اختر قالبًا للدعوة';
+                : selectedType ? 'صور ' + selectedType.name : 'اختر قالبًا للدعوة';
             const url = attachmentUrl || creative?.dataset.url || background?.dataset.bgUrl;
             previewImage.classList.toggle('hidden', !url);
             if (url) previewImage.src = url;
@@ -336,13 +396,30 @@
                 creativeInput.value = button.dataset.id;
                 if (backgroundInput) backgroundInput.value = '';
                 clearAttachment();
-                if (button.dataset.type) {
-                    document.getElementById('body').value = '';
-                    renderTemplateVars('');
-                }
                 refreshImages();
                 creativeDialog.close();
             });
+        });
+        previewCreative.addEventListener('click', async function () {
+            const data = new FormData();
+            for (const [name, value] of new FormData(invitationForm)) {
+                if (name.startsWith('template_vars[') || ['_token', 'title', 'body', 'template_key', 'creative_id', 'font_family', 'font_weight'].includes(name)) {
+                    data.append(name, value);
+                }
+            }
+            previewCreative.disabled = true;
+            creativeStatus.textContent = 'جاري تجهيز الصورة…';
+            try {
+                const response = await fetch(@json(route('invitations.preview-message')), { method: 'POST', headers: { Accept: 'application/json' }, body: data });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'تعذّر تجهيز الصورة.');
+                if (data.get('creative_id') === creativeInput.value && result.card_image_url) previewImage.src = result.card_image_url;
+                creativeStatus.textContent = '';
+            } catch (error) {
+                creativeStatus.textContent = error.message || 'تعذّر تجهيز الصورة.';
+            } finally {
+                previewCreative.disabled = false;
+            }
         });
         document.querySelectorAll('.bg-pick').forEach(function (button) {
             button.addEventListener('click', function () {
@@ -390,17 +467,21 @@
             });
         }
 
-        function renderTemplateVars(body) {
+        function renderTemplateVars(body, values = {}) {
             const box = document.getElementById('templateVars');
-            const vars = extractVars(body);
+            const key = document.getElementById('template_key').value;
+            const wedding = key === 'wedding' ? templates.find((item) => item.key === key)?.body || '' : '';
+            const vars = extractVars(body + '\n' + wedding);
+            const labels = { hosts: 'أصحاب الدعوة', groom: 'اسم العريس', date: 'التاريخ', time: 'الوقت', location: 'القاعة أو المكان' };
             box.innerHTML = '';
             if (!vars.length) { box.classList.add('hidden'); return; }
             box.classList.remove('hidden');
             vars.forEach(function (v) {
                 const key = v.replace(/[{}]/g, '');
                 const wrap = document.createElement('div');
-                wrap.innerHTML = '<label class="text-xs font-bold text-slate-500 mb-1 block">' + key + '</label>' +
-                    '<input name="template_vars[' + key + ']" data-var="' + v + '" class="tpl-var w-full px-3 py-2 border rounded-xl" placeholder="' + v + '">';
+                wrap.innerHTML = '<label for="inv-var-' + key + '" class="text-xs font-bold text-slate-500 mb-1 block">' + (labels[key] || key) + '</label>' +
+                    '<input id="inv-var-' + key + '" name="template_vars[' + key + ']" data-var="' + v + '" class="tpl-var w-full px-3 py-2 border rounded-xl" maxlength="255">';
+                wrap.querySelector('input').value = values[key] || '';
                 box.appendChild(wrap);
             });
             box.querySelectorAll('.tpl-var').forEach(function (input) {
@@ -470,6 +551,7 @@
             if (!document.getElementById('template_key').value) renderTemplateVars(this.value);
             updatePreview();
         });
+        renderTemplateVars(document.getElementById('body').value, @json(old('template_vars', [])));
         refreshImages();
     </script>
 @endsection

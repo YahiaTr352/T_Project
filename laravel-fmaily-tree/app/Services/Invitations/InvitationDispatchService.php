@@ -3,6 +3,7 @@
 namespace App\Services\Invitations;
 
 use App\Exceptions\InvitationException;
+use App\Models\CreativeTemplate;
 use App\Models\Notification;
 use App\Models\Person;
 use App\Support\NotificationSettings;
@@ -20,6 +21,7 @@ class InvitationDispatchService
         protected InvitationBackgroundService $backgrounds,
         protected CreativeTemplateService $creatives,
         protected InvitationDeliveryService $delivery,
+        protected InvitationCardRenderer $cards,
     ) {}
 
     /**
@@ -75,8 +77,6 @@ class InvitationDispatchService
             }
         }
 
-        [$mediaPath, $mediaType] = $this->storeMedia($payload['media'] ?? null, $payload['media_type'] ?? null);
-
         if (! empty($payload['background_id']) && ! empty($payload['creative_id'])) {
             throw new InvitationException('لا يمكن اختيار خلفية وقالب ابداعي معا.', 'IMAGE_CONFLICT', 422);
         }
@@ -84,6 +84,8 @@ class InvitationDispatchService
         $background = $this->backgrounds->usableBackground(
             isset($payload['background_id']) ? (int) $payload['background_id'] : null
         );
+        $creative = $this->creativeFor($payload);
+        [$mediaPath, $mediaType] = $this->storeMedia($payload['media'] ?? null, $payload['media_type'] ?? null);
         if ($background && $background->image_path) {
             $copied = $this->copyBackgroundToNotification($background->image_path);
             if ($copied) {
@@ -92,11 +94,13 @@ class InvitationDispatchService
             }
         }
 
-        $creative = $this->creatives->usableCreative(
-            isset($payload['creative_id']) ? (int) $payload['creative_id'] : null
-        );
+        $creativeCard = null;
         if ($creative && $creative->image_path) {
-            $copiedCreative = $this->copyBackgroundToNotification($creative->image_path);
+            $creativeCard = $creative->invitation_type !== null ? $this->creativeCard($creative, $sender, $payload) : null;
+            $copiedCreative = $creativeCard ?? $this->copyBackgroundToNotification($creative->image_path);
+            if (! $copiedCreative && $creative->invitation_type !== null) {
+                throw new InvitationException('صورة القالب غير متاحة. اختر قالب صورة آخر.', 'CREATIVE_IMAGE_UNAVAILABLE', 422);
+            }
             if ($copiedCreative) {
                 $mediaPath = $copiedCreative;
                 $mediaType = 'image';
@@ -126,6 +130,7 @@ class InvitationDispatchService
                 'template_vars' => $templateVars,
                 'background_id' => $background?->id,
                 'creative_id' => $creative?->id,
+                'creative_card_rendered' => $creativeCard !== null,
                 'font_family' => $payload['font_family'] ?? null,
                 'font_weight' => $payload['font_weight'] ?? null,
                 'requires_approval' => false,
@@ -157,6 +162,38 @@ class InvitationDispatchService
         });
 
         return ['notification' => $notification->fresh(['recipients'])] + $result;
+    }
+
+    public function creativeFor(array $payload): ?CreativeTemplate
+    {
+        return $this->creatives->usableCreative(
+            isset($payload['creative_id']) ? (int) $payload['creative_id'] : null,
+            $payload['template_key'] ?? null,
+        );
+    }
+
+    public function creativeCard(CreativeTemplate $creative, Person $sender, array $payload): ?string
+    {
+        $body = $this->resolveBody($payload);
+        $vars = $payload['template_vars'] ?? [];
+        ksort($vars);
+        if (trim($body) === '' && ($creative->invitation_type !== 'wedding' || array_filter($vars) === [])) {
+            return null;
+        }
+
+        $title = $this->messages->replacePlaceholders((string) ($payload['title'] ?? ''), null, $sender, $vars);
+        $message = $this->messages->replacePlaceholders($body, null, $sender, $vars);
+        $style = [
+            'font_family' => $payload['font_family'] ?? null,
+            'font_weight' => $payload['font_weight'] ?? null,
+            'template_vars' => $vars,
+        ];
+        $card = $this->cards->renderPreview($creative, $title, $message, $style);
+        if ($card === null && $creative->invitation_type !== null) {
+            throw new InvitationException('تعذّر تجهيز صورة الدعوة. جرّب قالب صورة آخر.', 'CREATIVE_RENDER_FAILED', 422);
+        }
+
+        return $card;
     }
 
     /**

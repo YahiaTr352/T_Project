@@ -119,7 +119,7 @@ class MobileNotificationApiController extends Controller
 
         $query = $this->notificationService->getInboxQueryForPerson($personId);
 
-        $notifications = $query->with(['recipients' => function ($q) use ($personId) {
+        $notifications = $query->with(['person', 'recipients' => function ($q) use ($personId) {
             if ($personId) {
                 $q->where('person_id', $personId);
             }

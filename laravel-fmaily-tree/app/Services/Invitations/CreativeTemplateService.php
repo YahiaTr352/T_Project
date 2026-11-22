@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\Storage;
 
 class CreativeTemplateService
 {
+    public const ARTWORK_RULES = 'required|image|mimes:jpg,jpeg,png,webp,gif|max:16384|dimensions:max_width=4096,max_height=4096';
+
     public function __construct(
         protected ExpoNotificationService $expo,
         protected UltramsgService $ultramsg,
@@ -47,6 +49,9 @@ class CreativeTemplateService
     {
         if ($template->status !== CreativeTemplate::STATUS_PENDING) {
             throw new InvitationException('هذا القالب تمت مراجعته مسبقا.', 'INVALID_STATUS');
+        }
+        if ($template->uploaded_by && ! $template->invitation_type) {
+            throw new InvitationException('حدّد نوع الدعوة قبل اعتماد التصميم.', 'CREATIVE_TYPE_REQUIRED', 422);
         }
 
         $template->update([
@@ -90,7 +95,7 @@ class CreativeTemplateService
         $template->delete();
     }
 
-    public function usableCreative(?int $id): ?CreativeTemplate
+    public function usableCreative(?int $id, ?string $invitationType): ?CreativeTemplate
     {
         if (! $id) {
             return null;
@@ -98,6 +103,9 @@ class CreativeTemplateService
         $template = CreativeTemplate::approved()->find($id);
         if (! $template) {
             throw new InvitationException('القالب المحدد غير متاح.', 'CREATIVE_NOT_AVAILABLE', 422);
+        }
+        if ($template->invitation_type !== null && $template->invitation_type !== $invitationType) {
+            throw new InvitationException('اختر قالب صورة يطابق نوع الدعوة.', 'CREATIVE_TYPE_MISMATCH', 422);
         }
 
         return $template;

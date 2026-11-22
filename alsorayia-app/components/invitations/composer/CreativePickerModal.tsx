@@ -2,6 +2,7 @@ import type { ThemeColors } from '@/constants/theme';
 import {
   type CreativeTemplate,
   type MyCreativeTemplate,
+  type InvitationTemplate,
 } from '@/lib/api/invitations';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -18,6 +19,10 @@ import { composerStyles as styles } from './composerStyles';
 
 interface CreativePickerModalProps {
   visible: boolean;
+  submitting: boolean;
+  types: InvitationTemplate[];
+  submissionType: string | null;
+  onSubmissionTypeChange: (type: string) => void;
   onClose: () => void;
   colors: ThemeColors;
   isDark: boolean;
@@ -38,6 +43,10 @@ interface CreativePickerModalProps {
 
 export function CreativePickerModal({
   visible,
+  submitting,
+  types,
+  submissionType,
+  onSubmissionTypeChange,
   onClose,
   colors,
   isDark,
@@ -63,37 +72,44 @@ export function CreativePickerModal({
       onRequestClose={onClose}>
       <View style={styles.previewOverlay}>
         <View style={[styles.previewCard, { backgroundColor: cardBg, maxHeight: '88%' }]}>
-          <Text style={[styles.previewTitleText, { color: colors.text }]}>مساحة إبداع</Text>
-          {invitationTypeName ? (
+          <Text style={[styles.previewTitleText, { color: colors.text }]}>{submitting ? 'مساحة إبداع' : 'قوالب الصور'}</Text>
+          {!submitting && invitationTypeName ? (
             <Text style={[styles.sectionLabel, { color: colors.text }]}>
-              صور {invitationTypeName} والتصاميم العامة
+              صور {invitationTypeName}
             </Text>
           ) : null}
-          <Text style={[styles.modalSubText, { color: muted }]}>
-            اختر صورة جاهزة لنوع الدعوة أو تصميمًا عامًا. يمكنك ترك النص فارغًا لإرسال الصورة وحدها.
-          </Text>
+          {submitting ? <Text style={[styles.modalSubText, { color: muted }]}>
+            حدّد نوع الدعوة وارفع خلفية التصميم بمساحات فارغة للنص. تراجع الإدارة التصميم قبل إضافته للقوالب.
+          </Text> : null}
           {loading ? (
             <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} />
           ) : (
             <ScrollView style={styles.previewBody} showsVerticalScrollIndicator={false}>
               <View style={styles.ctGrid}>
-                <TouchableOpacity
+                {submitting ? types.map((type) => (
+                  <Pressable key={type.key} accessibilityRole="button" accessibilityState={{ selected: submissionType === type.key }}
+                    onPress={() => onSubmissionTypeChange(type.key)} disabled={uploading}
+                    style={{ borderWidth: 1, borderColor: submissionType === type.key ? colors.primary : border, borderRadius: 10, padding: 8 }}>
+                    <Text style={{ color: colors.text }}>{type.name}</Text>
+                  </Pressable>
+                )) : null}
+                {submitting ? <TouchableOpacity
                   style={[styles.bgUploadTile, { borderColor: border }]}
                   onPress={() => void onUpload()}
-                  disabled={uploading}>
+                  disabled={uploading || !submissionType}>
                   {uploading ? (
                     <ActivityIndicator color={colors.primary} />
                   ) : (
                     <>
                       <Ionicons name="cloud-upload-outline" size={22} color={colors.primary} />
                       <Text style={[styles.bgUploadTextNative, { color: colors.primary }]}>
-                        تصميم جديد
+                        رفع تصميم للمراجعة
                       </Text>
                       <Text style={[styles.bgUploadHint, { color: muted }]}>بانتظار الاعتماد</Text>
                     </>
                   )}
-                </TouchableOpacity>
-                {creatives.map((bg) => {
+                </TouchableOpacity> : null}
+                {!submitting && creatives.map((bg) => {
                   const cactive = tempCreativeId === bg.id;
                   return (
                     <TouchableOpacity
@@ -126,23 +142,12 @@ export function CreativePickerModal({
                   );
                 })}
               </View>
-              {creatives.length === 0 ? (
+              {!submitting && creatives.length === 0 ? (
                 <Text style={[styles.emptyCreativeText, { color: muted }]}>
-                  لا توجد قوالب معتمدة بعد — ارفع تصميمك وسيظهر هنا بعد موافقة الإدارة.
+                  لا توجد قوالب معتمدة لهذا النوع بعد.
                 </Text>
               ) : null}
-              {tempCreativeId != null ? (
-                <View style={[styles.tempPreviewBox, { borderColor: colors.primary, backgroundColor: colors.primary + '0D' }]}>
-                  <Ionicons name="information-circle-outline" size={16} color={colors.primary} />
-                  <Text style={[styles.tempPreviewText, { color: colors.text }]}>
-                    {creatives.find((item) => item.id === tempCreativeId)?.invitation_type
-                      ? 'سيُرسل القالب كصورة. يمكنك إضافة نص بعد اختياره.'
-                      : 'اختر تصميمًا وأضف النص المطلوب، أو اترك النص فارغًا لإرسال الصورة وحدها.'}
-                  </Text>
-                </View>
-              ) : null}
-              {myCreatives
-                .filter((b) => b.status !== 'approved')
+              {submitting && myCreatives
                 .map((b) => (
                   <View key={`mine-${b.id}`} style={styles.myBgRow}>
                     <View style={{ flex: 1 }}>
@@ -152,19 +157,19 @@ export function CreativePickerModal({
                       <Text
                         style={[
                           styles.myBgStatusNative,
-                          { color: b.status === 'rejected' ? '#DC2626' : '#D97706' },
+                          { color: b.status === 'rejected' ? '#DC2626' : b.status === 'approved' ? colors.primary : '#D97706' },
                         ]}>
-                        {b.status_label || (b.status === 'rejected' ? 'مرفوض' : 'قيد المراجعة')}
+                          {b.status_label || (b.status === 'rejected' ? 'مرفوض' : b.status === 'approved' ? 'معتمد' : 'قيد المراجعة')}
                       </Text>
                       {b.status === 'rejected' && (b as any).rejection_reason ? (
-                        <Text style={[styles.myBgReasonNative, { color: muted }]}>
+                      <Text style={[styles.myBgReasonNative, { color: muted }]}>
                           {(b as any).rejection_reason}
                         </Text>
                       ) : null}
                     </View>
-                    <TouchableOpacity onPress={() => void onDelete(b.id)} hitSlop={8}>
+                    {b.status !== 'approved' ? <TouchableOpacity onPress={() => void onDelete(b.id)} hitSlop={8}>
                       <Ionicons name="trash-outline" size={18} color={muted} />
-                    </TouchableOpacity>
+                    </TouchableOpacity> : null}
                   </View>
                 ))}
             </ScrollView>
@@ -174,9 +179,9 @@ export function CreativePickerModal({
             <Pressable
               onPress={onClose}
               style={[styles.modalCancelBtn, { borderColor: border }]}>
-              <Text style={[styles.modalCancelText, { color: muted }]}>إلغاء</Text>
+              <Text style={[styles.modalCancelText, { color: muted }]}>{submitting ? 'إغلاق' : 'إلغاء'}</Text>
             </Pressable>
-            <Pressable
+            {!submitting ? <Pressable
               onPress={() => void onConfirm()}
               style={[
                 styles.modalConfirmBtn,
@@ -193,7 +198,7 @@ export function CreativePickerModal({
                 ]}>
                 {tempCreativeId != null ? 'تأكيد الاختيار ✓' : 'متابعة بدون قالب'}
               </Text>
-            </Pressable>
+            </Pressable> : null}
           </View>
         </View>
       </View>

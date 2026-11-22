@@ -9,6 +9,7 @@ use App\Models\CreativeTemplate;
 use App\Models\InvitationBackground;
 use App\Models\NotificationGroup;
 use App\Models\Person;
+use App\Services\Invitations\CreativeTemplateService;
 use App\Services\Invitations\InvitationDispatchService;
 use App\Services\Invitations\InvitationGroupService;
 use App\Services\Invitations\InvitationMessageService;
@@ -18,6 +19,8 @@ use App\Services\SiteIdentityResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class InvitationController extends Controller
@@ -84,9 +87,23 @@ class InvitationController extends Controller
         $templates = $this->messages->templates();
 
         $backgrounds = InvitationBackground::approved()->latest()->get();
-        $creatives = CreativeTemplate::approved()->latest()->get();
+        $creatives = CreativeTemplate::approved()->whereNotNull('invitation_type')->latest()->get();
+        $myCreatives = CreativeTemplate::where('uploaded_by', $person->id)->latest()->limit(20)->get();
 
-        return view('web-site.invitations.send', compact('person', 'groups', 'templates', 'backgrounds', 'creatives'));
+        return view('web-site.invitations.send', compact('person', 'groups', 'templates', 'backgrounds', 'creatives', 'myCreatives'));
+    }
+
+    public function submitCreative(Request $request, CreativeTemplateService $creatives): RedirectResponse
+    {
+        $validated = $request->validateWithBag('creative', [
+            'image' => CreativeTemplateService::ARTWORK_RULES,
+            'name' => 'nullable|string|max:255',
+            'invitation_type' => ['required', Rule::in(array_column($this->messages->templates(), 'key'))],
+        ]);
+
+        $creatives->upload($request->attributes->get('identity_person'), $request->file('image'), $validated['name'] ?? null, invitationType: $validated['invitation_type']);
+
+        return redirect()->route('invitations.send')->with('creative_success', 'تم إرسال التصميم إلى الإدارة للمراجعة.');
     }
 
     public function sendSubmit(Request $request): RedirectResponse
@@ -361,11 +378,18 @@ class InvitationController extends Controller
             'body' => 'nullable|string',
             'template_key' => 'nullable|string',
             'template_vars' => 'nullable|array',
-            'person_id' => 'required|integer|exists:persons,id',
+            'template_vars.*' => 'nullable|string|max:255',
+            'person_id' => 'nullable|integer|exists:persons,id',
+            'title' => 'nullable|string|max:255',
+            'creative_id' => 'nullable|integer',
+            'font_family' => 'nullable|string|in:amiri,tajawal',
+            'font_weight' => 'nullable|string|in:regular,bold',
         ]);
 
         try {
-            $preview = $this->dispatcher->preview($person, $validated, (int) $validated['person_id']);
+            $preview = $this->dispatcher->preview($person, $validated, isset($validated['person_id']) ? (int) $validated['person_id'] : null);
+            $creative = $this->dispatcher->creativeFor($validated);
+            $card = $creative ? $this->dispatcher->creativeCard($creative, $person, $validated) : null;
         } catch (InvitationException $e) {
             return response()->json([
                 'success' => false,
@@ -376,6 +400,7 @@ class InvitationController extends Controller
         return response()->json([
             'success' => true,
             'preview' => $preview,
+            'card_image_url' => $card ? Storage::disk('public')->url($card) : null,
         ]);
     }
 

@@ -14,6 +14,12 @@ return [
     | - title: optional title for the notification log
     */
     'templates' => [
+        [
+            'key' => 'wedding',
+            'name' => 'زفاف',
+            'title' => 'دعوة لحضور حفل زفاف',
+            'body' => "يتشرف {hosts} بدعوتكم لحضور حفل زفاف {groom}.\nاليوم: {date}\nالساعة: {time}\nالمكان: {location}",
+        ],
         // 1. دعوة لمناسبة (تمت إضافة تفاصيل الزمان والمكان لتبدو كبطاقة دعوة حقيقية)
         [
             'key' => 'event_invitation',
