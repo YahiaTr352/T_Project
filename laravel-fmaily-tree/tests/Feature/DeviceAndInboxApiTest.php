@@ -172,24 +172,37 @@ class DeviceAndInboxApiTest extends TestCase
         $invitation = Notification::create(['person_id' => $sender->id, 'status' => 'sent']);
         $invitation->recipients()->create(['person_id' => $recipient->id]);
         $invitation->recipients()->create(['person_id' => $minor->id]);
-        $sending = Notification::create(['person_id' => $sender->id, 'status' => 'sending']);
+        $sending = Notification::create(['person_id' => $sender->id, 'status' => 'sending', 'channels' => ['push']]);
         $sending->recipients()->create(['person_id' => $recipient->id]);
+        $sendingWhatsApp = Notification::create(['person_id' => $sender->id, 'status' => 'sending', 'channels' => ['whatsapp']]);
+        $sendingWhatsApp->recipients()->create(['person_id' => $recipient->id]);
+        $sendingWithoutChannel = Notification::create(['person_id' => $sender->id, 'status' => 'sending']);
+        $sendingWithoutChannel->recipients()->create(['person_id' => $recipient->id]);
         $ordinary = Notification::create(['status' => 'sent']);
         $ordinary->recipients()->create(['person_id' => $recipient->id]);
 
         $this->withHeaders($this->identityHeaders($recipient));
         $inbox = collect($this->getJson('/api/notifications')->assertOk()->json('data.data'))->keyBy('id');
         $this->assertSame(['id' => $invitation->id, 'response' => null], $inbox[$invitation->id]['invitation']);
-        $this->assertNull($inbox[$sending->id]['invitation']);
+        $this->assertSame(['id' => $sending->id, 'response' => null], $inbox[$sending->id]['invitation']);
+        $this->assertSame(['id' => $sendingWhatsApp->id, 'response' => null], $inbox[$sendingWhatsApp->id]['invitation']);
+        $this->assertNull($inbox[$sendingWithoutChannel->id]['invitation']);
         $this->assertNull($inbox[$ordinary->id]['invitation']);
 
         $this->putJson("/api/v1/invitations/logs/{$invitation->id}/response", ['response' => 'accepted'])->assertOk();
+        $this->putJson("/api/v1/invitations/logs/{$sending->id}/response", ['response' => 'declined'])->assertOk();
+        $this->putJson("/api/v1/invitations/logs/{$sendingWhatsApp->id}/response", ['response' => 'accepted'])->assertOk();
+        $this->putJson("/api/v1/invitations/logs/{$sendingWithoutChannel->id}/response", ['response' => 'accepted'])->assertForbidden();
         $inbox = collect($this->getJson('/api/notifications')->assertOk()->json('data.data'))->keyBy('id');
         $this->assertSame('accepted', $inbox[$invitation->id]['invitation']['response']);
+        $this->assertSame('declined', $inbox[$sending->id]['invitation']['response']);
+        $this->assertSame('accepted', $inbox[$sendingWhatsApp->id]['invitation']['response']);
+        $this->assertSame('sending', $sendingWhatsApp->fresh()->status);
 
         $this->flushSession()->flushHeaders();
         $unverified = collect($this->getJson('/api/notifications?phone=966500000123')->assertOk()->json('data.data'))->keyBy('id');
         $this->assertNull($unverified[$invitation->id]['invitation']);
+        $this->assertNull($unverified[$sending->id]['invitation']);
 
         $minorInbox = collect($this->withHeaders($this->identityHeaders($minor))
             ->getJson('/api/notifications')->assertOk()->json('data.data'))->keyBy('id');

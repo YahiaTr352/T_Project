@@ -2,7 +2,6 @@
 
 namespace App\Http\Resources;
 
-use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -24,7 +23,7 @@ class MobileNotificationResource extends JsonResource
             && (int) $recipient->person_id === $respondingPersonId
             && $this->person_id !== null
             && (int) $this->person_id !== $respondingPersonId
-            && in_array($this->status, Notification::RESPONDABLE_STATUSES, true);
+            && $this->resource->acceptsInvitationResponses();
 
         $filters = is_array($this->targeting_filters) ? $this->targeting_filters : [];
         $actionUrl = $this->action_url ?? ($filters['action_url'] ?? null);

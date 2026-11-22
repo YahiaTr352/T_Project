@@ -3,7 +3,10 @@
 namespace App\Services\Invitations;
 
 use App\Exceptions\InvitationException;
+use App\Jobs\SendExpoPushNotificationJob;
 use App\Models\Notification;
+use App\Models\UserDevice;
+use App\Support\NotificationSettings;
 use Illuminate\Support\Facades\DB;
 
 class InvitationResponseService
@@ -37,8 +40,10 @@ class InvitationResponseService
 
     private function notifySender(Notification $invitation, string $memberName, string $response): void
     {
+        $senderId = (int) $invitation->person_id;
         $invitationTitle = trim((string) $invitation->title) ?: 'دعوة عائلية';
         $accepted = $response === 'accepted';
+        $data = ['type' => Notification::INVITATION_RESPONSE_TYPE];
         $notification = Notification::create([
             'title' => $accepted ? 'قبول الدعوة' : 'رفض الدعوة',
             'body' => $accepted
@@ -46,11 +51,28 @@ class InvitationResponseService
                 : "اعتذار {$memberName} عن حضور دعوتك «{$invitationTitle}».",
             'status' => 'sent',
             'sent_at' => now(),
-            'targeting_filters' => [
-                'data' => ['type' => Notification::INVITATION_RESPONSE_TYPE],
-            ],
+            'targeting_filters' => ['data' => $data],
         ]);
 
-        $notification->recipients()->create(['person_id' => $invitation->person_id]);
+        $notification->recipients()->create(['person_id' => $senderId]);
+
+        if (! config('invitations.delivery_enabled') || ! NotificationSettings::canSendPush()) {
+            return;
+        }
+
+        $tokens = UserDevice::where('person_id', $senderId)->whereNotNull('expo_push_token')
+            ->where('expo_push_token', '!=', '')->pluck('expo_push_token');
+
+        foreach ($tokens as $token) {
+            SendExpoPushNotificationJob::dispatch(
+                $notification->id,
+                $senderId,
+                $token,
+                $notification->title,
+                $notification->body,
+                $data + ['notification_id' => $notification->id],
+                isSenderNotice: true,
+            )->afterCommit();
+        }
     }
 }

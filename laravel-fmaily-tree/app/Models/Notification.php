@@ -132,10 +132,21 @@ class Notification extends Model
         return $query->where('status', 'pending_approval');
     }
 
+    public function acceptsInvitationResponses(): bool
+    {
+        return in_array($this->status, self::RESPONDABLE_STATUSES, true)
+            || ($this->status === 'sending' && array_intersect(['push', 'whatsapp'], $this->channels ?? []) !== []);
+    }
+
     public function scopeReceivedInvitations(Builder $query, int $personId): Builder
     {
         return $query->whereNotNull('person_id')
-            ->whereIn('status', self::RESPONDABLE_STATUSES)
+            ->where(function (Builder $statuses) {
+                $statuses->whereIn('status', self::RESPONDABLE_STATUSES)
+                    ->orWhere(fn (Builder $sending) => $sending->where('status', 'sending')
+                        ->where(fn (Builder $channels) => $channels->whereJsonContains('channels', 'push')
+                            ->orWhereJsonContains('channels', 'whatsapp')));
+            })
             ->whereHas('recipients', fn (Builder $recipients) => $recipients->where('person_id', $personId));
     }
 

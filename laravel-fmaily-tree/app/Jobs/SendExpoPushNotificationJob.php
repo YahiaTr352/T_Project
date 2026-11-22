@@ -45,8 +45,11 @@ class SendExpoPushNotificationJob implements ShouldQueue
             return;
         }
 
-        $isCreativeDecision = ($this->data['type'] ?? null) === Notification::CREATIVE_DECISION_TYPE;
-        if (($notification->person_id !== null || $isCreativeDecision) && ! config('invitations.delivery_enabled')) {
+        $isPrivateInvitationNotice = in_array($this->data['type'] ?? null, [
+            Notification::CREATIVE_DECISION_TYPE,
+            Notification::INVITATION_RESPONSE_TYPE,
+        ], true);
+        if (($notification->person_id !== null || $isPrivateInvitationNotice) && ! config('invitations.delivery_enabled')) {
             return;
         }
 
@@ -60,7 +63,7 @@ class SendExpoPushNotificationJob implements ShouldQueue
 
         // Find device ID for polymorphic log mapping
         $device = UserDevice::where('expo_push_token', $this->expoPushToken)->first();
-        if ($isCreativeDecision && ($this->personId === null || (int) $device?->person_id !== $this->personId)) {
+        if ($isPrivateInvitationNotice && ($this->personId === null || (int) $device?->person_id !== $this->personId)) {
             return;
         }
 

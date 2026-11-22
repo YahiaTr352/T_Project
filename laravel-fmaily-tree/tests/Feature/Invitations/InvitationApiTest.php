@@ -2,11 +2,14 @@
 
 namespace Tests\Feature\Invitations;
 
+use App\Jobs\SendExpoPushNotificationJob;
 use App\Jobs\SendWhatsAppInvitationJob;
 use App\Models\Notification;
 use App\Models\NotificationGroup;
 use App\Models\Person;
 use App\Models\PersonContactAccount;
+use App\Models\UserDevice;
+use App\Services\ExpoNotificationService;
 use App\Services\SiteMobileAccessToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -346,6 +349,60 @@ class InvitationApiTest extends TestCase
             ->getJson('/api/notifications')->assertOk()->assertJsonCount(0, 'data.data');
 
         Queue::assertNothingPushed();
+        Http::assertNothingSent();
+    }
+
+    public function test_acceptance_and_rejection_push_only_to_the_invitation_sender(): void
+    {
+        Queue::fake();
+        Http::preventStrayRequests();
+        config(['invitations.delivery_enabled' => true]);
+
+        $adult = ['birth_date' => '1990-01-01', 'death_date' => null];
+        $sender = Person::factory()->createQuietly($adult);
+        $recipient = Person::factory()->createQuietly($adult);
+        $senderDevice = UserDevice::create(['person_id' => $sender->id, 'expo_push_token' => 'ExponentPushToken[inviter]']);
+        UserDevice::create(['person_id' => $recipient->id, 'expo_push_token' => 'ExponentPushToken[invitee]']);
+
+        $this->withHeaders($this->identityHeaders($recipient));
+        foreach (['accepted' => 'whatsapp', 'declined' => 'push'] as $response => $channel) {
+            $invitation = Notification::create([
+                'person_id' => $sender->id, 'title' => 'لقاء العائلة', 'status' => 'sending', 'channels' => [$channel],
+            ]);
+            $invitation->recipients()->create(['person_id' => $recipient->id]);
+            $url = "/api/v1/invitations/logs/{$invitation->id}/response";
+            $this->putJson($url, ['response' => $response])->assertOk();
+            $this->putJson($url, ['response' => $response])->assertOk();
+        }
+
+        Queue::assertNotPushed(SendWhatsAppInvitationJob::class);
+        Queue::assertPushed(SendExpoPushNotificationJob::class, 2);
+        $jobs = Queue::pushed(SendExpoPushNotificationJob::class)->keyBy('title');
+        $expo = $this->mock(ExpoNotificationService::class);
+        foreach (['قبول الدعوة', 'رفض الدعوة'] as $title) {
+            $job = $jobs[$title];
+            $notice = Notification::findOrFail($job->notificationId);
+            $this->assertSame($sender->id, $job->personId);
+            $this->assertSame($senderDevice->expo_push_token, $job->expoPushToken);
+            $this->assertTrue($job->isSenderNotice);
+            $this->assertTrue($job->afterCommit);
+            $this->assertSame($sender->id, $notice->recipients()->sole()->person_id);
+            $expo->shouldReceive('send')->once()
+                ->with($senderDevice->expo_push_token, $title, $notice->body, [
+                    'type' => Notification::INVITATION_RESPONSE_TYPE,
+                    'notification_id' => $notice->id,
+                ])->andReturn(['success' => true, 'sent_count' => 1]);
+            $job->handle($expo);
+        }
+
+        config(['invitations.delivery_enabled' => false]);
+        $jobs['قبول الدعوة']->handle($expo);
+        config(['invitations.delivery_enabled' => true]);
+        $senderDevice->update(['person_id' => $recipient->id]);
+        $jobs['رفض الدعوة']->handle($expo);
+
+        $this->flushSession()->withHeaders($this->identityHeaders($sender))
+            ->getJson('/api/notifications')->assertOk()->assertJsonCount(2, 'data.data');
         Http::assertNothingSent();
     }
 
