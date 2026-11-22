@@ -9,12 +9,16 @@
     'showDescription' => false,
     'submitLabel' => 'رفع واعتماد',
     'accept' => 'image/*',
+    'imageHint' => 'PNG أو JPG حتى 16MB — يفضل مقاس عريض عالي الجودة',
+    'nameLabel' => 'الاسم (اختياري)',
     'storeUrl' => null,
     'invitationTypes' => [],
+    'layoutFields' => [],
+    'creativeModes' => [],
 ])
 
 <div class="modal fade" id="{{ $id }}" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-dialog modal-dialog-centered {{ $layoutFields ? 'modal-lg' : '' }}" role="document">
         <div class="modal-content border-0 shadow-lg" style="border-radius:18px;overflow:hidden;">
             <div
                 class="modal-header text-white align-items-center"
@@ -36,6 +40,29 @@
                 @if ($storeUrl) data-url="{{ $storeUrl }}" @endif
             >
                 <div class="modal-body p-4">
+                    @if ($creativeModes)
+                        <div class="form-group mb-3">
+                            <label class="font-bold notif-title mb-2 d-block" for="{{ $formId }}Mode">طريقة عرض القالب</label>
+                            <select id="{{ $formId }}Mode" class="dashboard-input" data-creative-design-mode required>
+                                <option value="">اختر طريقة العرض</option>
+                                @foreach ($creativeModes as $key => $label)
+                                    <option value="{{ $key }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            <p class="notif-muted small mb-0 mt-1">الصورة الثابتة تُرسل كما هي. القالب القابل للتخصيص يتيح ترتيب النص والمتغيرات داخل الصورة.</p>
+                        </div>
+                    @endif
+                    @if ($invitationTypes)
+                        <div class="form-group mb-3">
+                            <label class="font-bold notif-title mb-2 d-block" for="{{ $formId }}Type">نوع الدعوة</label>
+                            <select id="{{ $formId }}Type" class="dashboard-input" data-visual-invitation-type required>
+                                <option value="">اختر نوع الدعوة</option>
+                                @foreach ($invitationTypes as $type)
+                                    <option value="{{ $type['key'] }}">{{ $type['name'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    @endif
                     <label
                         for="{{ $fileId }}"
                         class="d-block text-center mb-3"
@@ -53,7 +80,7 @@
                         <span data-visual-drop-empty>
                             <i class="fas fa-image d-block mb-2 notif-muted" style="font-size:1.8rem;" aria-hidden="true"></i>
                             <span class="font-bold notif-title d-block" style="font-size:12px;">اسحب الصورة هنا أو اضغط للاختيار</span>
-                            <span class="notif-muted d-block mt-1" style="font-size:11px;">PNG أو JPG حتى 16MB — يفضل مقاس عريض عالي الجودة</span>
+                            <span class="notif-muted d-block mt-1" style="font-size:11px;">{{ $imageHint }}</span>
                         </span>
                         <img
                             data-visual-file-preview
@@ -65,7 +92,7 @@
                     </label>
 
                     <div class="form-group mb-3">
-                        <label for="{{ $nameId }}" class="font-bold notif-title mb-2 d-block" style="font-size:12px;">الاسم (اختياري)</label>
+                        <label for="{{ $nameId }}" class="font-bold notif-title mb-2 d-block" style="font-size:12px;">{{ $nameLabel }}</label>
                         <input
                             type="text"
                             id="{{ $nameId }}"
@@ -76,16 +103,8 @@
                         >
                     </div>
 
-                    @if ($invitationTypes)
-                        <div class="form-group mb-3">
-                            <label class="font-bold notif-title mb-2 d-block" for="{{ $formId }}Type">نوع الدعوة</label>
-                            <select id="{{ $formId }}Type" class="dashboard-input" data-visual-invitation-type required>
-                                <option value="">اختر نوع الدعوة</option>
-                                @foreach ($invitationTypes as $type)
-                                    <option value="{{ $type['key'] }}">{{ $type['name'] }}</option>
-                                @endforeach
-                            </select>
-                        </div>
+                    @if ($layoutFields)
+                        <x-dashboard.visual.text-layout-editor :fields-by-type="$layoutFields" />
                     @endif
                     @if ($showDescription && $extraId)
                         <div class="form-group mb-3">

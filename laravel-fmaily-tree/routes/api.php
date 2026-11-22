@@ -105,6 +105,7 @@ Route::prefix('v1/invitations')->name('api.v1.invitations.')->middleware($invita
     Route::get('/creatives', [\App\Http\Controllers\Api\V1\CreativeTemplateApiController::class, 'index'])->name('creatives.index');
     Route::get('/creatives/mine', [\App\Http\Controllers\Api\V1\CreativeTemplateApiController::class, 'mine'])->name('creatives.mine');
     Route::post('/creatives', [\App\Http\Controllers\Api\V1\CreativeTemplateApiController::class, 'store'])->middleware('throttle:20,1')->name('creatives.store');
+    Route::post('/creatives/{id}/publication-consent', [\App\Http\Controllers\Api\V1\CreativeTemplateApiController::class, 'consent'])->whereNumber('id')->name('creatives.consent');
     Route::delete('/creatives/{id}', [\App\Http\Controllers\Api\V1\CreativeTemplateApiController::class, 'destroyMine'])->name('creatives.destroy');
 });
 

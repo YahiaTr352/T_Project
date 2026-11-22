@@ -2,6 +2,7 @@
     'baseRoute',
     'status' => 'pending',
     'counts' => [],
+    'filters' => [],
 ])
 
 @php
@@ -100,11 +101,11 @@
     @foreach ($tabs as $key => $tab)
         @php $isActive = $status === $key; @endphp
         <a
-            href="{{ route($baseRoute, ['status' => $key]) }}"
+            href="{{ route($baseRoute, ['status' => $key] + $filters) }}"
             class="visual-tab {{ $isActive ? 'is-active' : '' }}"
             @if ($isActive) aria-current="page" @endif
         >
-            <i class="{{ $tab['icon'] }}"></i>
+            <i class="{{ $tab['icon'] }}" aria-hidden="true"></i>
             <span>{{ $tab['label'] }}</span>
             @if ($key !== 'all')
                 <span class="visual-tab-count">{{ number_format($counts[$key] ?? 0) }}</span>

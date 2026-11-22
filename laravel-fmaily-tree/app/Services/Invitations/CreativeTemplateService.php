@@ -4,29 +4,49 @@ namespace App\Services\Invitations;
 
 use App\Exceptions\InvitationException;
 use App\Jobs\NotifyEditorsOfPendingVisualJob;
+use App\Jobs\SendExpoPushNotificationJob;
 use App\Models\CreativeTemplate;
+use App\Models\Notification;
 use App\Models\Person;
 use App\Models\User;
 use App\Models\UserDevice;
-use App\Services\ExpoNotificationService;
-use App\Services\UltramsgService;
 use App\Support\NotificationSettings;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class CreativeTemplateService
 {
     public const ARTWORK_RULES = 'required|image|mimes:jpg,jpeg,png,webp,gif|max:16384|dimensions:max_width=4096,max_height=4096';
 
-    public function __construct(
-        protected ExpoNotificationService $expo,
-        protected UltramsgService $ultramsg,
-        protected InvitationGroupService $groups,
-    ) {}
+    public function __construct(private InvitationCardRenderer $renderer) {}
 
-    public function upload(?Person $uploader, UploadedFile $file, ?string $name = null, ?string $description = null, ?string $invitationType = null): CreativeTemplate
+    public function previewImageUrl(CreativeTemplate $template): ?string
     {
+        try {
+            $path = $this->renderer->renderTemplatePreview($template);
+        } catch (InvitationException) {
+            return null;
+        }
+
+        return $path ? Storage::disk('public')->url($path) : null;
+    }
+
+    public static function designRules(): array
+    {
+        return [
+            'design_mode' => ['sometimes', 'required', Rule::in(array_keys(CreativeTemplate::MODES))],
+            'text_layout' => 'required_if:design_mode,overlay|prohibited_if:design_mode,ready|nullable|string|max:12000',
+        ];
+    }
+
+    public function upload(?Person $uploader, UploadedFile $file, ?string $name = null, ?string $description = null, ?string $invitationType = null, bool $publicationConsent = false, ?array $textLayout = null, ?string $designMode = null): CreativeTemplate
+    {
+        if ($uploader && ! $publicationConsent) {
+            throw new InvitationException('يرجى الموافقة على عرض التصميم ضمن القوالب عند اعتماده.', 'PUBLICATION_CONSENT_REQUIRED', 422);
+        }
+
         $path = $file->store('creative-templates', 'public');
 
         $template = CreativeTemplate::create([
@@ -34,7 +54,10 @@ class CreativeTemplateService
             'name' => $name ?: $file->getClientOriginalName(),
             'description' => $description,
             'image_path' => $path,
+            'text_layout' => $textLayout,
+            'design_mode' => $designMode,
             'uploaded_by' => $uploader?->id,
+            'publication_consented_at' => $uploader ? now() : null,
             'status' => CreativeTemplate::STATUS_PENDING,
         ]);
 
@@ -47,52 +70,73 @@ class CreativeTemplateService
 
     public function approve(CreativeTemplate $template, User $editor): CreativeTemplate
     {
-        if ($template->status !== CreativeTemplate::STATUS_PENDING) {
-            throw new InvitationException('هذا القالب تمت مراجعته مسبقا.', 'INVALID_STATUS');
-        }
-        if ($template->uploaded_by && ! $template->invitation_type) {
-            throw new InvitationException('حدّد نوع الدعوة قبل اعتماد التصميم.', 'CREATIVE_TYPE_REQUIRED', 422);
-        }
-
-        $template->update([
-            'status' => CreativeTemplate::STATUS_APPROVED,
-            'reviewed_by' => $editor->id,
-            'reviewed_at' => now(),
-            'rejection_reason' => null,
-        ]);
-
-        $this->notifyUploader($template->fresh(), 'approved');
-
-        return $template->fresh();
+        return $this->review($template, $editor, CreativeTemplate::STATUS_APPROVED);
     }
 
     public function reject(CreativeTemplate $template, User $editor, string $reason): CreativeTemplate
     {
-        if ($template->status !== CreativeTemplate::STATUS_PENDING) {
-            throw new InvitationException('هذا القالب تمت مراجعته مسبقا.', 'INVALID_STATUS');
-        }
+        return $this->review($template, $editor, CreativeTemplate::STATUS_REJECTED, trim($reason));
+    }
 
-        $template->update([
-            'status' => CreativeTemplate::STATUS_REJECTED,
-            'reviewed_by' => $editor->id,
-            'reviewed_at' => now(),
-            'rejection_reason' => trim($reason),
-        ]);
+    public function recordPublicationConsent(Person $member, int $templateId): void
+    {
+        DB::transaction(function () use ($member, $templateId) {
+            $template = CreativeTemplate::where('uploaded_by', $member->id)->lockForUpdate()->findOrFail($templateId);
+            if ($template->status !== CreativeTemplate::STATUS_PENDING) {
+                throw new InvitationException('الموافقة متاحة للتصاميم التي تنتظر المراجعة.', 'INVALID_STATUS', 422);
+            }
 
-        $this->notifyUploader($template->fresh(), 'rejected', trim($reason));
+            if ($template->awaitsPublicationConsent()) {
+                $template->update(['publication_consented_at' => now()]);
+            }
+        });
+    }
 
-        return $template->fresh();
+    private function review(CreativeTemplate $template, User $editor, string $decision, ?string $reason = null): CreativeTemplate
+    {
+        return DB::transaction(function () use ($template, $editor, $decision, $reason) {
+            $template = CreativeTemplate::lockForUpdate()->findOrFail($template->id);
+            if ($template->status !== CreativeTemplate::STATUS_PENDING) {
+                throw new InvitationException('هذا القالب تمت مراجعته مسبقا.', 'INVALID_STATUS');
+            }
+            if ($decision === CreativeTemplate::STATUS_APPROVED && $template->uploaded_by) {
+                if (! $template->invitation_type) {
+                    throw new InvitationException('حدّد نوع الدعوة قبل اعتماد التصميم.', 'CREATIVE_TYPE_REQUIRED', 422);
+                }
+                if ($template->awaitsPublicationConsent()) {
+                    throw new InvitationException('لا يمكن اعتماد التصميم قبل موافقة العضو على عرضه.', 'PUBLICATION_CONSENT_REQUIRED', 422);
+                }
+            }
+
+            $template->update([
+                'status' => $decision,
+                'reviewed_by' => $editor->id,
+                'reviewed_at' => now(),
+                'rejection_reason' => $reason,
+            ]);
+
+            $this->notifyUploader($template, $decision, $reason);
+
+            return $template;
+        });
     }
 
     public function destroy(CreativeTemplate $template): void
     {
-        if ($template->image_path && ! filter_var($template->image_path, FILTER_VALIDATE_URL)) {
+        $imagePath = DB::transaction(function () use ($template) {
+            $template = CreativeTemplate::lockForUpdate()->findOrFail($template->id);
+            $imagePath = $template->image_path;
+            $template->delete();
+
+            return $imagePath;
+        });
+
+        if ($imagePath && ! filter_var($imagePath, FILTER_VALIDATE_URL)) {
             try {
-                Storage::disk('public')->delete($template->image_path);
+                Storage::disk('public')->delete($imagePath);
             } catch (\Throwable) {
             }
         }
-        $template->delete();
     }
 
     public function usableCreative(?int $id, ?string $invitationType): ?CreativeTemplate
@@ -114,12 +158,12 @@ class CreativeTemplateService
     protected function notifyUploader(CreativeTemplate $template, string $decision, ?string $reason = null): void
     {
         $personId = (int) $template->uploaded_by;
-        if ($personId <= 0 || ! config('invitations.delivery_enabled')) {
+        if ($personId <= 0) {
             return;
         }
 
         $name = $template->name ?: ('تصميم' . ' #' . $template->id);
-        if ($decision === 'approved') {
+        if ($decision === CreativeTemplate::STATUS_APPROVED) {
             $title = 'تم اعتماد تصميمك';
             $body = 'تمت الموافقة على التصميم ' . $name . ' واصبح متاحا كقالب للدعوات.';
         } else {
@@ -127,40 +171,24 @@ class CreativeTemplateService
             $body = 'تم رفض التصميم ' . $name . '.' . ($reason ? ' السبب: ' . $reason : '');
         }
 
-        try {
-            if (NotificationSettings::canSendPush()) {
-                $tokens = UserDevice::query()
-                    ->where('person_id', $personId)
-                    ->whereNotNull('expo_push_token')
-                    ->pluck('expo_push_token')
-                    ->all();
-                foreach ($tokens as $token) {
-                    $this->expo->send($token, $title, $body, [
-                        'type' => 'creative_decision',
-                        'creative_id' => $template->id,
-                        'decision' => $decision,
-                    ]);
-                }
-                if ($tokens !== []) {
-                    return;
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::channel('single')->error('[Creatives] Push notice failed: ' . $e->getMessage());
+        $data = ['type' => Notification::CREATIVE_DECISION_TYPE, 'creative_id' => $template->id, 'decision' => $decision];
+        $notice = Notification::create([
+            'title' => $title,
+            'body' => $body,
+            'status' => 'sent',
+            'sent_at' => now(),
+            'targeting_filters' => ['data' => $data],
+        ]);
+        $notice->recipients()->create(['person_id' => $personId]);
+
+        if (! config('invitations.delivery_enabled') || ! NotificationSettings::canSendPush()) {
+            return;
         }
 
-        try {
-            $person = Person::query()->with('contactAccounts')->find($personId);
-            if (! $person) {
-                return;
-            }
-            $numbers = $this->groups->whatsAppNumbers($person);
-            if ($numbers === []) {
-                return;
-            }
-            $this->ultramsg->sendText($numbers[0], $title . "\n" . $body);
-        } catch (\Throwable $e) {
-            Log::channel('single')->error('[Creatives] WhatsApp notice failed: ' . $e->getMessage());
+        $tokens = UserDevice::where('person_id', $personId)->whereNotNull('expo_push_token')->distinct()->pluck('expo_push_token');
+        foreach ($tokens as $token) {
+            SendExpoPushNotificationJob::dispatch($notice->id, $personId, $token, $title, $body,
+                $data + ['notification_id' => $notice->id], isSenderNotice: true)->afterCommit();
         }
     }
 }

@@ -45,18 +45,24 @@ class SendExpoPushNotificationJob implements ShouldQueue
             return;
         }
 
-        if ($notification->person_id !== null && ! config('invitations.delivery_enabled')) {
+        $isCreativeDecision = ($this->data['type'] ?? null) === Notification::CREATIVE_DECISION_TYPE;
+        if (($notification->person_id !== null || $isCreativeDecision) && ! config('invitations.delivery_enabled')) {
             return;
         }
 
         if (!\App\Support\NotificationSettings::canSendPush()) {
             Log::channel('single')->info('[ExpoPush Job] Push channel is disabled in settings, skipping job', $logContext);
-            $this->updateNotificationStatus($notification);
+            if (! $this->isSenderNotice) {
+                $this->updateNotificationStatus($notification);
+            }
             return;
         }
 
         // Find device ID for polymorphic log mapping
         $device = UserDevice::where('expo_push_token', $this->expoPushToken)->first();
+        if ($isCreativeDecision && ($this->personId === null || (int) $device?->person_id !== $this->personId)) {
+            return;
+        }
 
         try {
             $result = $expoService->send(

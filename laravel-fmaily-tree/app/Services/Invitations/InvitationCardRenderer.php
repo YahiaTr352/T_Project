@@ -2,6 +2,7 @@
 
 namespace App\Services\Invitations;
 
+use App\Exceptions\InvitationException;
 use App\Models\InvitationBackground;
 use App\Models\CreativeTemplate;
 use App\Models\Notification;
@@ -14,6 +15,8 @@ class InvitationCardRenderer
     public const WIDTH = 1080;
     public const HEIGHT = 1350;
     public const MAX_WIDTH = 920;
+    private const LAYOUT_RENDER_VERSION = 4;
+    private const ITALIC_SHEAR = .32;
 
     protected function fonts(string $family = 'amiri'): array
     {
@@ -46,7 +49,7 @@ class InvitationCardRenderer
     ): ?string {
         try {
             $filters = is_array($notification->targeting_filters) ? $notification->targeting_filters : [];
-            if (! empty($filters['creative_card_rendered'])) {
+            if (! empty($filters['creative_card_rendered']) || isset($filters['creative_design_mode'])) {
                 return null;
             }
             if (trim((string) $notification->body) === '') {
@@ -71,15 +74,48 @@ class InvitationCardRenderer
         }
     }
 
+    public function renderTemplatePreview(CreativeTemplate $template, bool $allowOverflow = true): ?string
+    {
+        if ($template->designMode() !== CreativeTemplate::MODE_OVERLAY || ! $template->invitation_type || ! $template->image_path) {
+            return null;
+        }
+        $preset = app(InvitationMessageService::class)->templateByKey($template->invitation_type);
+        if (! $preset) {
+            return null;
+        }
+        if ($allowOverflow && ! $template->text_layout && $template->design_mode === null) {
+            $template = clone $template;
+            $template->design_mode = CreativeTemplate::MODE_OVERLAY;
+        }
+
+        return $this->renderPreview($template, $preset['title'], $preset['body'], [
+            'template_vars' => CreativeTextLayout::placeholders($template->invitation_type),
+            'allow_placeholder_overflow' => $allowOverflow,
+        ]);
+    }
+
     public function renderPreview(InvitationBackground|CreativeTemplate $background, string $title, string $body, array $typography = []): ?string
     {
         try {
             if ($background instanceof CreativeTemplate && $background->invitation_type !== null) {
                 $typography['invitation_type'] = $background->invitation_type;
+                if ($background->design_mode === CreativeTemplate::MODE_OVERLAY) {
+                    $type = $background->invitation_type;
+                    $preset = app(InvitationMessageService::class)->templateByKey($type);
+                    $typography['text_layout'] = CreativeTextLayout::messageLayout($type, $background->text_layout);
+                    $typography['inline_segments'] = CreativeTextLayout::segments($type, $preset['body'] ?? '', $typography['template_vars'] ?? []);
+                    $title = '';
+                    $body = implode('', array_column($typography['inline_segments'], 'text'));
+                } else {
+                    $typography['text_layout'] = $background->text_layout
+                        ?? ($background->invitation_type === 'wedding' ? CreativeTextLayout::defaults('wedding') : null);
+                }
             }
             $key = 'preview_' . $background->id . '_' . hash('sha256', serialize([$background->image_path, $title, $body, $typography]));
 
             return $this->render($background->image_path, $title, $body, $key, $typography);
+        } catch (InvitationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             Log::channel('single')->error('[InvitationCard] renderPreview failed: ' . $e->getMessage());
 
@@ -93,7 +129,11 @@ class InvitationCardRenderer
         $family = ($typography['font_family'] ?? null) === 'tajawal' ? 'tajawal' : 'amiri';
         $weight = in_array($typography['font_weight'] ?? null, ['regular', 'bold'], true)
             ? $typography['font_weight'] : null;
-        $cacheKey .= '_' . md5($sourcePath . '|' . $family . '|' . ($weight ?? 'legacy'));
+        $layout = $typography['text_layout'] ?? null;
+        $cacheKey .= '_' . md5(serialize([$sourcePath, $family, $weight, $layout]));
+        if ($layout) {
+            $cacheKey .= '_v' . self::LAYOUT_RENDER_VERSION;
+        }
         $safeKey = preg_replace('/[^a-zA-Z0-9_-]/', '', $cacheKey) ?: md5($cacheKey);
         $relative = 'notifications/cards/' . $safeKey . '.jpg';
 
@@ -117,41 +157,48 @@ class InvitationCardRenderer
             }
 
             $type = $typography['invitation_type'] ?? null;
-            $canvas = $type === 'wedding' ? $this->fitArtwork($image) : $this->cover($image);
+            $canvas = $layout ? $this->fitArtwork($image) : $this->cover($image);
             imagedestroy($image);
 
-            if ($type === null) {
-                $this->overlay($canvas);
-                $this->border($canvas);
-            }
-
-            $title = $this->clean($title);
-            $body = $this->clean($body);
-            $fields = $typography['template_vars'] ?? [];
-            if ($title === '' && $body === '' && ($type !== 'wedding' || array_filter($fields) === [])) {
-                imagedestroy($canvas);
-
-                return null;
-            }
-
-            if ($type === 'wedding') {
-                $this->drawWedding($canvas, $fonts[$weight ?? 'regular'], $fields);
-            } else {
-                $this->drawBlock($canvas, $fonts, $title, $body, $weight);
-            }
-
-            if (! $disk->exists('notifications/cards')) {
-                $disk->makeDirectory('notifications/cards');
-            }
-            ob_start();
             try {
-                $written = imagejpeg($canvas, null, 88);
+                if ($type === null) {
+                    $this->overlay($canvas);
+                    $this->border($canvas);
+                }
+
+                $title = $this->clean($title);
+                $body = $this->clean($body);
+                if (isset($layout['message'], $typography['inline_segments'])) {
+                    $this->drawInlineMessage(
+                        $canvas, $fonts, $weight ?? 'regular', $layout['message'], $typography['inline_segments'],
+                        $typography['allow_placeholder_overflow'] ?? false,
+                    );
+                } elseif ($layout) {
+                    $fields = CreativeTextLayout::content($layout, ['title' => $title, 'message' => $body] + ($typography['template_vars'] ?? []));
+                    if ($fields === []) {
+                        return null;
+                    }
+                    $this->drawLayout($canvas, $fonts, $weight ?? 'regular', $layout, $fields, $typography['allow_placeholder_overflow'] ?? false);
+                } else {
+                    if ($title === '' && $body === '') {
+                        return null;
+                    }
+                    $this->drawBlock($canvas, $fonts, $title, $body, $weight);
+                }
+
+                ob_start();
+                try {
+                    $written = imagejpeg($canvas, null, 88);
+                } finally {
+                    $jpeg = ob_get_clean();
+                }
             } finally {
-                $jpeg = ob_get_clean();
                 imagedestroy($canvas);
             }
 
             return $written && $disk->put($relative, $jpeg) ? $relative : null;
+        } catch (InvitationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             Log::channel('single')->error('[InvitationCard] render failed: ' . $e->getMessage());
 
@@ -168,34 +215,250 @@ class InvitationCardRenderer
         return imagescale($image, max(1, (int) round($width * $scale)), max(1, (int) round($height * $scale)));
     }
 
-    protected function drawWedding($canvas, string $font, array $fields): void
+    private function drawInlineMessage($canvas, array $fonts, string $weight, array $box, array $segments, bool $allowOverflow): void
     {
-        $slots = [
-            ['يتشرف بدعوتكم', .38, 46],
-            [$fields['hosts'] ?? '', .46, 74],
-            ['لحضور حفل زفاف', .54, 46],
-            [$fields['groom'] ?? '', .63, 84],
-            [implode('   ', array_filter([$fields['date'] ?? null, $fields['time'] ?? null])), .77, 49],
-            [$fields['location'] ?? '', .86, 52],
-        ];
+        $width = imagesx($canvas);
+        $height = imagesy($canvas);
+        $shortSide = min($width, $height);
+        $boxWidth = $width * $box['width'] / 100;
+        $boxHeight = $height * $box['height'] / 100;
+        $minimum = $allowOverflow ? 1 : max(4, (int) ceil($shortSide * .015));
+        $base = $box + ['bold' => $weight === 'bold', 'italic' => false, 'underline' => false];
+        $tokens = [];
+        foreach ($segments as $segment) {
+            $format = ($box['inline'][$segment['key']] ?? []) + $base;
+            $dx = (float) ($format['offsetX'] ?? 0) * $width / 100;
+            $dy = (float) ($format['offsetY'] ?? 0) * $height / 100;
+            $style = [
+                $fonts[$format['bold'] ? 'bold' : 'regular'], (bool) $format['italic'], (bool) $format['underline'],
+                $format['fontSize'] / $box['fontSize'], $dx, $dy, ($dx || $dy) ? $segment['label'] : null,
+            ];
+            $parts = preg_split('/(\n|[^\S\n]+)/u', str_replace(["\r\n", "\r"], "\n", $segment['text']), -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
+            foreach ($parts as $part) {
+                $tokens[] = [$part, $style];
+            }
+        }
 
-        foreach ($slots as [$value, $baseline, $size]) {
-            $line = trim(preg_replace('/\s+/u', ' ', $this->clean(is_scalar($value) ? (string) $value : '')) ?? '');
-            if ($line === '') {
+        for ($size = max($minimum, (int) round($shortSide * $box['fontSize'] / 100 * .75)); $size >= $minimum; $size--) {
+            $lines = [];
+            $current = [];
+            $space = null;
+            foreach ($tokens as [$word, $style]) {
+                if ($word === "\n") {
+                    $lines[] = $this->inlineLine($current, $size);
+                    $current = [];
+                    $space = null;
+                    continue;
+                }
+                if (trim($word) === '') {
+                    $space = [' ', $style];
+                    continue;
+                }
+                $candidate = $current;
+                if ($space && $candidate) {
+                    $candidate[] = $space;
+                }
+                $candidate[] = [$word, $style];
+                if ($current && $this->inlineLine($candidate, $size)['width'] > $boxWidth - 6) {
+                    $lines[] = $this->inlineLine($current, $size);
+                    $current = [[$word, $style]];
+                } else {
+                    $current = $candidate;
+                }
+                $space = null;
+            }
+            if ($current) {
+                $lines[] = $this->inlineLine($current, $size);
+            }
+            if ($lines === []) {
+                return;
+            }
+
+            $step = (int) ceil($size * 1.95);
+            $top = $lines[0]['top'];
+            $bottom = 0;
+            foreach ($lines as $index => $line) {
+                $lines[$index]['baseline'] = $index === 0 ? 0 : max($baseline + $step, $bottom - $line['top'] + 2);
+                $baseline = $lines[$index]['baseline'];
+                $bottom = $baseline + $line['bottom'];
+            }
+            if ($bottom - $top <= $boxHeight - 6 && max(array_column($lines, 'width')) <= $boxWidth - 6) {
+                $white = imagecolorallocate($canvas, 255, 255, 255);
+                $shadow = imagecolorallocatealpha($canvas, 0, 0, 0, 80);
+                $baseY = $height * $box['y'] / 100 + ($boxHeight - ($bottom - $top)) / 2 - $top;
+                $right = $width * ($box['x'] + $box['width']) / 100 - 3;
+                foreach ($lines as $line) {
+                    $left = $right - $line['width'];
+                    foreach ($line['runs'] as [$text, $font, $italic, $underline, $bounds, $inkLeft, $advance, $shift, $runSize, $dx, $dy, $label, $inkBottom]) {
+                        $x = (int) round($left - $inkLeft + $dx);
+                        $y = (int) round($baseY + $line['baseline'] + $dy);
+                        if (! $allowOverflow && $label && ($left + $dx < 0 || $left + $dx + $advance > $width
+                            || $y + $bounds[2] < 0 || $y + $inkBottom > $height)) {
+                            throw new InvitationException('العنصر «'.$label.'» خارج إطار الصورة. عدّل إزاحته.', 'CREATIVE_TEXT_OVERFLOW', 422);
+                        }
+                        if ($italic) {
+                            $this->drawItalicLine($canvas, $font, $runSize, $text, $x, $y, $bounds);
+                        } else {
+                            imagettftext($canvas, $runSize, 0, $x + 2, $y + 2, $shadow, $font, $text);
+                            imagettftext($canvas, $runSize, 0, $x, $y, $white, $font, $text);
+                        }
+                        if ($underline) {
+                            $lineY = $y + max(0, $bounds[3]) + max(1, (int) round($runSize * .10));
+                            imagefilledrectangle($canvas, $x + $bounds[0] + $shift, $lineY, $x + $bounds[1] + $shift,
+                                $lineY + max(1, (int) round($runSize * .12)) - 1, $white);
+                        }
+                        $left += $advance;
+                    }
+                }
+
+                return;
+            }
+        }
+
+        throw new InvitationException('يتجاوز نص الدعوة إطار الصورة. وسّع المساحة أو صغّر الخط.', 'CREATIVE_TEXT_OVERFLOW', 422);
+    }
+
+    private function inlineLine(array $tokens, int $size): array
+    {
+        $groups = [];
+        foreach ($tokens as [$text, $style]) {
+            $last = array_key_last($groups);
+            if ($last !== null && $groups[$last][1] === $style) {
+                $groups[$last][0] .= $text;
+            } else {
+                $groups[] = [$text, $style];
+            }
+        }
+
+        $line = ['runs' => [], 'width' => 0, 'top' => 0, 'bottom' => 0];
+        foreach (array_reverse($groups) as [$logical, [$font, $italic, $underline, $ratio, $dx, $dy, $label]]) {
+            $runSize = max(1, (int) round($size * $ratio));
+            $text = (str_ends_with($logical, ' ') ? ' ' : '').$this->shape(trim($logical)).(str_starts_with($logical, ' ') ? ' ' : '');
+            $box = imagettfbbox($runSize, 0, $font, $text);
+            $xs = [$box[0], $box[2], $box[4], $box[6]];
+            $ys = [$box[1], $box[3], $box[5], $box[7]];
+            $bounds = [min($xs), max($xs), min($ys), max($ys)];
+            [$minX, $maxX, $minY, $maxY] = $bounds;
+            $left = $minX - ($italic ? (int) round($maxY * self::ITALIC_SHEAR) : 0);
+            $right = $maxX - ($italic ? (int) round($minY * self::ITALIC_SHEAR) : 0);
+            $advance = $right - $left;
+            $shift = $italic ? (int) round(($minY + $maxY) / -2 * self::ITALIC_SHEAR) : 0;
+            $line['width'] += $advance;
+            $line['top'] = min($line['top'], $minY);
+            $bottom = $underline ? max(0, $maxY) + max(1, (int) round($runSize * .10)) + max(1, (int) round($runSize * .12)) : $maxY;
+            $line['runs'][] = [$text, $font, $italic, $underline, $bounds, $left, $advance, $shift, $runSize, $dx, $dy, $label, $bottom];
+            $line['bottom'] = max($line['bottom'], $bottom);
+        }
+
+        return $line;
+    }
+
+    protected function drawLayout($canvas, array $fonts, string $weight, array $layout, array $fields, bool $allowOverflow = false): void
+    {
+        $width = imagesx($canvas);
+        $height = imagesy($canvas);
+        $shortSide = min($width, $height);
+        $minimum = $allowOverflow ? 1 : max(4, (int) ceil($shortSide * .015));
+        $white = imagecolorallocate($canvas, 255, 255, 255);
+        $shadow = imagecolorallocatealpha($canvas, 0, 0, 0, 80);
+
+        foreach ($fields as $key => $value) {
+            $box = $layout[$key];
+            $text = $this->clean($value);
+            if ($text === '') {
                 continue;
             }
-            $size = max(10, (int) round($size * imagesx($canvas) / self::WIDTH));
-            $maxWidth = imagesx($canvas) * .86;
-            $width = $this->lineWidth($font, $size, $this->shape($line));
-            $size = max(1, (int) floor($size * min(1, $maxWidth / max(1, $width))));
-            $this->drawCentered($canvas, $font, $size, $line, (int) round(imagesy($canvas) * $baseline));
+            $font = $fonts[array_key_exists('bold', $box) ? ($box['bold'] ? 'bold' : 'regular') : $weight];
+            $italic = $box['italic'] ?? false;
+            $underline = $box['underline'] ?? false;
+            $boxWidth = $width * $box['width'] / 100;
+            $boxHeight = $height * $box['height'] / 100;
+            $size = max($minimum, (int) round($shortSide * $box['fontSize'] / 100 * .75));
+            do {
+                $slant = $italic ? (int) ceil($size * .6) : 0;
+                $underlineGap = $underline ? max(1, (int) round($size * .10)) : 0;
+                $underlineWeight = $underline ? max(1, (int) round($size * .12)) : 0;
+                $lines = $this->wrap($font, $size, $text, $boxWidth - 6 - $slant);
+                if ($lines === []) {
+                    continue 2;
+                }
+                $step = (int) ceil($size * 1.7) + $underlineGap + $underlineWeight;
+                $metrics = array_map(function (string $line) use ($font, $size) {
+                    $shaped = $this->shape($line);
+                    $bounds = imagettfbbox($size, 0, $font, $shaped);
+                    $xs = [$bounds[0], $bounds[2], $bounds[4], $bounds[6]];
+                    $ys = [$bounds[1], $bounds[3], $bounds[5], $bounds[7]];
+
+                    return [$shaped, min($xs), max($xs), min($ys), max($ys)];
+                }, $lines);
+                $top = min(array_column($metrics, 3));
+                $bottom = max(array_map(
+                    fn ($line, $index) => ($underline ? max(0, $line[4]) + $underlineGap + $underlineWeight : $line[4]) + $index * $step,
+                    $metrics, array_keys($metrics),
+                ));
+                $fits = $bottom - $top <= $boxHeight - 6 && max(array_map(
+                    fn ($line) => $line[2] - $line[1] + ($italic ? ceil(($line[4] - $line[3]) * self::ITALIC_SHEAR) : 0),
+                    $metrics,
+                )) <= $boxWidth - 6;
+                if ($fits) {
+                    break;
+                }
+            } while (--$size >= $minimum);
+
+            if (! $fits) {
+                throw new InvitationException('يتجاوز النص مساحة الحقل داخل إطار الصورة. وسّع الحقل أو صغّر الخط في المحرر، أو اختر قالبًا آخر.', 'CREATIVE_TEXT_OVERFLOW', 422);
+            }
+
+            $left = $width * $box['x'] / 100;
+            $baseline = $height * $box['y'] / 100 + ($boxHeight - ($bottom - $top)) / 2 - $top;
+            foreach ($metrics as [$shaped, $minX, $maxX, $minY, $maxY]) {
+                $inkCenter = ($minX + $maxX) / 2 - ($italic ? ($minY + $maxY) / 2 * self::ITALIC_SHEAR : 0);
+                $x = (int) round($left + $boxWidth / 2 - $inkCenter);
+                $y = (int) round($baseline);
+                if ($italic) {
+                    $this->drawItalicLine($canvas, $font, $size, $shaped, $x, $y, [$minX, $maxX, $minY, $maxY]);
+                } else {
+                    imagettftext($canvas, $size, 0, $x + 2, $y + 2, $shadow, $font, $shaped);
+                    imagettftext($canvas, $size, 0, $x, $y, $white, $font, $shaped);
+                }
+                if ($underline) {
+                    $lineY = $y + max(0, $maxY) + $underlineGap;
+                    $offset = $italic ? (int) round(($minY + $maxY) / -2 * self::ITALIC_SHEAR) : 0;
+                    imagefilledrectangle($canvas, $x + $minX + $offset, $lineY, $x + $maxX + $offset, $lineY + $underlineWeight - 1, $white);
+                }
+                $baseline += $step;
+            }
+        }
+    }
+
+    protected function drawItalicLine($canvas, string $font, int $size, string $text, int $x, int $y, array $bounds): void
+    {
+        [$minX, $maxX, $minY, $maxY] = $bounds;
+        $width = $maxX - $minX + 8;
+        $height = $maxY - $minY + 8;
+        $line = imagecreatetruecolor($width, $height);
+        imagealphablending($line, false);
+        imagefill($line, 0, 0, imagecolorallocatealpha($line, 0, 0, 0, 127));
+        imagesavealpha($line, true);
+        $baseline = 2 - $minY;
+        $origin = 2 - $minX;
+        try {
+            imagettftext($line, $size, 0, $origin + 2, $baseline + 2, imagecolorallocatealpha($line, 0, 0, 0, 80), $font, $text);
+            imagettftext($line, $size, 0, $origin, $baseline, imagecolorallocate($line, 255, 255, 255), $font, $text);
+            // Offset the rows around the baseline so the existing Arabic glyph shaping stays intact.
+            for ($row = 0; $row < $height; $row++) {
+                $shift = (int) round(($baseline - $row) * self::ITALIC_SHEAR);
+                imagecopy($canvas, $line, $x - $origin + $shift, $y - $baseline + $row, 0, $row, $width, 1);
+            }
+        } finally {
+            imagedestroy($line);
         }
     }
 
     protected function clean(string $text): string
     {
         $text = str_replace(["\r\n", "\r"], "\n", $text);
-        $text = str_replace(['*', '_', '~', '`'], '', $text);
+        $text = preg_replace('/\{[a-z_]+\}(*SKIP)(*F)|[*_~`]/', '', $text);
         $lines = array_map('trim', explode("\n", $text));
         $lines = array_values(array_filter($lines, fn ($l) => $l !== ''));
 
@@ -246,7 +509,7 @@ class InvitationCardRenderer
         return (int) (($box[2] ?? 0) - ($box[0] ?? 0));
     }
 
-    protected function wrap(string $font, int $size, string $text): array
+    protected function wrap(string $font, int $size, string $text, float $maxWidth = self::MAX_WIDTH): array
     {
         $out = [];
         foreach (explode("\n", $text) as $paragraph) {
@@ -257,7 +520,7 @@ class InvitationCardRenderer
             $current = '';
             foreach ($words as $word) {
                 $candidate = $current === '' ? $word : $current . ' ' . $word;
-                if ($this->lineWidth($font, $size, $this->shape($candidate)) <= self::MAX_WIDTH) {
+                if ($this->lineWidth($font, $size, $this->shape($candidate)) <= $maxWidth) {
                     $current = $candidate;
                 } else {
                     if ($current !== '') {

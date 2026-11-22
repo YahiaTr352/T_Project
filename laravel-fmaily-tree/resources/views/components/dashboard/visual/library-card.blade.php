@@ -49,6 +49,9 @@
             display: block;
             transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
+        .visual-lib-media.is-missing { cursor: default; }
+        .visual-lib-missing-image { display: grid; height: 100%; place-content: center; justify-items: center; gap: 7px; color: #cbd5e1; font-size: 12px; }
+        .visual-lib-missing-image i { font-size: 21px; }
         .visual-lib-card:hover .visual-lib-media img {
             transform: scale(1.05);
         }
@@ -220,15 +223,21 @@
 
 <article class="dashboard-notif-card visual-lib-card" data-visual-card="{{ $id }}">
     <div
-        class="visual-lib-media"
-        role="button"
-        tabindex="0"
-        aria-label="معاينة: {{ $displayName }}"
-        data-visual-preview-trigger
-        data-image="{{ $imageUrl }}"
-        data-title="{{ $previewTitle ?? $displayName }}"
+        class="visual-lib-media {{ $imageUrl ? '' : 'is-missing' }}"
+        @if ($imageUrl)
+            role="button"
+            tabindex="0"
+            aria-label="معاينة: {{ $displayName }}"
+            data-visual-preview-trigger
+            data-image="{{ $imageUrl }}"
+            data-title="{{ $previewTitle ?? $displayName }}"
+        @endif
     >
-        <img src="{{ $imageUrl }}" alt="{{ $displayName }}" loading="lazy">
+        @if ($imageUrl)
+            <img src="{{ $imageUrl }}" alt="{{ $displayName }}" loading="lazy">
+        @else
+            <div class="visual-lib-missing-image"><i class="fa-regular fa-image" aria-hidden="true"></i> الصورة غير متاحة</div>
+        @endif
 
         <div class="visual-lib-status">
             <span class="badge {{ $badgeClass }}">{{ $statusLabel }}</span>
@@ -237,12 +246,14 @@
             @endif
         </div>
 
-        <div class="visual-lib-overlay" aria-hidden="true">
-            <span class="visual-lib-zoom">
-                <i class="fas fa-search-plus"></i>
-                معاينة سريعة
-            </span>
-        </div>
+        @if ($imageUrl)
+            <div class="visual-lib-overlay" aria-hidden="true">
+                <span class="visual-lib-zoom">
+                    <i class="fa-solid fa-magnifying-glass-plus"></i>
+                    معاينة سريعة
+                </span>
+            </div>
+        @endif
     </div>
 
     <div class="visual-lib-body">
@@ -274,6 +285,10 @@
                 سبب الرفض: {{ $rejectionReason }}
             </div>
         @endif
+
+        @isset ($details)
+            {{ $details }}
+        @endisset
 
         @if ($canManage)
             <div class="visual-lib-actions">

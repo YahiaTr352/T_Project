@@ -108,6 +108,7 @@ Route::prefix('invitations')->name('invitations.')->group(function () {
         Route::get('/send', [\App\Http\Controllers\InvitationController::class, 'send'])->name('send');
         Route::post('/send', [\App\Http\Controllers\InvitationController::class, 'sendSubmit'])->name('send.submit');
         Route::post('/creatives', [\App\Http\Controllers\InvitationController::class, 'submitCreative'])->middleware('throttle:20,1')->name('creatives.submit');
+        Route::post('/creatives/{id}/publication-consent', [\App\Http\Controllers\InvitationController::class, 'consentToCreativePublication'])->whereNumber('id')->name('creatives.consent');
         Route::get('/logs', [\App\Http\Controllers\InvitationController::class, 'logs'])->name('logs');
         Route::put('/logs/{notification}/response', [\App\Http\Controllers\InvitationController::class, 'respond'])->name('logs.respond');
         Route::get('/tree-picker', [\App\Http\Controllers\InvitationController::class, 'treePicker'])->name('tree-picker');
@@ -827,6 +828,9 @@ Route::group(['middleware' => ['auth'], 'prefix' => 'dashboard'], function () {
     Route::prefix('creative-templates')->name('dashboard.creatives.')->middleware(['permission:notifications.view'])->group(function () {
         Route::patch('/{template}', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'update'])->name('update')->middleware(['permission:notifications.send']);
         Route::get('/', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'index'])->name('index');
+        Route::get('/{template}/text-layout', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'editLayout'])->name('layout.edit')->middleware(['permission:notifications.send']);
+        Route::put('/{template}/text-layout', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'saveLayout'])->name('layout.save')->middleware(['permission:notifications.send']);
+        Route::post('/{template}/text-layout/preview', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'previewLayout'])->name('layout.preview')->middleware(['permission:notifications.send', 'throttle:30,1']);
         Route::post('/', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'store'])->name('store')->middleware(['permission:notifications.send']);
         Route::post('/{template}/approve', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'approve'])->name('approve')->middleware(['permission:notifications.send']);
         Route::post('/{template}/reject', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'reject'])->name('reject')->middleware(['permission:notifications.send']);

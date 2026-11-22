@@ -310,14 +310,30 @@
             var fileInput = form.querySelector('[data-visual-file-input]');
             var nameInput = form.querySelector('[data-visual-name-input]');
             var extraInput = form.querySelector('[data-visual-extra-input]');
+            var invitationType = form.querySelector('[data-visual-invitation-type]');
             if (!fileInput || !fileInput.files || !fileInput.files[0]) {
                 toast('يرجى اختيار ملف الصورة أولًا.', 'danger');
                 return;
             }
+            if (invitationType && !invitationType.value) {
+                toast('يرجى اختيار نوع الدعوة.', 'danger');
+                invitationType.focus();
+                return;
+            }
             var fd = new FormData();
             fd.append('image', fileInput.files[0]);
-            var invitationType = form.querySelector('[data-visual-invitation-type]');
             if (invitationType) fd.append('invitation_type', invitationType.value);
+            var mode = form.querySelector('[data-creative-design-mode]');
+            if (mode) {
+                if (!mode.value) {
+                    toast('اختر طريقة عرض القالب.', 'danger');
+                    mode.focus();
+                    return;
+                }
+                fd.append('design_mode', mode.value);
+            }
+            var layoutInput = form.querySelector('[data-layout-value]');
+            if (layoutInput && layoutInput.value) fd.append('text_layout', layoutInput.value);
             if (nameInput) fd.append('name', nameInput.value || '');
             if (extraInput) {
                 if (extraInput.type === 'checkbox') {
@@ -342,7 +358,14 @@
                 toast(res.body.message || 'تم الرفع بنجاح.', 'success');
                 var modal = form.closest('.modal');
                 if (modal) hideModal('#' + modal.id);
-                window.setTimeout(function () { window.location.reload(); }, 600);
+                var redirect = res.body.data && res.body.data.redirect_url;
+                window.setTimeout(function () {
+                    if (typeof redirect === 'string' && redirect.startsWith('/dashboard/')) {
+                        window.location.assign(redirect);
+                    } else {
+                        window.location.reload();
+                    }
+                }, 600);
             }).catch(function () {
                 setLoading(submit, false);
                 toast('تعذر الاتصال بالخادم.', 'danger');

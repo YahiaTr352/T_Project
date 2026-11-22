@@ -65,11 +65,28 @@ export interface InvitationTreePickerData {
   >;
 }
 
+export type CreativeTextFormat = { bold?: boolean; italic?: boolean; underline?: boolean };
+export type CreativeInlineText = CreativeTextFormat & { offsetX?: number; offsetY?: number; fontSize?: number };
+export type CreativeTextBox = CreativeTextFormat & {
+  x: number; y: number; width: number; height: number; fontSize: number;
+  inline?: Record<string, CreativeInlineText>;
+};
+export type CreativeTextLayout = Record<string, CreativeTextBox>;
+export type CreativeCardField = {
+  key: string; label: string; sample: string; box: CreativeTextBox;
+  kind?: 'variable' | 'text';
+  segments?: { key: string; text: string; label: string; variable: boolean }[];
+};
+export type CreativeDesignMode = 'ready' | 'overlay';
+type CreativeUploadDesign = { designMode: 'ready' } | { designMode: 'overlay'; textLayout: CreativeTextLayout };
+
 export interface InvitationTemplate {
   key: string;
   name: string;
   title: string;
   body: string;
+  card_fields?: CreativeCardField[];
+  overlay_fields?: CreativeCardField[];
 }
 
 export interface InvitationGroup {
@@ -170,16 +187,41 @@ export interface MyInvitationBackground extends InvitationBackground {
 
 export interface CreativeTemplate {
   invitation_type?: string | null;
+  design_mode?: CreativeDesignMode;
+  variable_keys?: string[];
   id: number;
   name?: string | null;
   image_url?: string | null;
+  preview_image_url?: string | null;
 }
 
 export interface MyCreativeTemplate extends CreativeTemplate {
   status: string;
   status_label?: string | null;
   rejection_reason?: string | null;
+  awaits_publication_consent?: boolean;
   created_at?: string;
+}
+
+export function resolveCreativeArtworkUrl(url: string): string {
+  const source = new URL(url, WEB_BASE_URL);
+  const backendOrigin = new URL(api.defaults.baseURL ?? WEB_BASE_URL).origin;
+  const generatedOnBackend = /^\/storage\/(?:creative-templates|notifications\/cards)\//.test(source.pathname);
+  if (source.origin === new URL(WEB_BASE_URL).origin && generatedOnBackend) {
+    return `${backendOrigin}${source.pathname}${source.search}`;
+  }
+
+  return source.href;
+}
+
+export function creativeArtworkSource(uri: string) {
+  const headers: Record<string, string> | undefined = /ngrok/i.test(uri) ? { 'ngrok-skip-browser-warning': 'true' } : undefined;
+  return { uri, headers };
+}
+
+export function creativePreviewImage(creative: CreativeTemplate) {
+  const url = creative.preview_image_url || creative.image_url;
+  return url ? creativeArtworkSource(resolveCreativeArtworkUrl(url)) : null;
 }
 
 export interface SendInvitationInput {
@@ -536,24 +578,27 @@ export async function fetchMyCreatives(): Promise<
 }
 
 export async function uploadCreative(
-  imageUri: string,
-  name?: string,
-  invitationType?: string | null
+  artwork: { uri: string; mimeType?: string | null; fileName?: string | null; file?: File },
+  input: { name?: string; invitationType: string; publicationConsent: true } & CreativeUploadDesign,
 ): Promise<InvitationsApiResponse<{ template: MyCreativeTemplate }>> {
   const form = new FormData();
-  form.append('image', {
-    uri: imageUri,
-    name: `creative-${Date.now()}.jpg`,
-    type: 'image/jpeg',
-  } as any);
-  if (name?.trim()) form.append('name', name.trim());
-  if (invitationType) form.append('invitation_type', invitationType);
+  const mimeType = artwork.mimeType || 'image/jpeg';
+  form.append('image', artwork.file ?? ({
+    uri: artwork.uri,
+    name: artwork.fileName || `creative-${Date.now()}.${mimeType.split('/')[1] || 'jpg'}`,
+    type: mimeType,
+  } as unknown as Blob));
+  if (input.name?.trim()) form.append('name', input.name.trim());
+  form.append('invitation_type', input.invitationType);
+  form.append('publication_consent', input.publicationConsent ? '1' : '0');
+  form.append('design_mode', input.designMode);
+  if (input.designMode === 'overlay') form.append('text_layout', JSON.stringify(input.textLayout));
   return request('تعذر رفع التصميم.', () => apiUpload('/v1/invitations/creatives', form));
 }
 
-export async function deleteMyCreative(id: number): Promise<InvitationsApiResponse<null>> {
-  return request('تعذر حذف التصميم.', () =>
-    api.delete(`/v1/invitations/creatives/${id}`, skipHandler as any)
+export async function consentToCreativePublication(id: number): Promise<InvitationsApiResponse<null>> {
+  return request('تعذّر حفظ موافقتك.', () =>
+    api.post(`/v1/invitations/creatives/${id}/publication-consent`, { publication_consent: true }, skipHandler as any)
   );
 }
 

@@ -31,7 +31,10 @@ class InvitationApiController extends Controller
     public function templates(): JsonResponse
     {
         return $this->ok('قوالب الدعوات.', [
-            'templates' => $this->messages->templates(),
+            'templates' => array_map(fn (array $template) => $template + [
+                'card_fields' => \App\Services\Invitations\CreativeTextLayout::fields($template['key']),
+                'overlay_fields' => \App\Services\Invitations\CreativeTextLayout::editableFields($template['key']),
+            ], $this->messages->templates()),
         ]);
     }
 
@@ -186,9 +189,9 @@ class InvitationApiController extends Controller
                 $this->person($request),
                 $validated,
                 ! empty($validated['person_id']) ? (int) $validated['person_id'] : null,
-                $validated['external_name'] ?? null
+                $validated['external_name'] ?? null,
             );
-            $typedCreative = $creative && $creative->invitation_type !== null;
+            $typedCreative = $creative && ($creative->invitation_type !== null || $creative->designMode() === CreativeTemplate::MODE_READY);
             $card = $typedCreative ? $this->dispatcher->creativeCard($creative, $this->person($request), $validated) : null;
         } catch (InvitationException $e) {
             return $this->fail($e);

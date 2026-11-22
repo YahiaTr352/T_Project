@@ -113,6 +113,7 @@ export function AppImage({
 export interface ViewerImage {
   uri: string;
   title?: string | null;
+  headers?: Record<string, string>;
 }
 
 export const ZOOM_MIN = 1;
@@ -369,11 +370,13 @@ export function useZoomPan(
 
 function ViewerPhoto({
   uri,
+  headers,
   width,
   height,
   onZoomChange,
 }: {
   uri: string;
+  headers?: ViewerImage['headers'];
   width: number;
   height: number;
   onZoomChange?: (scale: number) => void;
@@ -403,7 +406,7 @@ function ViewerPhoto({
     <View style={{ width, height, backgroundColor: '#000' }} {...panHandlers}>
       <Pressable onPress={handleTap} style={{ width, height, alignItems: 'center', justifyContent: 'center' }}>
         <RNImage
-          source={{ uri }}
+          source={{ uri, headers }}
           style={{ width, height, transform: [{ translateX: tx }, { translateY: ty }, { scale }] }}
           resizeMode="contain"
           onLoad={() => setLoading(false)}
@@ -471,6 +474,8 @@ export interface ImageViewerModalProps {
   visible: boolean;
   images: ViewerImage[];
   initialIndex?: number;
+  showDownload?: boolean;
+  embedded?: boolean;
   onClose: () => void;
 }
 
@@ -478,6 +483,8 @@ export function ImageViewerModal({
   visible,
   images,
   initialIndex = 0,
+  showDownload = true,
+  embedded = false,
   onClose,
 }: ImageViewerModalProps) {
   const insets = useSafeAreaInsets();
@@ -548,15 +555,7 @@ export function ImageViewerModal({
     }
   };
 
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      presentationStyle="overFullScreen"
-      statusBarTranslucent
-      onRequestClose={onClose}
-    >
+  const content = (
       <View style={styles.viewerRoot}>
         {/* شريط الرأس العلوي محمي تماماً من شريط الحالة والنوتش */}
         <View style={[styles.viewerHeader, { paddingTop: safeTop, height: safeTop + 54 }]}>
@@ -582,19 +581,21 @@ export function ImageViewerModal({
             )}
           </View>
 
-          <TouchableOpacity
-            style={styles.headerBtn}
-            onPress={handleDownload}
-            disabled={downloading}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessibilityLabel="تحميل الصورة"
-          >
-            {downloading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons name="download-outline" size={22} color="#fff" />
-            )}
-          </TouchableOpacity>
+          {showDownload ? (
+            <TouchableOpacity
+              style={styles.headerBtn}
+              onPress={handleDownload}
+              disabled={downloading}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="تحميل الصورة"
+            >
+              {downloading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="download-outline" size={22} color="#fff" />
+              )}
+            </TouchableOpacity>
+          ) : <View style={{ width: 40 }} />}
         </View>
 
         {/* مساحة عرض الصورة تحتل كامل الارتفاع المتاح بين الرأس وشريط التنقل */}
@@ -614,6 +615,7 @@ export function ImageViewerModal({
             <ViewerPhoto
               key={`${current.uri}-${index}`}
               uri={current.uri}
+              headers={current.headers}
               width={photoBox.w || SCREEN_W}
               height={photoBox.h}
               onZoomChange={(s) => {
@@ -654,6 +656,11 @@ export function ImageViewerModal({
           <View style={{ height: safeBottom + 10 }} />
         )}
       </View>
+  );
+  return embedded ? content : (
+    <Modal visible={visible} transparent animationType="fade" presentationStyle="overFullScreen"
+      statusBarTranslucent onRequestClose={onClose}>
+      {content}
     </Modal>
   );
 }

@@ -1,6 +1,8 @@
 import type { ThemeColors } from '@/constants/theme';
 import { ThemedText } from '@/components/themed-text';
+import { creativeArtworkSource, resolveCreativeArtworkUrl } from '@/lib/api/invitations';
 import { Image } from 'expo-image';
+import { useState } from 'react';
 import {
   Modal,
   ScrollView,
@@ -30,6 +32,51 @@ interface InvitationPreviewModalProps {
   fontFamily: string;
 }
 
+type PreviewArtworkSource = { uri: string; kind: 'generated' | 'template' | 'background' | 'attachment' };
+
+function PreviewArtwork({ sources, muted, hasMessage }: { sources: PreviewArtworkSource[]; muted: string; hasMessage: boolean }) {
+  const [failedSources, setFailedSources] = useState<string[]>([]);
+  const [displayWidth, setDisplayWidth] = useState(0);
+  const [dimensions, setDimensions] = useState<{ uri: string; ratio: number } | null>(null);
+  const source = sources.find((item) => !failedSources.includes(item.uri));
+
+  if (!source) {
+    return sources.length > 0 ? (
+      <Text style={[styles.cardMergedHint, { color: muted }]} accessibilityLiveRegion="polite">تعذّر تحميل صورة المعاينة.</Text>
+    ) : null;
+  }
+
+  const isGenerated = source.kind === 'generated';
+  const generatedHeight = displayWidth && dimensions?.uri === source.uri
+    ? Math.min(300, displayWidth / dimensions.ratio)
+    : 220;
+  const hint = isGenerated
+    ? 'هذه معاينة لصورة الدعوة المرفقة مع الرسالة.'
+    : source.kind === 'template' && failedSources.length > 0
+      ? 'تعذّر تحميل الصورة الناتجة. هذه صورة القالب الأصلي.'
+      : source.kind === 'attachment' ? (hasMessage ? 'ستُرسل الصورة مع النص' : 'ستُرسل الصورة وحدها') : null;
+
+  return (
+    <>
+      <Image
+        key={source.uri}
+        accessibilityLabel="صورة معاينة الدعوة"
+        source={creativeArtworkSource(source.uri)}
+        style={isGenerated ? [styles.previewBg, { height: generatedHeight }] : styles.previewBg}
+        onLayout={isGenerated ? (event) => setDisplayWidth(event.nativeEvent.layout.width) : undefined}
+        onLoad={isGenerated ? ({ source: loaded }) => {
+          if (loaded.width > 0 && loaded.height > 0) {
+            setDimensions({ uri: source.uri, ratio: loaded.width / loaded.height });
+          }
+        } : undefined}
+        contentFit={source.kind === 'background' || source.kind === 'attachment' ? 'cover' : 'contain'}
+        onError={() => setFailedSources((previous) => [...previous, source.uri])}
+      />
+      {hint ? <Text style={[styles.cardMergedHint, { color: isGenerated ? '#059669' : muted }]}>{hint}</Text> : null}
+    </>
+  );
+}
+
 export function InvitationPreviewModal({
   visible,
   onClose,
@@ -43,6 +90,12 @@ export function InvitationPreviewModal({
   previewText,
   fontFamily,
 }: InvitationPreviewModalProps) {
+  const sources: PreviewArtworkSource[] = [];
+  if (previewCard) sources.push({ uri: resolveCreativeArtworkUrl(previewCard), kind: 'generated' });
+  if (previewCreative?.image_url) sources.push({ uri: resolveCreativeArtworkUrl(previewCreative.image_url), kind: 'template' });
+  if (previewBg?.image_url) sources.push({ uri: resolveCreativeArtworkUrl(previewBg.image_url), kind: 'background' });
+  if (attachedImage) sources.push({ uri: attachedImage.uri, kind: 'attachment' });
+
   return (
     <Modal
       visible={visible}
@@ -51,40 +104,7 @@ export function InvitationPreviewModal({
       onRequestClose={onClose}>
       <View style={styles.previewOverlay}>
         <View style={[styles.previewCard, { backgroundColor: cardBg }]}>
-          {previewCard ? (
-            <Image
-              source={{ uri: previewCard }}
-              style={[styles.previewBg, { height: 300 }]}
-              contentFit="contain"
-            />
-          ) : (previewCreative as any)?.image_url ? (
-            <Image
-              source={{ uri: (previewCreative as any).image_url }}
-              style={styles.previewBg}
-              contentFit="contain"
-            />
-          ) : previewBg?.image_url ? (
-            <Image
-              source={{ uri: previewBg.image_url }}
-              style={styles.previewBg}
-              contentFit="cover"
-            />
-          ) : attachedImage ? (
-            <Image
-              source={{ uri: attachedImage.uri }}
-              style={styles.previewBg}
-              contentFit="cover"
-            />
-          ) : null}
-          {previewCard ? (
-            <Text style={[styles.cardMergedHint, { color: '#059669' }]}>
-              ✓ النص مدمج داخل التصميم — هكذا ستصل لكل مستلم باسمه
-            </Text>
-          ) : attachedImage ? (
-            <Text style={[styles.cardMergedHint, { color: muted }]}>
-              {previewText.trim() ? 'ستُرسل الصورة مع النص' : 'ستُرسل الصورة وحدها'}
-            </Text>
-          ) : null}
+          {visible ? <PreviewArtwork sources={sources} muted={muted} hasMessage={Boolean(previewText.trim())} /> : null}
           <Text style={[styles.previewTitleText, { color: colors.text }]}>معاينة الرسالة</Text>
           <ScrollView style={styles.previewBody}>
             <ThemedText style={[styles.previewText, { color: colors.text, fontFamily }]}>

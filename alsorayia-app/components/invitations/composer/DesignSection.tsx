@@ -26,7 +26,6 @@ interface DesignSectionProps {
   selectedCreative: CreativeTemplate | null;
   attachedImage: { uri: string } | null;
   onOpenCreative: () => void;
-  onSubmitDesign: () => void;
   onClearCreative: () => void;
   onPickAttachment: () => void;
   onRemoveAttachment: () => void;
@@ -45,7 +44,6 @@ export function DesignSection({
   selectedCreative,
   attachedImage,
   onOpenCreative,
-  onSubmitDesign,
   onClearCreative,
   onPickAttachment,
   onRemoveAttachment,
@@ -54,29 +52,20 @@ export function DesignSection({
     <>
       <ThemedText style={styles.sectionLabel}>الصورة والتصميم</ThemedText>
 
-      {invitationTypeName ? <TouchableOpacity
-        accessibilityRole="button"
-        accessibilityLabel="قوالب الصور"
-        activeOpacity={0.85}
-        style={[designStyles.creativeEntry, { backgroundColor: colors.primary }]}
-        onPress={onOpenCreative}>
-        <Ionicons name="images-outline" size={24} color="#FFFFFF" />
-        <View style={{ flex: 1 }}>
-          <Text style={designStyles.entryTitle}>قوالب الصور</Text>
-          <Text style={designStyles.entrySubtitle}>
-            {selectedCreative
-              ? `القالب المختار: ${selectedCreative.name || 'بطاقة مصممة'}`
-              : `صور ${invitationTypeName}`}
-          </Text>
-        </View>
-        <Ionicons name="chevron-back" size={18} color="#FFFFFF" />
-      </TouchableOpacity> : null}
+      {invitationTypeName ? <DesignEntryButton
+        title="قوالب الصور"
+        description={selectedCreative ? `القالب المختار: ${selectedCreative.name || 'بطاقة مصممة'}` : `صور ${invitationTypeName}`}
+        icon="images-outline"
+        color={colors.primary}
+        onPress={onOpenCreative}
+      /> : null}
         {selectedCreative ? (
           <View style={[styles.creativeSelectedRow, { marginBottom: 12 }]}>
             <View style={[styles.miniBadgeOk, { backgroundColor: '#10B98118' }]}>
               <Ionicons name="checkmark-circle" size={14} color="#10B981" />
               <ThemedText style={[styles.miniBadgeOkText, { color: '#059669' }]}>
-                {body.trim() ? 'سيتم دمج النص داخل التصميم' : 'سيتم إرسال الصورة وحدها'}
+                {selectedCreative.design_mode === 'ready' ? 'تُرسل الصورة كما هي'
+                  : 'تظهر عناصر الدعوة داخل التصميم'}
               </ThemedText>
             </View>
             <TouchableOpacity onPress={() => void onClearCreative()} style={styles.clearVisual}>
@@ -87,10 +76,6 @@ export function DesignSection({
           </View>
         ) : null}
 
-      <TouchableOpacity onPress={onSubmitDesign} accessibilityRole="button" style={[styles.clearVisual, { marginBottom: 12 }]}>
-        <Ionicons name="color-palette-outline" size={18} color={colors.primary} />
-        <ThemedText style={{ color: colors.primary }}>مساحة إبداع</ThemedText>
-      </TouchableOpacity>
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: attachedImage ? colors.primary : border, borderWidth: attachedImage ? 1.5 : 1 }]}>
         <View style={styles.creativeHeaderRow}>
           <View style={[styles.creativeIconWrap, { backgroundColor: '#3B82F618' }]}>
@@ -179,6 +164,26 @@ export function DesignSection({
         )}
       </View>
     </>
+  );
+}
+
+function DesignEntryButton({ title, description, icon, color, onPress }: {
+  title: string;
+  description: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity accessibilityRole="button" accessibilityLabel={title} activeOpacity={0.85}
+      style={[designStyles.creativeEntry, { backgroundColor: color }]} onPress={onPress}>
+      <Ionicons name={icon} size={24} color="#FFFFFF" />
+      <View style={{ flex: 1 }}>
+        <Text style={designStyles.entryTitle}>{title}</Text>
+        <Text style={designStyles.entrySubtitle}>{description}</Text>
+      </View>
+      <Ionicons name="chevron-back" size={18} color="#FFFFFF" />
+    </TouchableOpacity>
   );
 }
 

@@ -10,6 +10,7 @@ use App\Models\InvitationBackground;
 use App\Models\NotificationGroup;
 use App\Models\Person;
 use App\Services\Invitations\CreativeTemplateService;
+use App\Services\Invitations\CreativeTextLayout;
 use App\Services\Invitations\InvitationDispatchService;
 use App\Services\Invitations\InvitationGroupService;
 use App\Services\Invitations\InvitationMessageService;
@@ -99,11 +100,35 @@ class InvitationController extends Controller
             'image' => CreativeTemplateService::ARTWORK_RULES,
             'name' => 'nullable|string|max:255',
             'invitation_type' => ['required', Rule::in(array_column($this->messages->templates(), 'key'))],
+            'publication_consent' => ['accepted'],
+        ] + CreativeTemplateService::designRules(), [
+            'publication_consent.accepted' => 'يرجى الموافقة على عرض التصميم ضمن القوالب عند اعتماده.',
+            'text_layout.required_if' => 'احفظ توزيع النص في المحرر.',
         ]);
 
-        $creatives->upload($request->attributes->get('identity_person'), $request->file('image'), $validated['name'] ?? null, invitationType: $validated['invitation_type']);
+        try {
+            $layout = CreativeTextLayout::validate($validated['text_layout'] ?? null, $validated['invitation_type'], $validated['design_mode'] ?? null);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withErrors($e->errors(), 'creative')->withInput();
+        }
+        $creatives->upload($request->attributes->get('identity_person'), $request->file('image'), $validated['name'] ?? null,
+            invitationType: $validated['invitation_type'], publicationConsent: true, textLayout: $layout,
+            designMode: $validated['design_mode'] ?? null);
 
         return redirect()->route('invitations.send')->with('creative_success', 'تم إرسال التصميم إلى الإدارة للمراجعة.');
+    }
+
+    public function consentToCreativePublication(Request $request, int $id, CreativeTemplateService $creatives): RedirectResponse
+    {
+        $request->validateWithBag('creative', ['publication_consent' => 'accepted']);
+
+        try {
+            $creatives->recordPublicationConsent($request->attributes->get('identity_person'), $id);
+        } catch (InvitationException $e) {
+            return redirect()->route('invitations.send')->withErrors(['publication_consent' => $e->getMessage()], 'creative');
+        }
+
+        return redirect()->route('invitations.send')->with('creative_success', 'تم حفظ موافقتك على عرض التصميم.');
     }
 
     public function sendSubmit(Request $request): RedirectResponse
@@ -387,8 +412,8 @@ class InvitationController extends Controller
         ]);
 
         try {
-            $preview = $this->dispatcher->preview($person, $validated, isset($validated['person_id']) ? (int) $validated['person_id'] : null);
             $creative = $this->dispatcher->creativeFor($validated);
+            $preview = $this->dispatcher->preview($person, $validated, isset($validated['person_id']) ? (int) $validated['person_id'] : null);
             $card = $creative ? $this->dispatcher->creativeCard($creative, $person, $validated) : null;
         } catch (InvitationException $e) {
             return response()->json([

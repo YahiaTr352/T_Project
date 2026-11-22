@@ -95,10 +95,11 @@ class InvitationDispatchService
         }
 
         $creativeCard = null;
-        if ($creative && $creative->image_path) {
+        if ($creative) {
+            $ready = $creative->designMode() === CreativeTemplate::MODE_READY;
             $creativeCard = $creative->invitation_type !== null ? $this->creativeCard($creative, $sender, $payload) : null;
-            $copiedCreative = $creativeCard ?? $this->copyBackgroundToNotification($creative->image_path);
-            if (! $copiedCreative && $creative->invitation_type !== null) {
+            $copiedCreative = $creativeCard ?? ($creative->image_path ? $this->copyBackgroundToNotification($creative->image_path) : null);
+            if (! $copiedCreative && ($ready || $creative->invitation_type !== null)) {
                 throw new InvitationException('صورة القالب غير متاحة. اختر قالب صورة آخر.', 'CREATIVE_IMAGE_UNAVAILABLE', 422);
             }
             if ($copiedCreative) {
@@ -130,6 +131,7 @@ class InvitationDispatchService
                 'template_vars' => $templateVars,
                 'background_id' => $background?->id,
                 'creative_id' => $creative?->id,
+                'creative_design_mode' => $creative?->design_mode,
                 'creative_card_rendered' => $creativeCard !== null,
                 'font_family' => $payload['font_family'] ?? null,
                 'font_weight' => $payload['font_weight'] ?? null,
@@ -174,15 +176,37 @@ class InvitationDispatchService
 
     public function creativeCard(CreativeTemplate $creative, Person $sender, array $payload): ?string
     {
-        $body = $this->resolveBody($payload);
+        if ($creative->designMode() === CreativeTemplate::MODE_READY) {
+            return null;
+        }
+        $usesPreset = $creative->design_mode === CreativeTemplate::MODE_OVERLAY && $creative->invitation_type !== null;
+        $preset = $usesPreset ? $this->messages->templateByKey($creative->invitation_type) : null;
+        $body = $preset['body'] ?? $this->resolveBody($payload);
         $vars = $payload['template_vars'] ?? [];
+        if ($usesPreset) {
+            foreach (['name', 'first_name', 'full_name', 'sender_name'] as $key) {
+                $vars[$key] ??= $this->messages->replacePlaceholders('{'.$key.'}', null, $sender, $vars);
+            }
+        }
         ksort($vars);
-        if (trim($body) === '' && ($creative->invitation_type !== 'wedding' || array_filter($vars) === [])) {
+        $usesFields = $creative->text_layout || $creative->invitation_type === 'wedding';
+        if ($creative->design_mode !== CreativeTemplate::MODE_OVERLAY
+            && trim($body) === '' && (! $usesFields || array_filter($vars) === [])) {
             return null;
         }
 
-        $title = $this->messages->replacePlaceholders((string) ($payload['title'] ?? ''), null, $sender, $vars);
+        $title = (string) ($preset['title'] ?? $payload['title'] ?? '');
+        if ($title === '' && $usesFields) {
+            $title = $this->messages->templateByKey($creative->invitation_type)['title'] ?? '';
+        }
+        $title = $this->messages->replacePlaceholders($title, null, $sender, $vars);
         $message = $this->messages->replacePlaceholders($body, null, $sender, $vars);
+        if (! $usesPreset && $creative->text_layout && CreativeTextLayout::content(
+            $creative->text_layout,
+            ['title' => $title, 'message' => $message] + $vars,
+        ) === []) {
+            return null;
+        }
         $style = [
             'font_family' => $payload['font_family'] ?? null,
             'font_weight' => $payload['font_weight'] ?? null,

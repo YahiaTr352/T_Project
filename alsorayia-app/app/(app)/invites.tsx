@@ -1,5 +1,6 @@
 import { AnimatedBubbles } from '@/components/animated-bubbles';
 import HeaderBar from '@/components/headerBar';
+import { CreativeSpace } from '@/components/invitations/CreativeSpace';
 import { GroupsTab } from '@/components/invitations/GroupsTab';
 import { InvitationComposer } from '@/components/invitations/InvitationComposer';
 import { InvitationTabBar, type InvitationTabKey } from '@/components/invitations/InvitationTabBar';
@@ -21,6 +22,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -36,6 +38,7 @@ export default function InvitesScreen() {
   const isDark = colorScheme === 'dark';
   const { hasIdentity, user, lock } = useAuth();
   const [tab, setTab] = useState<InvitationTabKey>('compose');
+  const [creativeOpened, setCreativeOpened] = useState(false);
   const [logDirection, setLogDirection] = useState<InvitationLogDirection>('outgoing');
 
   // الأهلية المحلية: هوية (وجه/واتساب) + عمر 20+ + بيانات أساسية (الاسم + الميلاد)
@@ -82,6 +85,16 @@ export default function InvitesScreen() {
     setLogDirection('outgoing');
     setTab('logs');
   };
+
+  const selectTab = (next: InvitationTabKey) => {
+    if (next === tab) return;
+    Keyboard.dismiss();
+    if (next === 'creative') setCreativeOpened(true);
+    setTab(next);
+  };
+
+  const composing = tab === 'compose';
+  const showingCreative = tab === 'creative';
 
   return (
     <ThemedView style={styles.container}>
@@ -144,13 +157,14 @@ export default function InvitesScreen() {
         <View style={styles.body}>
           <InvitationTabBar
             active={tab}
-            onChange={setTab}
+            onChange={selectTab}
             groupsCount={groups.groups.length}
           />
 
-          {tab === 'compose' ? (
+          {composing || showingCreative ? (
             <KeyboardAvoidingView
-              style={styles.flex}
+              style={[styles.flex, !composing && styles.hidden]}
+              enabled={composing}
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
               keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
             >
@@ -162,6 +176,17 @@ export default function InvitesScreen() {
                 isDark={isDark}
                 onSent={handleSent}
               />
+            </KeyboardAvoidingView>
+          ) : null}
+
+          {creativeOpened ? (
+            <KeyboardAvoidingView
+              style={[styles.flex, !showingCreative && styles.hidden]}
+              enabled={showingCreative}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+            >
+              <CreativeSpace active={showingCreative} types={templates} />
             </KeyboardAvoidingView>
           ) : null}
 
@@ -251,6 +276,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+    direction: 'rtl',
   },
   body: {
     flex: 1,
@@ -258,6 +284,9 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  hidden: {
+    display: 'none',
   },
   scrollContent: {
     paddingBottom: 40,

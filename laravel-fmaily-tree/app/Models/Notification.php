@@ -13,6 +13,8 @@ class Notification extends Model
 
     public const INVITATION_RESPONSE_TYPE = 'invitation_response';
 
+    public const CREATIVE_DECISION_TYPE = 'creative_decision';
+
     protected $fillable = [
         'user_id',
         'person_id',

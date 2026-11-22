@@ -220,10 +220,18 @@
                             class="px-3 py-2 rounded-xl border">إغلاق</button>
                     </div>
                     <p id="creativeLibraryLabel" class="text-sm text-slate-600 mb-4"></p>
+                    <label class="block text-sm font-bold mb-2" for="creativeModeSelect">طريقة عرض القالب</label>
+                    <select id="creativeModeSelect" class="w-full rounded-xl border p-2 mb-4">
+                        <option value="">اختر طريقة العرض</option>
+                        @foreach (\App\Models\CreativeTemplate::MODES as $mode => $label)
+                            <option value="{{ $mode }}">{{ $label }}</option>
+                        @endforeach
+                    </select>
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         @foreach($creatives as $creative)
                             <button type="button" class="creative-pick border-2 rounded-xl p-1"
                                 data-id="{{ $creative->id }}" data-type="{{ $creative->invitation_type }}"
+                                data-mode="{{ $creative->designMode() }}" data-variables="{{ json_encode($creative->variableKeys()) }}"
                                 data-name="{{ $creative->name }}" data-url="{{ $creative->image_url }}" aria-pressed="false">
                                 <img src="{{ $creative->image_url }}" alt="{{ $creative->name }}" class="w-full h-40 object-contain">
                                 <span class="text-xs">{{ $creative->name }}</span>
@@ -274,7 +282,7 @@
             <h2 id="designSubmissionTitle" class="font-bold text-xl">مساحة إبداع</h2>
             <button type="button" id="designSubmissionClose" class="px-3 py-2 rounded-xl border">إغلاق</button>
         </div>
-        <p class="text-sm text-slate-600 mb-4">حدّد نوع الدعوة وارفع خلفية التصميم بمساحات فارغة للنص. تراجع الإدارة التصميم قبل إضافته للقوالب.</p>
+        <p class="text-sm text-slate-600 mb-4">تراجع الإدارة التصميم قبل إضافته إلى قوالب الصور.</p>
         @if (session('creative_success'))
             <p role="status" class="mb-3 text-emerald-700">{{ session('creative_success') }}</p>
         @endif
@@ -283,8 +291,15 @@
         @endforeach
         <form action="{{ route('invitations.creatives.submit') }}" method="POST" enctype="multipart/form-data" class="space-y-3">
             @csrf
+            <label class="block text-sm font-bold" for="submissionMode">طريقة عرض القالب</label>
+            <select id="submissionMode" name="design_mode" required class="w-full rounded-xl border p-2" data-creative-design-mode>
+                <option value="">اختر طريقة العرض</option>
+                @foreach (\App\Models\CreativeTemplate::MODES as $mode => $label)
+                    <option value="{{ $mode }}" @selected(old('design_mode') === $mode)>{{ $label }}</option>
+                @endforeach
+            </select>
             <label class="block text-sm font-bold" for="submissionType">نوع الدعوة</label>
-            <select id="submissionType" name="invitation_type" required class="w-full rounded-xl border p-2">
+            <select id="submissionType" name="invitation_type" required class="w-full rounded-xl border p-2" data-visual-invitation-type>
                 <option value="">اختر نوع الدعوة</option>
                 @foreach($templates as $tpl)
                     <option value="{{ $tpl['key'] }}" @selected(old('invitation_type') === $tpl['key'])>{{ $tpl['name'] }}</option>
@@ -293,7 +308,14 @@
             <label class="block text-sm font-bold" for="submissionName">اسم التصميم</label>
             <input id="submissionName" name="name" value="{{ old('name') }}" maxlength="255" class="w-full rounded-xl border p-2">
             <label class="block text-sm font-bold" for="submissionImage">صورة التصميم</label>
-            <input id="submissionImage" name="image" type="file" accept="image/*" required class="w-full">
+            <input id="submissionImage" name="image" type="file" accept="image/*" required class="w-full" data-visual-file-input>
+            <x-dashboard.visual.text-layout-editor
+                :fields-by-type="collect($templates)->mapWithKeys(fn ($tpl) => [$tpl['key'] => \App\Services\Invitations\CreativeTextLayout::editableFields($tpl['key'])])->all()"
+            />
+            <label class="flex items-start gap-2 text-sm">
+                <input type="checkbox" name="publication_consent" value="1" required @checked(old('publication_consent'))>
+                <span>أوافق على عرض تصميمي للأعضاء في قوالب الصور إذا اعتمدته الإدارة.</span>
+            </label>
             <button type="submit" class="rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white">إرسال للمراجعة</button>
         </form>
         @if ($myCreatives->isNotEmpty())
@@ -302,6 +324,16 @@
                 @foreach($myCreatives as $design)
                     <li class="rounded-xl border p-2">
                         <strong>{{ $design->name }}</strong> · {{ $design->status_label }}
+                        @if ($design->awaitsPublicationConsent())
+                            <form method="POST" action="{{ route('invitations.creatives.consent', $design->id) }}" class="mt-2 space-y-2">
+                                @csrf
+                                <label class="flex items-start gap-2">
+                                    <input type="checkbox" name="publication_consent" value="1" required>
+                                    <span>أوافق على عرض هذا التصميم في قوالب الصور بعد اعتماده.</span>
+                                </label>
+                                <button type="submit" class="font-bold text-emerald-700">حفظ الموافقة</button>
+                            </form>
+                        @endif
                         @if ($design->rejection_reason)
                             <p class="text-rose-700">{{ $design->rejection_reason }}</p>
                         @endif
@@ -333,6 +365,7 @@
         const previewImage = document.getElementById('simBg');
         let attachmentUrl = null;
         const creativeDialog = document.getElementById('creativeDialog');
+        const creativeMode = document.getElementById('creativeModeSelect');
         const creativeOpen = document.getElementById('creativeOpen');
         const previewCreative = document.getElementById('previewCreative');
         const creativeStatus = document.getElementById('previewCreativeStatus');
@@ -341,28 +374,35 @@
         document.getElementById('designSubmissionClose').addEventListener('click', () => submissionDialog.close());
         if (@json((bool) session('creative_success') || $errors->creative->any())) submissionDialog.showModal();
         creativeOpen.addEventListener('click', function () {
+            creativeMode.value = getSelectedCreative()?.dataset.mode || '';
             refreshImages();
             creativeDialog.showModal();
         });
         document.getElementById('creativeClose').addEventListener('click', function () {
             creativeDialog.close();
         });
+        creativeMode.addEventListener('change', refreshImages);
+
+        function getSelectedCreative() {
+            return Array.from(document.querySelectorAll('.creative-pick')).find((button) => button.dataset.id === creativeInput.value);
+        }
 
         function refreshImages() {
             const type = document.getElementById('template_select').value;
             creativeOpen.style.display = type ? '' : 'none';
-            previewCreative.hidden = !creativeInput.value;
+            const creative = getSelectedCreative();
+            previewCreative.hidden = creative?.dataset.mode !== 'overlay';
             document.getElementById('creativeClear').hidden = !creativeInput.value && !backgroundInput.value;
             let count = 0;
             document.querySelectorAll('.creative-pick').forEach(function (button) {
-                const show = Boolean(type) && button.dataset.type === type;
+                const show = Boolean(type) && button.dataset.type === type && button.dataset.mode === creativeMode.value;
                 button.classList.toggle('hidden', !show);
                 if (show) count++;
                 const selected = creativeInput.value === button.dataset.id;
                 button.classList.toggle('ring-2', selected);
                 button.setAttribute('aria-pressed', String(selected));
             });
-            document.getElementById('creativeEmpty').textContent = count ? '' : 'لا توجد قوالب صور لهذا النوع بعد. يمكنك إرفاق صورة.';
+            document.getElementById('creativeEmpty').textContent = creativeMode.value && !count ? 'لا توجد قوالب معتمدة لهذا الوضع ونوع الدعوة.' : '';
             const selectedType = templates.find(function (item) {
                 return item.key === document.getElementById('template_select').value;
             });
@@ -374,7 +414,6 @@
                 button.classList.toggle('ring-2', backgroundInput?.value === button.dataset.bgId);
                 button.classList.toggle('ring-emerald-500', backgroundInput?.value === button.dataset.bgId);
             });
-            const creative = document.querySelector('.creative-pick[data-id="' + creativeInput.value + '"]');
             const background = backgroundInput?.value
                 ? document.querySelector('.bg-pick[data-bg-id="' + backgroundInput.value + '"]') : null;
             document.getElementById('creativeSelectionLabel').textContent = creative || background
@@ -396,6 +435,7 @@
                 creativeInput.value = button.dataset.id;
                 if (backgroundInput) backgroundInput.value = '';
                 clearAttachment();
+                renderTemplateVars(document.getElementById('body').value);
                 refreshImages();
                 creativeDialog.close();
             });
@@ -426,6 +466,7 @@
                 backgroundInput.value = button.dataset.bgId;
                 creativeInput.value = '';
                 clearAttachment();
+                renderTemplateVars(document.getElementById('body').value);
                 refreshImages();
                 creativeDialog.close();
             });
@@ -433,6 +474,7 @@
         document.getElementById('creativeClear').addEventListener('click', function () {
             creativeInput.value = '';
             backgroundInput.value = '';
+            renderTemplateVars(document.getElementById('body').value);
             refreshImages();
         });
         attachment.addEventListener('change', function () {
@@ -441,6 +483,7 @@
             attachmentUrl = file?.type.startsWith('image/') ? URL.createObjectURL(file) : null;
             creativeInput.value = '';
             if (backgroundInput) backgroundInput.value = '';
+            renderTemplateVars(document.getElementById('body').value);
             refreshImages();
         });
 
@@ -467,11 +510,15 @@
             });
         }
 
-        function renderTemplateVars(body, values = {}) {
+        function renderTemplateVars(body, values) {
             const box = document.getElementById('templateVars');
             const key = document.getElementById('template_key').value;
             const wedding = key === 'wedding' ? templates.find((item) => item.key === key)?.body || '' : '';
-            const vars = extractVars(body + '\n' + wedding);
+            const designVars = JSON.parse(getSelectedCreative()?.dataset.variables || '[]');
+            const vars = [...new Set([...extractVars(body + '\n' + wedding), ...designVars.map((name) => '{' + name + '}')])];
+            const inputs = Array.from(box.querySelectorAll('.tpl-var'));
+            if (!values && inputs.map((input) => input.dataset.var).join() === vars.join()) return;
+            values ??= Object.fromEntries(inputs.map((input) => [input.dataset.var.slice(1, -1), input.value]));
             const labels = { hosts: 'أصحاب الدعوة', groom: 'اسم العريس', date: 'التاريخ', time: 'الوقت', location: 'القاعة أو المكان' };
             box.innerHTML = '';
             if (!vars.length) { box.classList.add('hidden'); return; }
@@ -542,16 +589,17 @@
             if (!tpl) return;
             document.getElementById('title').value = tpl.title || '';
             document.getElementById('body').value = tpl.body || '';
-            renderTemplateVars(tpl.body || '');
+            renderTemplateVars(tpl.body || '', {});
             updatePreview();
         });
 
         document.getElementById('title').addEventListener('input', updatePreview);
         document.getElementById('body').addEventListener('input', function () {
-            if (!document.getElementById('template_key').value) renderTemplateVars(this.value);
+            renderTemplateVars(this.value);
             updatePreview();
         });
         renderTemplateVars(document.getElementById('body').value, @json(old('template_vars', [])));
         refreshImages();
     </script>
+    <script src="{{ asset('js/dashboard/creative-text-layout.js') }}?v={{ filemtime(public_path('js/dashboard/creative-text-layout.js')) }}" defer></script>
 @endsection
