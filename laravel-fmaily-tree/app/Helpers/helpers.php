@@ -44,7 +44,7 @@ if (!function_exists('safe_route')) {
 
 if (!function_exists('format_gregorian_in_arabic')) {
     /**
-     * Format a Gregorian date in Arabic (e.g., 21 مايو 2026).
+     * Format the input's Gregorian calendar day in Arabic (e.g., 21 مايو 2026).
      */
     function format_gregorian_in_arabic($date)
     {
@@ -52,14 +52,9 @@ if (!function_exists('format_gregorian_in_arabic')) {
             return '';
         }
         try {
-            if ($date instanceof \Carbon\Carbon) {
-                $dateTime = $date;
-            } elseif (is_string($date)) {
-                $dateTime = \Carbon\Carbon::parse($date);
-            } else {
-                $dateTime = new \DateTime($date);
-            }
-            
+            $dateTime = $date instanceof \DateTimeInterface ? $date : \Carbon\Carbon::parse($date);
+            $calendarDate = new \DateTimeImmutable($dateTime->format('Y-m-d'), new \DateTimeZone('UTC'));
+
             $formatter = new \IntlDateFormatter(
                 'ar_SA',
                 \IntlDateFormatter::FULL,
@@ -68,7 +63,7 @@ if (!function_exists('format_gregorian_in_arabic')) {
                 \IntlDateFormatter::GREGORIAN,
                 'd MMMM yyyy'
             );
-            return $formatter->format($dateTime);
+            return $formatter->format($calendarDate);
         } catch (\Exception $e) {
             return is_string($date) ? $date : $date->format('Y-m-d');
         }
@@ -77,7 +72,7 @@ if (!function_exists('format_gregorian_in_arabic')) {
 
 if (!function_exists('gregorian_to_hijri')) {
     /**
-     * Convert Gregorian date to Hijri string (e.g., 4 ذو الحجة 1447 هـ).
+     * Convert the input's calendar day to a Hijri date (e.g., 4 ذو الحجة 1447 هـ).
      */
     function gregorian_to_hijri($date)
     {
@@ -85,14 +80,9 @@ if (!function_exists('gregorian_to_hijri')) {
             return '';
         }
         try {
-            if ($date instanceof \Carbon\Carbon) {
-                $dateTime = $date;
-            } elseif (is_string($date)) {
-                $dateTime = \Carbon\Carbon::parse($date);
-            } else {
-                $dateTime = new \DateTime($date);
-            }
-            
+            $dateTime = $date instanceof \DateTimeInterface ? $date : \Carbon\Carbon::parse($date);
+            $calendarDate = new \DateTimeImmutable($dateTime->format('Y-m-d'), new \DateTimeZone('UTC'));
+
             $formatter = new \IntlDateFormatter(
                 'ar_SA@calendar=islamic-umalqura',
                 \IntlDateFormatter::FULL,
@@ -101,7 +91,7 @@ if (!function_exists('gregorian_to_hijri')) {
                 \IntlDateFormatter::TRADITIONAL,
                 'd MMMM yyyy'
             );
-            return $formatter->format($dateTime) . ' هـ';
+            return $formatter->format($calendarDate) . ' هـ';
         } catch (\Exception $e) {
             return '';
         }
