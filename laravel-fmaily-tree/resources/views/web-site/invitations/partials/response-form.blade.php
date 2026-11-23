@@ -13,7 +13,7 @@
         {{ $responseLabel }}
     </p>
     @if($response === null)
-    <form method="POST" action="{{ route('invitations.logs.respond', ['notification' => $notification, 'page' => $notifications->currentPage()]) }}"
+    <form method="POST" action="{{ route('invitations.logs.respond', ['notification' => $notification, 'page' => $notifications->currentPage(), 'direction' => $inbox ? 'notifications' : 'incoming']) }}"
         data-invitation-response-form class="mt-3 flex flex-wrap gap-2">
         @csrf
         @method('PUT')

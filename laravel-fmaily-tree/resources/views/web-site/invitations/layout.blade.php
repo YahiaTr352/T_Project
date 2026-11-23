@@ -20,6 +20,9 @@
 <body class="antialiased text-slate-800">
     @include('partials.main-header')
     <div class="py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        @if (request()->routeIs('invitations.send*', 'invitations.groups.*', 'invitations.creatives.*') && request()->attributes->has('identity_person'))
+            @include('web-site.invitations.partials.navigation')
+        @endif
         @if(session('success'))
             <div class="mb-6 rounded-xl bg-emerald-50 border-r-4 border-emerald-500 p-4 flex items-center gap-3">
                 <i class="fas fa-check-circle text-emerald-500 text-xl"></i>

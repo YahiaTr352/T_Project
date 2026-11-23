@@ -49,6 +49,59 @@ class InvitationWebTest extends TestCase
             ->assertRedirect(route('invitations.index'));
     }
 
+    public function test_invitation_notifications_show_the_correct_inbox_and_allow_a_reply_while_sending(): void
+    {
+        Queue::fake();
+        config(['invitations.delivery_enabled' => false]);
+        $sender = Person::factory()->createQuietly(['birth_date' => '1990-01-01', 'death_date' => null]);
+        $recipient = Person::factory()->createQuietly(['first_name' => 'فهد', 'birth_date' => '1990-01-01', 'death_date' => null]);
+        $other = Person::factory()->createQuietly(['birth_date' => '1990-01-01', 'death_date' => null]);
+        $invitation = Notification::create([
+            'person_id' => $sender->id, 'title' => 'لقاء العائلة', 'body' => 'أهلاً {first_name} في {location}',
+            'status' => 'sending', 'channels' => ['whatsapp'],
+            'targeting_filters' => ['template_vars' => ['location' => 'قاعة العائلة']],
+            'media_type' => 'image', 'media_path' => 'notifications/wedding-test.jpg',
+        ]);
+        $invitation->recipients()->create(['person_id' => $recipient->id]);
+        $decision = Notification::create([
+            'title' => 'تم اعتماد تصميمك', 'status' => 'sent',
+            'targeting_filters' => ['data' => ['type' => Notification::CREATIVE_DECISION_TYPE]],
+        ]);
+        $decision->recipients()->create(['person_id' => $recipient->id]);
+        $private = Notification::create([
+            'title' => 'تصميم آخر', 'status' => 'sent',
+            'targeting_filters' => ['data' => ['type' => Notification::CREATIVE_DECISION_TYPE]],
+        ]);
+        $private->recipients()->create(['person_id' => $other->id]);
+        $inbox = route('invitations.logs', ['direction' => 'notifications']);
+
+        $this->actingAsIdentity($recipient)->get($inbox)->assertOk()
+            ->assertSee('أهلاً فهد في قاعة العائلة')
+            ->assertSee('تم اعتماد تصميمك')->assertDontSee('تصميم آخر')
+            ->assertSee('data-invitation-response="accepted"', false)->assertSee('data-invitation-response="declined"', false)
+            ->assertSee('data-zoomable', false)->assertSee(asset('storage/notifications/wedding-test.jpg'));
+        $this->put(route('invitations.logs.respond', ['notification' => $invitation, 'direction' => 'notifications']), ['response' => 'accepted'])
+            ->assertRedirect(route('invitations.logs', ['direction' => 'notifications', 'page' => 1]));
+        $this->get($inbox)->assertOk()->assertSee('قبلت الدعوة')->assertDontSee('data-invitation-response="accepted"', false);
+        $this->actingAsIdentity($sender)->get($inbox)->assertOk()->assertSee('تأكيد الحضور من');
+        $this->get(route('invitations.logs'))->assertOk()->assertSee('موافق على الحضور');
+        Queue::assertNothingPushed();
+    }
+
+    public function test_web_preview_uses_the_selected_guest_and_has_a_separate_preview_dialog(): void
+    {
+        $person = Person::factory()->createQuietly(['birth_date' => '1990-01-01', 'death_date' => null]);
+        $this->actingAsIdentity($person)->get('/invitations/send')->assertOk()
+            ->assertSee('id="invitationPreviewDialog"', false)->assertSee('id="creativeConfirm"', false)
+            ->assertDontSee('name="font_family"', false)->assertDontSee('name="font_weight"', false)
+            ->assertSee(route('invitations.creatives.index'));
+        $preview = $this->postJson('/invitations/preview-message', [
+            'recipient_type' => 'external', 'external_name' => 'الضيف التجريبي', 'body' => 'أهلاً {name} في {location}',
+            'template_vars' => ['location' => 'القاعة'],
+        ])->assertOk()->json('preview');
+        $this->assertStringContainsString('أهلاً الضيف التجريبي في القاعة', $preview);
+    }
+
     public function test_identity_can_open_dashboard_and_create_group(): void
     {
         $me = Person::factory()->create(['first_name' => 'سعد', 'gender' => 'male', 'death_date' => null]);

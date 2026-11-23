@@ -354,9 +354,12 @@ class InvitationImageTemplatesTest extends TestCase
         $this->post('/invitations/creatives', [
             'image' => UploadedFile::fake()->image('wedding.png', 900, 330),
             'name' => 'بطاقة زفاف', 'invitation_type' => 'wedding', 'publication_consent' => '1',
-        ])->assertRedirect(route('invitations.send'))->assertSessionHas('creative_success');
+        ])->assertRedirect(route('invitations.creatives.index'))->assertSessionHas('creative_success');
 
         $design = CreativeTemplate::sole();
+        $this->get('/invitations/creatives')->assertOk()->assertSee('تصاميمي')->assertSee('بطاقة زفاف')
+            ->assertSee(route('invitations.creatives.preview-image', $design->id));
+        $this->get(route('invitations.creatives.preview-image', $design->id))->assertRedirect();
         $this->getJson('/api/v1/invitations/creatives?invitation_type=wedding')->assertJsonCount(0, 'data.templates');
         $admin = User::factory()->createQuietly();
         $admin->assignRole(Role::findOrCreate('super_admin', 'web'));
@@ -385,6 +388,7 @@ class InvitationImageTemplatesTest extends TestCase
             'template_key' => 'wedding', 'creative_id' => $design->id,
             'title' => 'دعوة زفاف', 'body' => 'زفاف {groom} في {location}',
             'template_vars' => ['hosts' => 'عائلة إبراهيم', 'groom' => 'خالد', 'date' => '2026-12-01', 'time' => '8:00', 'location' => 'قاعة الفرح'],
+            'font_family' => 'amiri', 'font_weight' => 'bold',
         ];
         $this->postJson('/api/v1/invitations/preview', array_replace($payload, ['template_key' => 'greeting']))
             ->assertUnprocessable()->assertJsonPath('code', 'CREATIVE_TYPE_MISMATCH');
@@ -393,7 +397,9 @@ class InvitationImageTemplatesTest extends TestCase
         $this->postJson('/api/v1/invitations/preview', $tooLong)
             ->assertUnprocessable()->assertJsonPath('code', 'CREATIVE_TEXT_OVERFLOW');
         $preview = $this->postJson('/api/v1/invitations/preview', $payload)->assertOk()->json('data.card_image_url');
-        $this->postJson('/invitations/preview-message', $payload)->assertOk()->assertJsonPath('card_image_url', $preview);
+        $this->postJson('/invitations/preview-message', array_replace($payload, [
+            'font_family' => 'tajawal', 'font_weight' => 'regular',
+        ]))->assertOk()->assertJsonPath('card_image_url', $preview);
         $this->postJson('/api/v1/invitations/send', $payload + [
             'channels' => ['push', 'whatsapp'], 'recipient_type' => 'persons', 'person_ids' => [$recipient->id],
         ])->assertCreated();
@@ -495,7 +501,7 @@ class InvitationImageTemplatesTest extends TestCase
             ->assertDontSee('قوالب الصور لهذا النوع')
             ->assertSee('data-type="greeting"', false);
         $this->post('/invitations/send', array_replace($payload, [
-            'body' => 'دعوة بالخط المختار', 'font_family' => 'amiri', 'font_weight' => 'bold',
+            'body' => 'دعوة بالخط الافتراضي', 'font_family' => 'tajawal', 'font_weight' => 'regular',
         ]))->assertRedirect(route('invitations.logs'));
         $webInvitation = Notification::sole();
         $this->assertSame('amiri', $webInvitation->targeting_filters['font_family']);

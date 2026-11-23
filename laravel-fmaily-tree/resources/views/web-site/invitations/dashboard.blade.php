@@ -3,6 +3,7 @@
 @section('title', 'لوحة الدعوات')
 
 @section('content')
+    @include('web-site.invitations.partials.navigation')
     <div class="text-center mb-10">
         <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-xl mb-4">
             <i class="fas fa-paper-plane text-3xl text-white"></i>

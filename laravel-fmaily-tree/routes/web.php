@@ -107,7 +107,9 @@ Route::prefix('invitations')->name('invitations.')->group(function () {
     Route::middleware('invitation.identity')->group(function () {
         Route::get('/send', [\App\Http\Controllers\InvitationController::class, 'send'])->name('send');
         Route::post('/send', [\App\Http\Controllers\InvitationController::class, 'sendSubmit'])->name('send.submit');
+        Route::get('/creatives', [\App\Http\Controllers\InvitationController::class, 'creativeSpace'])->name('creatives.index');
         Route::post('/creatives', [\App\Http\Controllers\InvitationController::class, 'submitCreative'])->middleware('throttle:20,1')->name('creatives.submit');
+        Route::get('/creatives/{id}/preview-image', [\App\Http\Controllers\InvitationController::class, 'previewCreativeArtwork'])->whereNumber('id')->name('creatives.preview-image');
         Route::post('/creatives/{id}/publication-consent', [\App\Http\Controllers\InvitationController::class, 'consentToCreativePublication'])->whereNumber('id')->name('creatives.consent');
         Route::get('/logs', [\App\Http\Controllers\InvitationController::class, 'logs'])->name('logs');
         Route::put('/logs/{notification}/response', [\App\Http\Controllers\InvitationController::class, 'respond'])->name('logs.respond');

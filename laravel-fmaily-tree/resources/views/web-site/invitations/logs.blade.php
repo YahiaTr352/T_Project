@@ -52,6 +52,7 @@
 
     <div class="py-8 px-4 sm:px-6 lg:px-8">
         <div class="max-w-6xl mx-auto">
+            @include('web-site.invitations.partials.navigation')
             {{-- Header --}}
             <div class="flex items-center justify-between mb-8">
                 <div>
@@ -66,10 +67,14 @@
                 </a>
             </div>
 
-            <nav aria-label="سجل الدعوات" class="mb-6 flex gap-2">
-                <a href="{{ route('invitations.logs') }}" @if(!$incoming) aria-current="page" @endif
-                    class="rounded-xl border px-5 py-2.5 font-bold {{ !$incoming ? 'border-green-700 bg-green-700 text-white' : 'border-gray-200 bg-white text-gray-700' }}">
+            <nav aria-label="سجل الدعوات" class="mb-6 flex flex-wrap gap-2">
+                <a href="{{ route('invitations.logs') }}" @if(!$incoming && !$inbox) aria-current="page" @endif
+                    class="rounded-xl border px-5 py-2.5 font-bold {{ !$incoming && !$inbox ? 'border-green-700 bg-green-700 text-white' : 'border-gray-200 bg-white text-gray-700' }}">
                     الصادر
+                </a>
+                <a href="{{ route('invitations.logs', ['direction' => 'notifications']) }}" @if($inbox) aria-current="page" @endif
+                    class="rounded-xl border px-5 py-2.5 font-bold {{ $inbox ? 'border-green-700 bg-green-700 text-white' : 'border-gray-200 bg-white text-gray-700' }}">
+                    الإشعارات
                 </a>
                 <a href="{{ route('invitations.logs', ['direction' => 'incoming']) }}" @if($incoming) aria-current="page" @endif
                     class="rounded-xl border px-5 py-2.5 font-bold {{ $incoming ? 'border-green-700 bg-green-700 text-white' : 'border-gray-200 bg-white text-gray-700' }}">
@@ -99,22 +104,27 @@
                     @php
                         $fontWeight = $notification->targeting_filters['font_weight'] ?? '';
                         $fontFamily = $notification->targeting_filters['font_family'] ?? ($fontWeight ? 'tajawal' : '');
+                        $canReply = $notification->person_id !== null && $notification->acceptsInvitationResponses();
                     @endphp
-                    @if($incoming)
+                    @if($incoming || $inbox)
                     <details class="glass-card rounded-2xl p-6" data-invitation-font="{{ $fontFamily }}" data-invitation-weight="{{ $fontWeight }}"
-                        @if(session('responded_invitation_id') === $notification->id) open @endif>
+                        @if($inbox || session('responded_invitation_id') === $notification->id) open @endif>
                         <summary class="cursor-pointer">
-                            <span class="invitation-log-text text-lg font-bold text-gray-900">{{ $notification->title ?: 'دعوة بدون عنوان' }}</span>
+                            <span class="invitation-log-text text-lg font-bold text-gray-900">{{ $notification->display_title }}</span>
                             <span class="mt-1 block text-sm text-gray-600">
-                                من {{ trim($notification->person?->first_name . ' ' . $notification->person?->last_name) ?: 'مرسل غير معروف' }}
-                                · {{ ($notification->sent_at ?? $notification->created_at)?->format('Y-m-d H:i') }}
+                                @if ($notification->person)
+                                    من {{ $notification->person->full_name }} ·
+                                @endif
+                                {{ ($notification->sent_at ?? $notification->created_at)?->format('Y-m-d H:i') }}
                             </span>
                         </summary>
-                        <p class="invitation-log-text mt-4 whitespace-pre-wrap border-t border-gray-100 pt-4 text-gray-800">{{ $notification->body }}</p>
-                        @if($notification->media_type === 'image' && $notification->media_url)
-                            <img src="{{ $notification->media_url }}" alt="صورة الدعوة" class="mt-4 max-h-96 max-w-full rounded-xl">
+                        @if ($notification->display_body !== '')
+                            <p class="invitation-log-text mt-4 whitespace-pre-wrap break-words border-t border-gray-100 pt-4 text-gray-800">{{ $notification->display_body }}</p>
                         @endif
-                        @include('web-site.invitations.partials.response-form')
+                        @include('web-site.invitations.partials.log-media')
+                        @if ($canReply)
+                            @include('web-site.invitations.partials.response-form')
+                        @endif
                     </details>
                     @continue
                     @endif
@@ -129,10 +139,10 @@
                                 </div>
                                 <div class="flex-1 min-w-0">
                                     <h3 class="invitation-log-text text-lg font-bold text-gray-900 mb-1">
-                                        {{ $notification->title ?: 'رسالة واتساب' }}
+                                        {{ $notification->display_title }}
                                     </h3>
                                     <p class="invitation-log-text text-sm text-gray-600 mb-2 line-clamp-2">
-                                        {{ Str::limit($notification->body, 120) }}
+                                        {{ Str::limit($notification->display_body, 120) }}
                                     </p>
                                     <div class="flex items-center gap-4 text-xs text-gray-500">
                                         <span>
@@ -216,10 +226,8 @@
                         @endif
 
                         {{-- Recipients List --}}
-                        @if($notification->media_type === 'image' && $notification->media_url)
-                            <img src="{{ $notification->media_url }}" alt="صورة الدعوة" class="mt-4 max-h-96 max-w-full rounded-xl">
-                        @endif
-                        @if($notification->recipients->isNotEmpty() && in_array($notification->status, \App\Models\Notification::RESPONDABLE_STATUSES, true))
+                        @include('web-site.invitations.partials.log-media')
+                        @if($notification->recipients->isNotEmpty() && $notification->acceptsInvitationResponses())
                             @include('web-site.invitations.partials.response-recipients')
                         @elseif($notification->recipients->isNotEmpty())
                             <div class="border-t border-gray-100 pt-4 mt-4">
@@ -256,9 +264,9 @@
                         <i class="fas fa-inbox text-5xl text-gray-400"></i>
                     </div>
                     <h3 class="text-xl font-bold text-gray-900 mb-2">
-                        {{ $incoming ? 'لا توجد دعوات واردة' : 'لا توجد رسائل مرسلة' }}
+                        {{ $inbox ? 'لا توجد إشعارات للدعوات' : ($incoming ? 'لا توجد دعوات واردة' : 'لا توجد رسائل مرسلة') }}
                     </h3>
-                    @unless($incoming)
+                    @unless($incoming || $inbox)
                         <p class="text-gray-600 mb-6">ابدأ بإرسال أول دعوة لك</p>
                         <a href="{{ route('invitations.send') }}" class="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-bold rounded-xl hover:shadow-lg transition">
                             <i class="fab fa-whatsapp"></i>
@@ -269,7 +277,8 @@
             @endif
         </div>
     </div>
-    @if($incoming && $notifications->contains(fn ($item) => $item->invitation_response === null))
+    @include('web-site.partials.universal-image-viewer')
+    @if(($incoming || $inbox) && $notifications->contains(fn ($item) => $item->person_id !== null && $item->acceptsInvitationResponses() && $item->invitation_response === null))
         <dialog id="invitation-response-dialog" dir="rtl" aria-labelledby="invitation-response-title"
             aria-describedby="invitation-response-description"
             class="m-auto w-11/12 max-w-sm rounded-3xl border border-slate-200 bg-white p-6 text-center text-slate-900 shadow-2xl backdrop:bg-slate-900/55">

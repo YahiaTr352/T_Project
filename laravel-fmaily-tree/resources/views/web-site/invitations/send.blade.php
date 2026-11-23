@@ -4,23 +4,10 @@
 
 @section('extra_styles')
     @include('web-site.invitations.partials.typography-fonts')
-    #invitationForm {
-        --invitation-font: 'Invitation Tajawal', Tajawal, sans-serif;
-        --invitation-weight: 400;
-    }
-    #invitationForm[data-invitation-font="amiri"] {
-        --invitation-font: 'Invitation Amiri', Amiri, serif;
-    }
-    #invitationForm[data-invitation-weight="bold"] {
-        --invitation-weight: 700;
-    }
     .invitation-typed-text {
-        font-family: var(--invitation-font);
-        font-weight: var(--invitation-weight);
+        font-family: 'Invitation Amiri', Amiri, serif;
+        font-weight: 700;
     }
-    .invitation-font-tajawal { font-family: 'Invitation Tajawal', Tajawal, sans-serif; }
-    .invitation-font-amiri { font-family: 'Invitation Amiri', Amiri, serif; }
-    .invitation-weight-sample { font-family: var(--invitation-font); }
 @endsection
 
 @section('content')
@@ -29,14 +16,9 @@
             <h1 class="text-3xl font-extrabold text-slate-900">إرسال دعوة</h1>
             <p class="text-slate-600 mt-1">اختر مجموعتك أو أشخاصاً من الشجرة، ثم أرسل واتساب و/أو إشعار التطبيق</p>
         </div>
-        <div class="flex gap-2">
-            <a href="{{ route('invitations.index') }}" class="px-4 py-2 rounded-xl bg-white border font-medium">الرئيسية</a>
-            <a href="{{ route('invitations.groups.index') }}" class="px-4 py-2 rounded-xl bg-white border font-medium">المجموعات</a>
-        </div>
     </div>
 
     <form id="invitationForm" action="{{ route('invitations.send.submit') }}" method="POST" enctype="multipart/form-data"
-        data-invitation-font="{{ old('font_family', 'tajawal') }}" data-invitation-weight="{{ old('font_weight', 'regular') }}"
         class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         @csrf
         <div class="lg:col-span-8 space-y-6">
@@ -44,15 +26,15 @@
                 <h2 class="text-xl font-bold mb-4">١. قنوات الإرسال</h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <label class="relative flex flex-col items-center p-5 rounded-2xl border-2 border-emerald-400 bg-white cursor-pointer">
-                        <input type="checkbox" name="channels[]" value="whatsapp" checked class="absolute top-4 right-4 w-5 h-5 accent-emerald-600">
+                        <input type="checkbox" name="channels[]" value="whatsapp" @checked(in_array('whatsapp', (array) old('channels', ['whatsapp']), true)) class="absolute top-4 right-4 w-5 h-5 accent-emerald-600">
                         <i class="fab fa-whatsapp text-4xl text-emerald-500 mb-2"></i>
                         <span class="font-bold">واتساب</span>
                     </label>
                     <label class="relative flex flex-col items-center p-5 rounded-2xl border-2 border-blue-300 bg-white cursor-pointer">
-                        <input type="checkbox" name="channels[]" value="push" class="absolute top-4 right-4 w-5 h-5 accent-blue-600">
+                        <input type="checkbox" name="channels[]" value="push" @checked(in_array('push', (array) old('channels', ['whatsapp']), true)) class="absolute top-4 right-4 w-5 h-5 accent-blue-600">
                         <i class="fas fa-bell text-4xl text-blue-500 mb-2"></i>
                         <span class="font-bold">إشعار التطبيق</span>
-                        <span class="text-xs text-slate-500 mt-1">اختياري مع الدعوة</span>
+                        <span id="pushChannelHint" class="text-xs text-slate-500 mt-1"></span>
                     </label>
                 </div>
             </div>
@@ -61,15 +43,15 @@
                 <h2 class="text-xl font-bold mb-4">٢. المستلمون</h2>
                 <div class="flex flex-wrap gap-3 mb-4">
                     <label class="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 cursor-pointer transition">
-                        <input type="radio" name="recipient_type" value="group" checked class="accent-emerald-600">
+                        <input type="radio" name="recipient_type" value="group" @checked(old('recipient_type', 'persons') === 'group') class="accent-emerald-600">
                         <span class="font-semibold text-sm">مجموعة جاهزة</span>
                     </label>
                     <label class="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 cursor-pointer transition">
-                        <input type="radio" name="recipient_type" value="persons" class="accent-emerald-600">
+                        <input type="radio" name="recipient_type" value="persons" @checked(old('recipient_type', 'persons') === 'persons') class="accent-emerald-600">
                         <span class="font-semibold text-sm">أشخاص من الشجرة</span>
                     </label>
                     <label class="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50/70 border border-emerald-200 hover:bg-emerald-100/70 cursor-pointer transition">
-                        <input type="radio" name="recipient_type" value="external" class="accent-emerald-600">
+                        <input type="radio" name="recipient_type" value="external" @checked(old('recipient_type', 'persons') === 'external') class="accent-emerald-600">
                         <span class="font-semibold text-sm text-emerald-800 flex items-center gap-1.5">
                             <i class="fab fa-whatsapp text-emerald-600"></i>
                             شخص من خارج العائلة
@@ -80,7 +62,7 @@
                     <select name="group_id" class="w-full px-4 py-3 border rounded-xl">
                         <option value="">— اختر مجموعة —</option>
                         @foreach($groups as $g)
-                            <option value="{{ $g->id }}">{{ $g->name }} ({{ $g->persons_count }} شخص)</option>
+                            <option value="{{ $g->id }}" @selected((string) old('group_id') === (string) $g->id)>{{ $g->name }} ({{ $g->persons_count }} شخص)</option>
                         @endforeach
                     </select>
                     @if($groups->isEmpty())
@@ -160,33 +142,10 @@
                     @endforeach
                 </select>
                 <input type="hidden" name="template_key" id="template_key" value="{{ old('template_key') }}">
-                <div class="max-w-md space-y-2 mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                    <fieldset class="min-w-0">
-                        <legend class="text-sm font-bold mb-1">نوع الخط</legend>
-                        <div class="grid grid-cols-2 rounded-xl border border-slate-200 bg-white p-1">
-                            @foreach(['tajawal' => 'عادي', 'amiri' => 'نسخ'] as $value => $label)
-                                <label class="cursor-pointer">
-                                    <input type="radio" name="font_family" value="{{ $value }}" class="sr-only peer"
-                                        @checked(old('font_family', 'tajawal') === $value)>
-                                    <span class="invitation-font-{{ $value }} flex items-center justify-center min-h-9 px-2 rounded-lg text-sm peer-checked:bg-emerald-50 peer-checked:text-emerald-800 peer-checked:ring-1 peer-checked:ring-emerald-300 peer-focus-visible:outline peer-focus-visible:outline-emerald-700">{{ $label }}</span>
-                                </label>
-                            @endforeach
-                        </div>
-                    </fieldset>
-                    <fieldset class="min-w-0">
-                        <legend class="text-sm font-bold mb-1">سماكة الخط</legend>
-                        <div class="grid grid-cols-2 rounded-xl border border-slate-200 bg-white p-1">
-                            @foreach(['regular' => 'عادي', 'bold' => 'عريض'] as $value => $label)
-                                <label class="cursor-pointer">
-                                    <input type="radio" name="font_weight" value="{{ $value }}" class="sr-only peer"
-                                        @checked(old('font_weight', 'regular') === $value)>
-                                    <span class="invitation-weight-sample {{ $value === 'bold' ? 'font-bold' : 'font-normal' }} flex items-center justify-center min-h-9 px-2 rounded-lg text-sm peer-checked:bg-emerald-50 peer-checked:text-emerald-800 peer-checked:ring-1 peer-checked:ring-emerald-300 peer-focus-visible:outline peer-focus-visible:outline-emerald-700">{{ $label }}</span>
-                                </label>
-                            @endforeach
-                        </div>
-                    </fieldset>
-                </div>
-                <div id="templateVars" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 hidden"></div>
+                <fieldset id="templateVarSection" class="mb-4" hidden>
+                    <legend class="mb-2 text-sm font-bold">تفاصيل القالب</legend>
+                    <div id="templateVars" class="grid grid-cols-1 gap-3 sm:grid-cols-2"></div>
+                </fieldset>
                 <input type="text" name="title" id="title" value="{{ old('title') }}" placeholder="عنوان الإشعار" class="invitation-typed-text w-full px-4 py-3 border rounded-xl mb-3">
                 <textarea name="body" id="body" rows="7" placeholder="النص اختياري عند اختيار صورة" class="invitation-typed-text w-full px-4 py-3 border rounded-xl">{{ old('body') }}</textarea>
                 <p class="text-xs text-slate-400 mt-2">المتغيرات: {name} {full_name} {sender_name}</p>
@@ -207,10 +166,7 @@
                 </button>
                 <div class="flex flex-wrap gap-4 mt-2">
                     <button type="button" id="creativeClear" class="text-xs underline" hidden>إزالة قالب الصورة</button>
-                    <button type="button" id="previewCreative" class="text-xs underline" hidden>معاينة صورة الدعوة</button>
-                    <button type="button" id="designSubmissionOpen" aria-haspopup="dialog" aria-controls="designSubmission" class="text-sm font-bold text-emerald-700">مساحة إبداع</button>
                 </div>
-                <p id="previewCreativeStatus" role="status" class="text-sm text-slate-600"></p>
 
                 <dialog id="creativeDialog" aria-labelledby="creativeDialogTitle" dir="rtl"
                     class="rounded-3xl p-6 shadow-xl" style="width:min(92vw,720px);max-height:85vh;overflow:auto">
@@ -220,35 +176,37 @@
                             class="px-3 py-2 rounded-xl border">إغلاق</button>
                     </div>
                     <p id="creativeLibraryLabel" class="text-sm text-slate-600 mb-4"></p>
-                    <label class="block text-sm font-bold mb-2" for="creativeModeSelect">طريقة عرض القالب</label>
-                    <select id="creativeModeSelect" class="w-full rounded-xl border p-2 mb-4">
-                        <option value="">اختر طريقة العرض</option>
-                        @foreach (\App\Models\CreativeTemplate::MODES as $mode => $label)
-                            <option value="{{ $mode }}">{{ $label }}</option>
-                        @endforeach
-                    </select>
+                    @include('web-site.invitations.partials.creative-modes', ['fieldName' => 'gallery_mode'])
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         @foreach($creatives as $creative)
-                            <button type="button" class="creative-pick border-2 rounded-xl p-1"
+                            <div class="creative-card rounded-xl border border-slate-200 p-2" data-gallery-card hidden>
+                                <button type="button" class="creative-pick w-full rounded-lg border-2 border-transparent p-1"
                                 data-id="{{ $creative->id }}" data-type="{{ $creative->invitation_type }}"
                                 data-mode="{{ $creative->designMode() }}" data-variables="{{ json_encode($creative->variableKeys()) }}"
-                                data-name="{{ $creative->name }}" data-url="{{ $creative->image_url }}" aria-pressed="false">
-                                <img src="{{ $creative->image_url }}" alt="{{ $creative->name }}" class="w-full h-40 object-contain">
-                                <span class="text-xs">{{ $creative->name }}</span>
-                            </button>
+                                data-name="{{ $creative->name }}"
+                                data-url="{{ filter_var($creative->image_path, FILTER_VALIDATE_URL) ? $creative->image_url : ($creative->image_path ? asset('storage/'.$creative->image_path) : '') }}"
+                                aria-pressed="false">
+                                    <img data-gallery-image="{{ route('invitations.creatives.preview-image', $creative->id, absolute: false) }}" alt="" class="w-full h-36 object-contain">
+                                    <span class="text-xs font-bold">{{ $creative->name }}</span>
+                                </button>
+                                <button type="button" data-gallery-zoom class="mt-1 w-full rounded-lg border border-slate-200 py-2 text-xs font-bold text-emerald-800"
+                                    aria-label="معاينة {{ $creative->name }}">معاينة الصورة</button>
+                            </div>
                         @endforeach
                     </div>
                     <p id="creativeEmpty" class="text-xs text-slate-500 mt-2"></p>
+                    <button type="button" id="creativeConfirm" disabled class="mt-4 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white disabled:opacity-50">استخدام القالب</button>
                 </dialog>
                 @if($backgrounds->isNotEmpty())
                     <details class="mt-4">
                         <summary class="font-bold text-sm mb-2">خلفيات عامة</summary>
                         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                             @foreach($backgrounds as $bg)
-                                <button type="button" data-bg-id="{{ $bg->id }}" data-bg-url="{{ $bg->image_url }}"
+                                @php($backgroundUrl = filter_var($bg->image_path, FILTER_VALIDATE_URL) ? $bg->image_url : asset('storage/'.$bg->image_path))
+                                <button type="button" data-bg-id="{{ $bg->id }}" data-bg-url="{{ $backgroundUrl }}"
                                     data-name="{{ $bg->name }}" aria-pressed="false"
                                     class="bg-pick rounded-2xl overflow-hidden border-2 border-transparent" title="{{ $bg->name }}">
-                                    <img src="{{ $bg->image_url }}" class="w-full h-40 object-contain" alt="{{ $bg->name }}">
+                                    <img src="{{ $backgroundUrl }}" class="w-full h-40 object-contain" alt="{{ $bg->name }}">
                                 </button>
                             @endforeach
                         </div>
@@ -260,9 +218,12 @@
                 <input type="hidden" name="media_type" id="media_type" value="">
             </div>
 
-            <button type="submit" class="w-full py-4 rounded-2xl bg-emerald-600 text-white font-bold text-lg hover:bg-emerald-700">
-                إرسال الدعوة
-            </button>
+            <div class="grid grid-cols-2 gap-3">
+                <button type="submit" class="rounded-2xl bg-emerald-700 px-3 py-3 font-bold text-white hover:bg-emerald-800">إرسال الدعوة</button>
+                <button type="button" id="previewInvitation" aria-haspopup="dialog" aria-controls="invitationPreviewDialog"
+                    class="rounded-2xl border border-emerald-700 bg-white px-3 py-3 font-bold text-emerald-800 disabled:opacity-50">معاينة</button>
+            </div>
+            <p id="invitationPreviewStatus" role="status" class="text-sm text-rose-700"></p>
         </div>
 
         <div class="lg:col-span-4">
@@ -276,71 +237,22 @@
             </div>
         </div>
     </form>
-    <dialog id="designSubmission" aria-labelledby="designSubmissionTitle" dir="rtl"
-        class="rounded-3xl p-6 shadow-xl" style="width:min(92vw,560px);max-height:85vh;overflow:auto">
-        <div class="flex items-center justify-between gap-4 mb-3">
-            <h2 id="designSubmissionTitle" class="font-bold text-xl">مساحة إبداع</h2>
-            <button type="button" id="designSubmissionClose" class="px-3 py-2 rounded-xl border">إغلاق</button>
+    <dialog id="invitationPreviewDialog" aria-labelledby="invitationPreviewTitle" dir="rtl"
+        class="m-auto w-11/12 max-w-2xl rounded-3xl p-5 shadow-xl backdrop:bg-slate-900/50">
+        <h2 id="invitationPreviewTitle" class="mb-3 text-xl font-bold">معاينة الدعوة</h2>
+        <img id="invitationPreviewArtwork" class="mx-auto max-h-[50vh] max-w-full rounded-xl object-contain" alt="صورة معاينة الدعوة" hidden>
+        <p id="invitationPreviewImageError" role="status" class="text-sm text-rose-700" hidden>تعذّر تحميل صورة المعاينة.</p>
+        <p id="invitationPreviewText" class="invitation-typed-text my-4 whitespace-pre-wrap break-words"></p>
+        <form method="dialog"><button class="w-full rounded-xl bg-emerald-700 p-3 font-bold text-white">إغلاق</button></form>
+    </dialog>
+    <dialog id="galleryPreviewDialog" aria-labelledby="galleryPreviewTitle" dir="rtl"
+        class="m-auto w-11/12 max-w-4xl rounded-3xl p-4 shadow-xl backdrop:bg-slate-900/60">
+        <div class="mb-3 flex items-center justify-between gap-2">
+            <h2 id="galleryPreviewTitle" class="font-bold">معاينة القالب</h2>
+            <form method="dialog"><button class="rounded-xl border px-3 py-2">إغلاق</button></form>
         </div>
-        <p class="text-sm text-slate-600 mb-4">تراجع الإدارة التصميم قبل إضافته إلى قوالب الصور.</p>
-        @if (session('creative_success'))
-            <p role="status" class="mb-3 text-emerald-700">{{ session('creative_success') }}</p>
-        @endif
-        @foreach ($errors->creative->all() as $error)
-            <p role="alert" class="mb-2 text-rose-700">{{ $error }}</p>
-        @endforeach
-        <form action="{{ route('invitations.creatives.submit') }}" method="POST" enctype="multipart/form-data" class="space-y-3">
-            @csrf
-            <label class="block text-sm font-bold" for="submissionMode">طريقة عرض القالب</label>
-            <select id="submissionMode" name="design_mode" required class="w-full rounded-xl border p-2" data-creative-design-mode>
-                <option value="">اختر طريقة العرض</option>
-                @foreach (\App\Models\CreativeTemplate::MODES as $mode => $label)
-                    <option value="{{ $mode }}" @selected(old('design_mode') === $mode)>{{ $label }}</option>
-                @endforeach
-            </select>
-            <label class="block text-sm font-bold" for="submissionType">نوع الدعوة</label>
-            <select id="submissionType" name="invitation_type" required class="w-full rounded-xl border p-2" data-visual-invitation-type>
-                <option value="">اختر نوع الدعوة</option>
-                @foreach($templates as $tpl)
-                    <option value="{{ $tpl['key'] }}" @selected(old('invitation_type') === $tpl['key'])>{{ $tpl['name'] }}</option>
-                @endforeach
-            </select>
-            <label class="block text-sm font-bold" for="submissionName">اسم التصميم</label>
-            <input id="submissionName" name="name" value="{{ old('name') }}" maxlength="255" class="w-full rounded-xl border p-2">
-            <label class="block text-sm font-bold" for="submissionImage">صورة التصميم</label>
-            <input id="submissionImage" name="image" type="file" accept="image/*" required class="w-full" data-visual-file-input>
-            <x-dashboard.visual.text-layout-editor
-                :fields-by-type="collect($templates)->mapWithKeys(fn ($tpl) => [$tpl['key'] => \App\Services\Invitations\CreativeTextLayout::editableFields($tpl['key'])])->all()"
-            />
-            <label class="flex items-start gap-2 text-sm">
-                <input type="checkbox" name="publication_consent" value="1" required @checked(old('publication_consent'))>
-                <span>أوافق على عرض تصميمي للأعضاء في قوالب الصور إذا اعتمدته الإدارة.</span>
-            </label>
-            <button type="submit" class="rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white">إرسال للمراجعة</button>
-        </form>
-        @if ($myCreatives->isNotEmpty())
-            <h3 class="font-bold mt-5 mb-2">تصاميمي</h3>
-            <ul class="space-y-2 text-sm">
-                @foreach($myCreatives as $design)
-                    <li class="rounded-xl border p-2">
-                        <strong>{{ $design->name }}</strong> · {{ $design->status_label }}
-                        @if ($design->awaitsPublicationConsent())
-                            <form method="POST" action="{{ route('invitations.creatives.consent', $design->id) }}" class="mt-2 space-y-2">
-                                @csrf
-                                <label class="flex items-start gap-2">
-                                    <input type="checkbox" name="publication_consent" value="1" required>
-                                    <span>أوافق على عرض هذا التصميم في قوالب الصور بعد اعتماده.</span>
-                                </label>
-                                <button type="submit" class="font-bold text-emerald-700">حفظ الموافقة</button>
-                            </form>
-                        @endif
-                        @if ($design->rejection_reason)
-                            <p class="text-rose-700">{{ $design->rejection_reason }}</p>
-                        @endif
-                    </li>
-                @endforeach
-            </ul>
-        @endif
+        <img id="galleryPreviewArtwork" class="mx-auto max-h-[72vh] max-w-full rounded-xl object-contain" alt="صورة القالب">
+        <a id="galleryOpenFull" target="_blank" rel="noopener" class="mt-2 inline-block text-sm font-bold text-emerald-800">عرض بالحجم الكامل</a>
     </dialog>
 @endsection
 
@@ -350,76 +262,76 @@
         const templates = @json($templates);
         const senderName = @json($person->full_name ?: $person->first_name);
         const invitationForm = document.getElementById('invitationForm');
-        invitationForm.querySelectorAll('input[name="font_family"], input[name="font_weight"]').forEach(function (option) {
-            option.addEventListener('change', function () {
-                if (option.name === 'font_family') {
-                    invitationForm.dataset.invitationFont = option.value;
-                } else {
-                    invitationForm.dataset.invitationWeight = option.value;
-                }
-            });
-        });
         const creativeInput = document.getElementById('creative_id');
         const backgroundInput = document.getElementById('background_id');
         const attachment = document.getElementById('media');
         const previewImage = document.getElementById('simBg');
         let attachmentUrl = null;
         const creativeDialog = document.getElementById('creativeDialog');
-        const creativeMode = document.getElementById('creativeModeSelect');
+        const galleryModes = Array.from(creativeDialog.querySelectorAll('[name="gallery_mode"]'));
+        const creativeCards = Array.from(creativeDialog.querySelectorAll('.creative-pick'));
         const creativeOpen = document.getElementById('creativeOpen');
-        const previewCreative = document.getElementById('previewCreative');
-        const creativeStatus = document.getElementById('previewCreativeStatus');
-        const submissionDialog = document.getElementById('designSubmission');
-        document.getElementById('designSubmissionOpen').addEventListener('click', () => submissionDialog.showModal());
-        document.getElementById('designSubmissionClose').addEventListener('click', () => submissionDialog.close());
-        if (@json((bool) session('creative_success') || $errors->creative->any())) submissionDialog.showModal();
+        const creativeConfirm = document.getElementById('creativeConfirm');
+        const galleryPreview = document.getElementById('galleryPreviewDialog');
+        let pendingCreative = null;
         creativeOpen.addEventListener('click', function () {
-            creativeMode.value = getSelectedCreative()?.dataset.mode || '';
-            refreshImages();
+            pendingCreative = getSelectedCreative();
+            galleryModes.forEach((radio) => { radio.checked = radio.value === pendingCreative?.dataset.mode; });
+            refreshGallery();
             creativeDialog.showModal();
         });
         document.getElementById('creativeClose').addEventListener('click', function () {
             creativeDialog.close();
         });
-        creativeMode.addEventListener('change', refreshImages);
+        galleryModes.forEach((radio) => radio.addEventListener('change', () => {
+            if (pendingCreative?.dataset.mode !== radio.value) pendingCreative = null;
+            refreshGallery();
+        }));
 
         function getSelectedCreative() {
-            return Array.from(document.querySelectorAll('.creative-pick')).find((button) => button.dataset.id === creativeInput.value);
+            return creativeCards.find((button) => button.dataset.id === creativeInput.value);
+        }
+
+        function refreshGallery() {
+            const type = document.getElementById('template_select').value;
+            const mode = galleryModes.find((radio) => radio.checked)?.value;
+            let count = 0;
+            creativeCards.forEach((button) => {
+                const visible = button.dataset.type === type && button.dataset.mode === mode;
+                button.closest('[data-gallery-card]').hidden = !visible;
+                if (visible) {
+                    count++;
+                    const image = button.querySelector('[data-gallery-image]');
+                    if (!image.getAttribute('src')) image.src = image.dataset.galleryImage;
+                }
+                button.classList.toggle('ring-2', button === pendingCreative);
+                button.setAttribute('aria-pressed', String(button === pendingCreative));
+            });
+            document.getElementById('creativeEmpty').textContent = mode && !count ? 'لا توجد قوالب معتمدة لهذا الوضع ونوع الدعوة.' : '';
+            document.getElementById('creativeLibraryLabel').textContent = templates.find((item) => item.key === type)?.name || '';
+            creativeConfirm.disabled = !pendingCreative;
+        }
+
+        function selectedArtworkUrl() {
+            const background = Array.from(document.querySelectorAll('.bg-pick')).find((button) => button.dataset.bgId === backgroundInput.value);
+            return attachmentUrl || getSelectedCreative()?.dataset.url || background?.dataset.bgUrl;
         }
 
         function refreshImages() {
             const type = document.getElementById('template_select').value;
             creativeOpen.style.display = type ? '' : 'none';
-            const creative = getSelectedCreative();
-            previewCreative.hidden = creative?.dataset.mode !== 'overlay';
             document.getElementById('creativeClear').hidden = !creativeInput.value && !backgroundInput.value;
-            let count = 0;
-            document.querySelectorAll('.creative-pick').forEach(function (button) {
-                const show = Boolean(type) && button.dataset.type === type && button.dataset.mode === creativeMode.value;
-                button.classList.toggle('hidden', !show);
-                if (show) count++;
-                const selected = creativeInput.value === button.dataset.id;
-                button.classList.toggle('ring-2', selected);
-                button.setAttribute('aria-pressed', String(selected));
-            });
-            document.getElementById('creativeEmpty').textContent = creativeMode.value && !count ? 'لا توجد قوالب معتمدة لهذا الوضع ونوع الدعوة.' : '';
-            const selectedType = templates.find(function (item) {
-                return item.key === document.getElementById('template_select').value;
-            });
-            document.getElementById('creativeLibraryLabel').textContent = selectedType
-                ? 'صور ' + selectedType.name
-                : '';
+            const creative = getSelectedCreative();
             document.querySelectorAll('.bg-pick').forEach(function (button) {
                 button.setAttribute('aria-pressed', String(backgroundInput?.value === button.dataset.bgId));
                 button.classList.toggle('ring-2', backgroundInput?.value === button.dataset.bgId);
                 button.classList.toggle('ring-emerald-500', backgroundInput?.value === button.dataset.bgId);
             });
-            const background = backgroundInput?.value
-                ? document.querySelector('.bg-pick[data-bg-id="' + backgroundInput.value + '"]') : null;
+            const background = Array.from(document.querySelectorAll('.bg-pick')).find((button) => button.dataset.bgId === backgroundInput.value);
             document.getElementById('creativeSelectionLabel').textContent = creative || background
                 ? 'القالب المختار: ' + (creative || background).dataset.name
-                : selectedType ? 'صور ' + selectedType.name : 'اختر قالبًا للدعوة';
-            const url = attachmentUrl || creative?.dataset.url || background?.dataset.bgUrl;
+                : 'اختر قالبًا للدعوة';
+            const url = selectedArtworkUrl();
             previewImage.classList.toggle('hidden', !url);
             if (url) previewImage.src = url;
             else previewImage.removeAttribute('src');
@@ -429,36 +341,75 @@
             attachment.value = '';
             if (attachmentUrl) URL.revokeObjectURL(attachmentUrl);
             attachmentUrl = null;
+            document.getElementById('media_type').value = '';
         }
-        document.querySelectorAll('.creative-pick').forEach(function (button) {
-            button.addEventListener('click', function () {
-                creativeInput.value = button.dataset.id;
-                if (backgroundInput) backgroundInput.value = '';
-                clearAttachment();
-                renderTemplateVars(document.getElementById('body').value);
-                refreshImages();
-                creativeDialog.close();
+        creativeCards.forEach((button) => {
+            button.addEventListener('click', () => {
+                pendingCreative = button;
+                refreshGallery();
+            });
+            button.closest('[data-gallery-card]').querySelector('[data-gallery-zoom]').addEventListener('click', () => {
+                const url = button.querySelector('[data-gallery-image]').dataset.galleryImage;
+                document.getElementById('galleryPreviewTitle').textContent = button.dataset.name;
+                document.getElementById('galleryPreviewArtwork').src = url;
+                document.getElementById('galleryOpenFull').href = url;
+                galleryPreview.showModal();
             });
         });
-        previewCreative.addEventListener('click', async function () {
+        creativeConfirm.addEventListener('click', () => {
+            if (!pendingCreative) return;
+            creativeInput.value = pendingCreative.dataset.id;
+            backgroundInput.value = '';
+            clearAttachment();
+            renderTemplateVars(document.getElementById('body').value);
+            refreshImages();
+            creativeDialog.close();
+        });
+
+        const previewButton = document.getElementById('previewInvitation');
+        const previewStatus = document.getElementById('invitationPreviewStatus');
+        const previewDialog = document.getElementById('invitationPreviewDialog');
+        const dialogImage = document.getElementById('invitationPreviewArtwork');
+        const imageError = document.getElementById('invitationPreviewImageError');
+        dialogImage.addEventListener('error', () => {
+            dialogImage.hidden = true;
+            imageError.hidden = false;
+        });
+        previewButton.addEventListener('click', async function () {
             const data = new FormData();
             for (const [name, value] of new FormData(invitationForm)) {
-                if (name.startsWith('template_vars[') || ['_token', 'title', 'body', 'template_key', 'creative_id', 'font_family', 'font_weight'].includes(name)) {
+                if (name.startsWith('template_vars[') || ['_token', 'title', 'body', 'template_key', 'creative_id', 'background_id', 'recipient_type'].includes(name)) {
                     data.append(name, value);
                 }
+                if (name === 'person_ids[]' && !data.has('person_id')) data.set('person_id', value);
             }
-            previewCreative.disabled = true;
-            creativeStatus.textContent = 'جاري تجهيز الصورة…';
+            const recipientType = data.get('recipient_type');
+            if (recipientType !== 'persons') data.delete('person_id');
+            if (recipientType === 'group') data.set('group_id', invitationForm.elements.group_id.value);
+            if (recipientType === 'external') data.set('external_name', invitationForm.elements.external_name.value);
+            const fallback = selectedArtworkUrl();
+            previewButton.disabled = true;
+            previewStatus.textContent = 'جارٍ تجهيز المعاينة…';
             try {
-                const response = await fetch(@json(route('invitations.preview-message')), { method: 'POST', headers: { Accept: 'application/json' }, body: data });
+                const response = await fetch(@json(route('invitations.preview-message', absolute: false)), { method: 'POST', headers: { Accept: 'application/json' }, body: data });
                 const result = await response.json();
-                if (!response.ok) throw new Error(result.message || 'تعذّر تجهيز الصورة.');
-                if (data.get('creative_id') === creativeInput.value && result.card_image_url) previewImage.src = result.card_image_url;
-                creativeStatus.textContent = '';
+                if (!response.ok) throw new Error(result.message || 'تعذّر تجهيز المعاينة.');
+                const artwork = result.web_card_image_url || fallback;
+                if (!artwork && !result.preview) {
+                    previewStatus.textContent = 'أضف نص الدعوة أو اختر صورة للمعاينة.';
+                    return;
+                }
+                imageError.hidden = true;
+                dialogImage.hidden = !artwork;
+                if (artwork) dialogImage.src = artwork;
+                else dialogImage.removeAttribute('src');
+                document.getElementById('invitationPreviewText').textContent = result.preview || '';
+                previewStatus.textContent = '';
+                previewDialog.showModal();
             } catch (error) {
-                creativeStatus.textContent = error.message || 'تعذّر تجهيز الصورة.';
+                previewStatus.textContent = error.message || 'تعذّر تجهيز المعاينة.';
             } finally {
-                previewCreative.disabled = false;
+                previewButton.disabled = false;
             }
         });
         document.querySelectorAll('.bg-pick').forEach(function (button) {
@@ -481,27 +432,30 @@
             if (attachmentUrl) URL.revokeObjectURL(attachmentUrl);
             const file = attachment.files[0];
             attachmentUrl = file?.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+            document.getElementById('media_type').value = { image: 'image', video: 'video', audio: 'voice' }[file?.type.split('/')[0]] || '';
             creativeInput.value = '';
             if (backgroundInput) backgroundInput.value = '';
             renderTemplateVars(document.getElementById('body').value);
             refreshImages();
         });
 
-        document.querySelectorAll('input[name="recipient_type"]').forEach(function (el) {
-            el.addEventListener('change', function () {
-                const val = this.value;
-                document.getElementById('wrapperGroup').classList.toggle('hidden', val !== 'group');
-                document.getElementById('wrapperPersons').classList.toggle('hidden', val !== 'persons');
-                document.getElementById('wrapperExternal').classList.toggle('hidden', val !== 'external');
-                document.getElementById('deceasedWrapper').classList.toggle('hidden', val === 'external');
-
-                if (val === 'external') {
-                    const waInput = document.querySelector('input[name="channels[]"][value="whatsapp"]');
-                    if (waInput) waInput.checked = true;
-                }
-                updatePreview();
-            });
-        });
+        function syncRecipientType() {
+            const type = invitationForm.elements.recipient_type.value;
+            const external = type === 'external';
+            document.getElementById('wrapperGroup').classList.toggle('hidden', type !== 'group');
+            document.getElementById('wrapperPersons').classList.toggle('hidden', type !== 'persons');
+            document.getElementById('wrapperExternal').classList.toggle('hidden', !external);
+            document.getElementById('deceasedWrapper').classList.toggle('hidden', external);
+            const push = invitationForm.querySelector('[name="channels[]"][value="push"]');
+            push.disabled = external;
+            if (external) {
+                push.checked = false;
+                invitationForm.querySelector('[name="channels[]"][value="whatsapp"]').checked = true;
+            }
+            document.getElementById('pushChannelHint').textContent = external ? 'متاح للأعضاء المسجّلين في التطبيق' : '';
+            updatePreview();
+        }
+        invitationForm.querySelectorAll('[name="recipient_type"]').forEach((radio) => radio.addEventListener('change', syncRecipientType));
 
         function extractVars(body) {
             const found = body.match(/\{[a-z_]+\}/g) || [];
@@ -512,17 +466,16 @@
 
         function renderTemplateVars(body, values) {
             const box = document.getElementById('templateVars');
-            const key = document.getElementById('template_key').value;
-            const wedding = key === 'wedding' ? templates.find((item) => item.key === key)?.body || '' : '';
             const designVars = JSON.parse(getSelectedCreative()?.dataset.variables || '[]');
-            const vars = [...new Set([...extractVars(body + '\n' + wedding), ...designVars.map((name) => '{' + name + '}')])];
+            const vars = [...new Set([...extractVars(body), ...designVars.map((name) => '{' + name + '}')])];
             const inputs = Array.from(box.querySelectorAll('.tpl-var'));
             if (!values && inputs.map((input) => input.dataset.var).join() === vars.join()) return;
             values ??= Object.fromEntries(inputs.map((input) => [input.dataset.var.slice(1, -1), input.value]));
-            const labels = { hosts: 'أصحاب الدعوة', groom: 'اسم العريس', date: 'التاريخ', time: 'الوقت', location: 'القاعة أو المكان' };
+            const labels = { hosts: 'أصحاب الدعوة', groom: 'اسم العريس', date: 'التاريخ', time: 'الوقت', location: 'القاعة أو المكان',
+                event_name: 'اسم المناسبة', occasion: 'المناسبة', announcement_title: 'عنوان الإعلان', announcement_details: 'تفاصيل الإعلان',
+                topic: 'الموضوع', deceased_name: 'اسم المتوفى', urgent_matter: 'موضوع التنبيه' };
             box.innerHTML = '';
-            if (!vars.length) { box.classList.add('hidden'); return; }
-            box.classList.remove('hidden');
+            document.getElementById('templateVarSection').hidden = !vars.length;
             vars.forEach(function (v) {
                 const key = v.replace(/[{}]/g, '');
                 const wrap = document.createElement('div');
@@ -600,6 +553,6 @@
         });
         renderTemplateVars(document.getElementById('body').value, @json(old('template_vars', [])));
         refreshImages();
+        syncRecipientType();
     </script>
-    <script src="{{ asset('js/dashboard/creative-text-layout.js') }}?v={{ filemtime(public_path('js/dashboard/creative-text-layout.js')) }}" defer></script>
 @endsection

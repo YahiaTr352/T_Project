@@ -16,6 +16,7 @@ use App\Services\Invitations\InvitationGroupService;
 use App\Services\Invitations\InvitationMessageService;
 use App\Services\Invitations\InvitationResponseService;
 use App\Services\Invitations\InvitationTreePickerService;
+use App\Services\Notifications\MobileNotificationService;
 use App\Services\SiteIdentityResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -26,6 +27,8 @@ use Illuminate\View\View;
 
 class InvitationController extends Controller
 {
+    private const TYPOGRAPHY = ['font_family' => 'amiri', 'font_weight' => 'bold'];
+
     public function __construct(
         protected SiteIdentityResolver $identityResolver,
         protected InvitationGroupService $groups,
@@ -89,9 +92,36 @@ class InvitationController extends Controller
 
         $backgrounds = InvitationBackground::approved()->latest()->get();
         $creatives = CreativeTemplate::approved()->whereNotNull('invitation_type')->latest()->get();
-        $myCreatives = CreativeTemplate::where('uploaded_by', $person->id)->latest()->limit(20)->get();
 
-        return view('web-site.invitations.send', compact('person', 'groups', 'templates', 'backgrounds', 'creatives', 'myCreatives'));
+        return view('web-site.invitations.send', compact('person', 'groups', 'templates', 'backgrounds', 'creatives'));
+    }
+
+    public function creativeSpace(Request $request): View
+    {
+        $person = $request->attributes->get('identity_person');
+        $templates = $this->messages->templates();
+        $myCreatives = CreativeTemplate::where('uploaded_by', $person->id)->latest()->orderByDesc('id')->paginate(12);
+
+        return view('web-site.invitations.creative-space', compact('templates', 'myCreatives'));
+    }
+
+    public function previewCreativeArtwork(Request $request, int $id, CreativeTemplateService $creatives): RedirectResponse
+    {
+        $person = $request->attributes->get('identity_person');
+        $template = CreativeTemplate::query()->where(function ($query) use ($person) {
+            $query->where('uploaded_by', $person->id)
+                ->orWhere(fn ($approved) => $approved->approved()->whereNotNull('invitation_type'));
+        })->findOrFail($id);
+
+        $preview = $creatives->previewImageUrl($template);
+        if ($preview) {
+            return redirect()->to($this->previewImageUrl($preview));
+        }
+
+        abort_unless($template->image_url, 404);
+
+        return redirect()->to(filter_var($template->image_path, FILTER_VALIDATE_URL)
+            ? $template->image_url : asset('storage/'.$template->image_path));
     }
 
     public function submitCreative(Request $request, CreativeTemplateService $creatives): RedirectResponse
@@ -115,7 +145,7 @@ class InvitationController extends Controller
             invitationType: $validated['invitation_type'], publicationConsent: true, textLayout: $layout,
             designMode: $validated['design_mode'] ?? null);
 
-        return redirect()->route('invitations.send')->with('creative_success', 'تم إرسال التصميم إلى الإدارة للمراجعة.');
+        return redirect()->route('invitations.creatives.index')->with('creative_success', 'تم إرسال التصميم إلى الإدارة للمراجعة.');
     }
 
     public function consentToCreativePublication(Request $request, int $id, CreativeTemplateService $creatives): RedirectResponse
@@ -125,10 +155,10 @@ class InvitationController extends Controller
         try {
             $creatives->recordPublicationConsent($request->attributes->get('identity_person'), $id);
         } catch (InvitationException $e) {
-            return redirect()->route('invitations.send')->withErrors(['publication_consent' => $e->getMessage()], 'creative');
+            return redirect()->route('invitations.creatives.index')->withErrors(['publication_consent' => $e->getMessage()], 'creative');
         }
 
-        return redirect()->route('invitations.send')->with('creative_success', 'تم حفظ موافقتك على عرض التصميم.');
+        return redirect()->route('invitations.creatives.index')->with('creative_success', 'تم حفظ موافقتك على عرض التصميم.');
     }
 
     public function sendSubmit(Request $request): RedirectResponse
@@ -153,8 +183,6 @@ class InvitationController extends Controller
             'title' => 'nullable|string|max:255',
             'body' => 'nullable|string|max:65535',
             'creative_id' => 'nullable|integer',
-            'font_family' => 'nullable|string|in:amiri,tajawal',
-            'font_weight' => 'nullable|string|in:regular,bold',
             'template_key' => 'nullable|string|max:64',
             'template_vars' => 'nullable|array',
             'template_vars.*' => 'nullable|string|max:255',
@@ -191,9 +219,7 @@ class InvitationController extends Controller
                 'media' => $request->file('media'),
                 'background_id' => $validated['background_id'] ?? null,
                 'creative_id' => $validated['creative_id'] ?? null,
-                'font_family' => $validated['font_family'] ?? null,
-                'font_weight' => $validated['font_weight'] ?? null,
-            ]);
+            ] + self::TYPOGRAPHY);
         } catch (InvitationException $e) {
             return back()->withInput()->with('error', $e->getMessage());
         }
@@ -202,25 +228,48 @@ class InvitationController extends Controller
             ->with('success', $result['notification']->invitationSubmissionMessage());
     }
 
-    public function logs(Request $request): View
+    public function logs(Request $request, MobileNotificationService $inboxService): View
     {
         /** @var Person $person */
         $person = $request->attributes->get('identity_person');
         $incoming = $request->query('direction') === 'incoming';
+        $inbox = $request->query('direction') === 'notifications';
 
-        $query = $incoming
-            ? Notification::receivedInvitations($person->id)->withInvitationResponseFor($person->id)->with('person:id,first_name,last_name')
-            : Notification::query()->where('person_id', $person->id)->with('recipients.person');
+        if ($inbox) {
+            $query = $inboxService->getInboxQueryForPerson($person->id)
+                ->whereHas('recipients', fn ($recipients) => $recipients->where('person_id', $person->id))
+                ->where(fn ($items) => $items->where('person_id', '!=', $person->id)
+                    ->orWhereIn('targeting_filters->data->type', [Notification::INVITATION_RESPONSE_TYPE, Notification::CREATIVE_DECISION_TYPE]))
+                ->withInvitationResponseFor($person->id)->with('person');
+        } elseif ($incoming) {
+            $query = Notification::receivedInvitations($person->id)->withInvitationResponseFor($person->id)->with('person');
+        } else {
+            $query = Notification::query()->where('person_id', $person->id)->with('recipients.person');
+        }
         $notifications = $query->latest()->orderByDesc('id')->paginate(10)->withQueryString();
+        foreach ($notifications as $notification) {
+            $vars = data_get($notification->targeting_filters, 'template_vars');
+            $vars = is_array($vars) ? $vars : [];
+            $singleRecipient = ! $incoming && ! $inbox && $notification->recipients->count() === 1
+                ? $notification->recipients->first() : null;
+            $recipient = $incoming || $inbox ? $person : $singleRecipient?->person;
+            if ($recipient === null && $singleRecipient?->recipient_name) {
+                $name = $singleRecipient->recipient_name;
+                $vars = ['name' => $name, 'first_name' => $name, 'full_name' => $name] + $vars;
+            }
+            $sender = $notification->person_id === $person->id ? $person : ($notification->person_id ? $notification->person : null);
+            $notification->display_title = $this->messages->replacePlaceholders($notification->title ?: 'دعوة عائلية', $recipient, $sender, $vars);
+            $notification->display_body = $this->messages->replacePlaceholders((string) $notification->body, $recipient, $sender, $vars);
+        }
 
-        return view('web-site.invitations.logs', compact('notifications', 'person', 'incoming'));
+        return view('web-site.invitations.logs', compact('notifications', 'person', 'incoming', 'inbox'));
     }
 
     public function respond(InvitationResponseRequest $request, Notification $notification, InvitationResponseService $responses): RedirectResponse
     {
         $person = $request->attributes->get('identity_person');
         $redirect = redirect()->route('invitations.logs', [
-            'direction' => 'incoming',
+            'direction' => $request->query('direction') === 'notifications' ? 'notifications' : 'incoming',
             'page' => max(1, $request->integer('page', 1)),
         ]);
 
@@ -405,16 +454,33 @@ class InvitationController extends Controller
             'template_vars' => 'nullable|array',
             'template_vars.*' => 'nullable|string|max:255',
             'person_id' => 'nullable|integer|exists:persons,id',
+            'group_id' => 'nullable|integer',
+            'external_name' => 'nullable|string|max:255',
+            'recipient_type' => 'nullable|string|in:persons,group,external',
             'title' => 'nullable|string|max:255',
+            'background_id' => 'nullable|integer',
             'creative_id' => 'nullable|integer',
-            'font_family' => 'nullable|string|in:amiri,tajawal',
-            'font_weight' => 'nullable|string|in:regular,bold',
-        ]);
+        ]) + self::TYPOGRAPHY;
 
         try {
             $creative = $this->dispatcher->creativeFor($validated);
-            $preview = $this->dispatcher->preview($person, $validated, isset($validated['person_id']) ? (int) $validated['person_id'] : null);
+            $sampleId = $validated['person_id'] ?? null;
+            if (! $sampleId && ($validated['recipient_type'] ?? null) === 'group' && ! empty($validated['group_id'])) {
+                $group = $this->groups->findOwned((int) $validated['group_id'], $person->id);
+                $sampleId = $group->persons()->first()?->id;
+            }
+            $preview = $this->dispatcher->preview($person, $validated, $sampleId ? (int) $sampleId : null, $validated['external_name'] ?? null);
             $card = $creative ? $this->dispatcher->creativeCard($creative, $person, $validated) : null;
+            if (! $creative && ! empty($validated['background_id'])) {
+                $background = InvitationBackground::approved()->find($validated['background_id']);
+                if (! $background) {
+                    throw new InvitationException('الخلفية المحددة غير متاحة.', 'BACKGROUND_NOT_AVAILABLE', 422);
+                }
+                if (trim($preview) !== '') {
+                    $card = app(\App\Services\Invitations\InvitationCardRenderer::class)
+                        ->renderPreview($background, (string) ($validated['title'] ?? ''), $preview, self::TYPOGRAPHY);
+                }
+            }
         } catch (InvitationException $e) {
             return response()->json([
                 'success' => false,
@@ -426,7 +492,15 @@ class InvitationController extends Controller
             'success' => true,
             'preview' => $preview,
             'card_image_url' => $card ? Storage::disk('public')->url($card) : null,
+            'web_card_image_url' => $card ? asset('storage/'.$card) : null,
         ]);
+    }
+
+    private function previewImageUrl(string $url): string
+    {
+        $path = parse_url($url, PHP_URL_PATH);
+
+        return is_string($path) && str_starts_with($path, '/storage/') ? asset(ltrim($path, '/')) : $url;
     }
 
     private function identityPerson(Request $request): ?Person
