@@ -8,6 +8,22 @@ use Illuminate\Support\Facades\Log;
 
 class TreeCacheService
 {
+    public static function childrenKey(int|string $id): string
+    {
+        return "person_children_v5_{$id}";
+    }
+
+    public static function childrenDetailsKey(int|string $id): string
+    {
+        return "person_children_details_v5_{$id}";
+    }
+
+    public function forgetChildren(int $id): void
+    {
+        Cache::forget(self::childrenKey($id));
+        Cache::forget(self::childrenDetailsKey($id));
+    }
+
     /**
      * Clear all cached data associated with a specific person.
      * This includes details, children lists, and their parents' children lists.
@@ -23,19 +39,16 @@ class TreeCacheService
 
         // Clear person's own details and children caches
         Cache::forget("person_details_{$id}");
-        Cache::forget("person_children_{$id}");
-        Cache::forget("person_children_details_{$id}");
+        $this->forgetChildren($id);
 
         // If person has parent or mother, clear their children lists as well
         if ($personModel) {
             if ($personModel->parent_id) {
-                Cache::forget("person_children_{$personModel->parent_id}");
-                Cache::forget("person_children_details_{$personModel->parent_id}");
+                $this->forgetChildren($personModel->parent_id);
                 Cache::forget("person_details_{$personModel->parent_id}");
             }
             if ($personModel->mother_id) {
-                Cache::forget("person_children_{$personModel->mother_id}");
-                Cache::forget("person_children_details_{$personModel->mother_id}");
+                $this->forgetChildren($personModel->mother_id);
                 Cache::forget("person_details_{$personModel->mother_id}");
             }
         }
@@ -50,14 +63,12 @@ class TreeCacheService
     {
         if ($husbandId) {
             Cache::forget("person_details_{$husbandId}");
-            Cache::forget("person_children_{$husbandId}");
-            Cache::forget("person_children_details_{$husbandId}");
+            $this->forgetChildren($husbandId);
         }
 
         if ($wifeId) {
             Cache::forget("person_details_{$wifeId}");
-            Cache::forget("person_children_{$wifeId}");
-            Cache::forget("person_children_details_{$wifeId}");
+            $this->forgetChildren($wifeId);
         }
 
         Log::info("[TreeCacheService] Invalidated marriage cache for husband #{$husbandId} and wife #{$wifeId}");

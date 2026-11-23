@@ -7,6 +7,8 @@ use App\Models\Marriage;
 use App\Models\Breastfeeding;
 use App\Models\Friendship;
 use App\Http\Resources\GalleryImageApiResource;
+use App\Services\ChildOrderService;
+use App\Services\TreeCacheService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -129,7 +131,7 @@ class FamilyTreeController extends Controller
     public function getChildren($id)
     {
         // استخدام cache لتحسين الأداء
-        $cacheKey = "person_children_{$id}";
+        $cacheKey = TreeCacheService::childrenKey($id);
         $cachedData = cache()->get($cacheKey);
 
         if ($cachedData) {
@@ -143,7 +145,7 @@ class FamilyTreeController extends Controller
         $person = Person::select(['id', 'gender'])->findOrFail($id);
         $childrenQuery = Person::select([
             'id', 'first_name', 'last_name', 'gender', 'birth_date', 'birth_place', 'death_date',
-            'death_place', 'cemetery', 'photo_url', 'parent_id', 'mother_id', 'location_id'
+            'death_place', 'cemetery', 'photo_url', 'parent_id', 'mother_id', 'location_id', 'display_order'
         ]);
 
         // التحقق من جنس الشخص لتحديد كيفية البحث عن الأبناء
@@ -162,11 +164,7 @@ class FamilyTreeController extends Controller
             'childrenFromMother as children_from_mother_count'
         ])->get();
 
-        // ترتيب أبناء الأب: تواريخ الميلاد أولاً للأكبر سناً عبر كافة الزوجات، ثم الترتيب اليدوي/ترتيب الزوجة
-        if ($person->gender !== 'female' && $children->isNotEmpty()) {
-            $children = app(\App\Services\MarriageOrderService::class)
-                ->sortChildrenByMotherOrder($children, (int) $person->id);
-        }
+        $children = app(ChildOrderService::class)->orderForParent($person, $children, useDisplayOrderByDefault: false);
 
         // في الشجرة الرئيسية، نعرض فقط الأبناء الحقيقيين بدون علامة من الرضاعة
         // الأبناء من الرضاعة لن يظهروا في الشجرة، فقط في تفاصيل العضو
@@ -322,7 +320,7 @@ class FamilyTreeController extends Controller
     // API لجلب أبناء شخص معين في كارد التفاصيل (يشمل أبناء الأمهات والأبناء من الرضاعة)
     public function getChildrenForDetails($id)
     {
-        $cacheKey = "person_children_details_{$id}";
+        $cacheKey = TreeCacheService::childrenDetailsKey($id);
         $cachedData = cache()->get($cacheKey);
 
         if ($cachedData) {
@@ -345,7 +343,7 @@ class FamilyTreeController extends Controller
             $childrenQuery->where('mother_id', $person->id);
         } else {
             // للذكور: البحث عن طريق parent_id (الأب)
-            $childrenQuery->where('parent_id', $person->id);
+            $childrenQuery->addSelect('display_order')->where('parent_id', $person->id);
         }
 
         // جلب الأبناء الحقيقيين مع عدد أبنائهم محسن للأداء
@@ -355,11 +353,7 @@ class FamilyTreeController extends Controller
             'childrenFromMother as children_from_mother_count'
         ])->get();
 
-        // ترتيب أبناء الأب: تواريخ الميلاد أولاً للأكبر سناً عبر كافة الزوجات، ثم الترتيب اليدوي/ترتيب الزوجة
-        if ($person->gender !== 'female' && $realChildren->isNotEmpty()) {
-            $realChildren = app(\App\Services\MarriageOrderService::class)
-                ->sortChildrenByMotherOrder($realChildren, (int) $person->id);
-        }
+        $realChildren = app(ChildOrderService::class)->orderForParent($person, $realChildren, useDisplayOrderByDefault: false);
 
         // جلب الأبناء من الرضاعة (فقط في تفاصيل العضو)
         // الأبناء من الرضاعة هم الأطفال الذين رضعوا من زوجة الشخص (للذكور) أو من الأم نفسها (للإناث) وليسوا أبناء حقيقيين

@@ -111,9 +111,9 @@ class MarriageOrderService
 
     /**
      * ترتيب أبناء الأب:
-     * 1. حسب تاريخ الميلاد (birth_date تصاعدياً للأكبر سناً أولاً) عبر كافة الزوجات.
-     * 2. في حال غياب تاريخ الميلاد (أو تساويه): الترتيب اليدوي من لوحة التحكم (display_order).
-     * 3. إذا لم يوجد ترتيب يدوي: ترتيب الزوجة عند هذا الأب (أبناء الزوجة الأولى أولاً ثم الثانية...).
+     * 1. حسب تاريخ الميلاد للأكبر سناً أولاً عبر كافة الزوجات.
+     * 2. عند تساوي التاريخ أو غيابه لدى الاثنين: الترتيب اليدوي من لوحة التحكم (display_order).
+     * 3. ثم ترتيب الزوجة عند هذا الأب.
      * 4. الفاصل النهائي: معرّف السجل (id).
      */
     public function orderedChildrenForFather(int $fatherId): Collection
@@ -127,9 +127,9 @@ class MarriageOrderService
     }
 
     /**
-     * ترتيب مجموعة أبناء جاهزة: تواريخ الميلاد أولاً عبر كل الزوجات، ثم الترتيب اليدوي، ثم ترتيب الأمهات.
+     * ترتيب مجموعة أبناء جاهزة بنفس قاعدة لوحة التحكم: تاريخ الميلاد، ثم الترتيب اليدوي، ثم ترتيب الأمهات.
      */
-    public function sortChildrenByMotherOrder(Collection $children, int $fatherId): Collection
+    public function sortChildrenByMotherOrder(Collection $children, int $fatherId, bool $useDisplayOrder = true): Collection
     {
         if ($children->isEmpty()) {
             return $children->values();
@@ -138,28 +138,19 @@ class MarriageOrderService
         $orderMap = $this->wifeOrderMap($fatherId);
         $fallback = count($orderMap) + 1000;
 
-        return $children->sort(function (Person $a, Person $b) use ($orderMap, $fallback) {
-            $ba = $a->birth_date ? $a->birth_date->timestamp : null;
-            $bb = $b->birth_date ? $b->birth_date->timestamp : null;
-
-            // 1. إذا كان كلا الابنين مسجل لهما تاريخ ميلاد: الأكبر سناً (الأقدم تاريخاً) أولاً عبر كل الزوجات
-            if ($ba !== null && $bb !== null) {
-                if ($ba !== $bb) {
-                    return $ba <=> $bb;
-                }
-                // في حال تطابق تاريخ الميلاد تماماً: الانتقال للترتيب اليدوي وترتيب الزوجة أدناه
-            } elseif ($ba !== null || $bb !== null) {
-                // إذا كان لأحدهما تاريخ ميلاد والآخر مجهول التاريخ: صاحب التاريخ المعلوم يأتي أولاً
-                return $ba !== null ? -1 : 1;
+        return $children->sort(function (Person $a, Person $b) use ($orderMap, $fallback, $useDisplayOrder) {
+            $birthDateA = $a->birth_date?->timestamp ?? PHP_INT_MAX;
+            $birthDateB = $b->birth_date?->timestamp ?? PHP_INT_MAX;
+            if ($birthDateA !== $birthDateB) {
+                return $birthDateA <=> $birthDateB;
             }
 
-            // 2. الترتيب اليدوي من لوحة التحكم (display_order) لمن لا يملكون تاريخ ميلاد أو تساوت تواريخهم
-            $da = (int) ($a->display_order ?? 0);
-            $db = (int) ($b->display_order ?? 0);
-            $daRank = $da === 0 ? PHP_INT_MAX : $da;
-            $dbRank = $db === 0 ? PHP_INT_MAX : $db;
-            if ($daRank !== $dbRank) {
-                return $daRank <=> $dbRank;
+            if ($useDisplayOrder) {
+                $manualOrderA = (int) ($a->display_order ?? 0) ?: PHP_INT_MAX;
+                $manualOrderB = (int) ($b->display_order ?? 0) ?: PHP_INT_MAX;
+                if ($manualOrderA !== $manualOrderB) {
+                    return $manualOrderA <=> $manualOrderB;
+                }
             }
 
             // 3. ترتيب الزوجات عند هذا الأب (أبناء الأولى أولاً ثم الثانية...)
@@ -215,13 +206,12 @@ class MarriageOrderService
      */
     public function clearMarriageCaches(int $husbandId, ?int $wifeId = null): void
     {
+        $treeCache = app(TreeCacheService::class);
         cache()->forget('family_tree_data');
-        cache()->forget("person_children_{$husbandId}");
-        cache()->forget("person_children_details_{$husbandId}");
+        $treeCache->forgetChildren($husbandId);
         cache()->forget("person_raw_details_{$husbandId}");
         if ($wifeId) {
-            cache()->forget("person_children_{$wifeId}");
-            cache()->forget("person_children_details_{$wifeId}");
+            $treeCache->forgetChildren($wifeId);
             cache()->forget("person_raw_details_{$wifeId}");
         }
     }

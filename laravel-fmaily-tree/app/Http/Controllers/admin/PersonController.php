@@ -5,11 +5,15 @@ namespace App\Http\Controllers\admin;
 use App\Http\Controllers\Controller;
 use App\Models\Person;
 use App\Models\Marriage;
+use App\Services\ChildOrderService;
+use App\Services\TreeCacheService;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use App\Exports\PersonsExport;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -323,6 +327,51 @@ class PersonController extends Controller
         }
     }
 
+    public function reorderChildren(Request $request, Person $person)
+    {
+        $validated = $request->validate([
+            'order' => 'required|array|list',
+            'order.*' => 'required|integer|distinct',
+            'previous_order' => 'sometimes|required|array|list',
+            'previous_order.*' => 'required|integer|distinct',
+            'confirmed' => 'sometimes|boolean',
+        ]);
+        $orderedIds = array_map('intval', $validated['order']);
+        $expectedOrder = isset($validated['previous_order']) ? array_map('intval', $validated['previous_order']) : null;
+        $confirmed = (bool) ($validated['confirmed'] ?? false);
+
+        return DB::transaction(function () use ($person, $orderedIds, $expectedOrder, $confirmed) {
+            $parent = Person::lockForUpdate()->findOrFail($person->id);
+            $previousOrder = $this->dashboardChildren($parent, lock: true)->modelKeys();
+            if (count($orderedIds) !== count($previousOrder) || array_diff($orderedIds, $previousOrder)) {
+                throw ValidationException::withMessages(['order' => 'تغيّرت قائمة الأبناء. حدّث الصفحة وحاول مرة ثانية.']);
+            }
+
+            if ($expectedOrder !== null && $expectedOrder !== $previousOrder) {
+                throw ValidationException::withMessages(['order' => 'تغيّر ترتيب الأبناء. حدّث الصفحة وحاول مرة ثانية.']);
+            }
+
+            if ($orderedIds === $previousOrder) {
+                return response()->json(['message' => 'ترتيب الأبناء محفوظ.']);
+            }
+            if (! $confirmed) {
+                return response()->json([
+                    'code' => 'CHILD_ORDER_CONFIRMATION_REQUIRED',
+                    'message' => 'يرجى تأكيد تغيير ترتيب الأبناء قبل الحفظ.',
+                ], 409);
+            }
+
+            DB::table('dashboard_child_orders')->updateOrInsert(
+                ['parent_id' => $parent->id],
+                ['positions' => json_encode(['order' => $orderedIds], JSON_THROW_ON_ERROR)],
+            );
+
+            DB::afterCommit(fn () => app(TreeCacheService::class)->forgetChildren((int) $parent->id));
+
+            return response()->json(['message' => 'تم حفظ ترتيب الأبناء.']);
+        });
+    }
+
     public function search(Request $request)
     {
         $searchTerm = trim((string) $request->input('term', ''));
@@ -386,16 +435,7 @@ class PersonController extends Controller
         // تحميل علاقة location
         $person->load(['location', 'contactAccounts', 'personLocations', 'locations']);
         
-        $orderService = app(\App\Services\MarriageOrderService::class);
-
-        // جلب الأبناء بناءً على جنس الشخص — مرتبين حسب ترتيب الزوجة عند الأب
-        if ($person->gender === 'female') {
-            $children = Person::where('mother_id', $person->id)->get();
-        } else {
-            // علاقة 'children' تفترض البحث بـ parent_id
-            $children = $person->children()->get();
-            $children = $orderService->sortChildrenByMotherOrder($children, (int) $person->id);
-        }
+        $children = $this->dashboardChildren($person);
 
         // جلب الزوجات أو الزوج مع تفاصيل الزواج مرتبة (الأولى ثم الثانية...)
         $spouses = collect(); // إنشاء collection فارغة
@@ -429,6 +469,17 @@ class PersonController extends Controller
             'males'    => $persons->where('gender', 'male'),
             'females'  => $persons->where('gender', 'female'),
         ]);
+    }
+
+    private function dashboardChildren(Person $parent, bool $lock = false): Collection
+    {
+        $query = Person::where($parent->gender === 'female' ? 'mother_id' : 'parent_id', $parent->id);
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+        $children = $query->get();
+
+        return app(ChildOrderService::class)->orderForParent($parent, $children);
     }
 
 

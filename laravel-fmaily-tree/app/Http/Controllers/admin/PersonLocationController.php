@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Person;
 use App\Models\PersonLocation;
 use App\Models\Location;
+use App\Services\TreeCacheService;
 use Illuminate\Http\Request;
 
 class PersonLocationController extends Controller
@@ -42,7 +43,7 @@ class PersonLocationController extends Controller
 
         // مسح الـ cache للشخص
         cache()->forget("person_details_{$person->id}");
-        cache()->forget("person_children_details_{$person->id}");
+        cache()->forget(TreeCacheService::childrenDetailsKey($person->id));
 
         return redirect()->back()->with('success', 'تم إضافة الموقع بنجاح');
     }
@@ -77,7 +78,7 @@ class PersonLocationController extends Controller
 
         // مسح الـ cache للشخص
         cache()->forget("person_details_{$person->id}");
-        cache()->forget("person_children_details_{$person->id}");
+        cache()->forget(TreeCacheService::childrenDetailsKey($person->id));
 
         return redirect()->back()->with('success', 'تم تحديث الموقع بنجاح');
     }
@@ -91,7 +92,7 @@ class PersonLocationController extends Controller
 
         // مسح الـ cache للشخص
         cache()->forget("person_details_{$personId}");
-        cache()->forget("person_children_details_{$personId}");
+        cache()->forget(TreeCacheService::childrenDetailsKey($personId));
 
         return redirect()->back()->with('success', 'تم حذف الموقع بنجاح');
     }

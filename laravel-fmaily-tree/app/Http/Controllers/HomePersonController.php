@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Marriage;
 use App\Models\Person;
+use App\Services\ChildOrderService;
 use Illuminate\Http\Request;
 
 class HomePersonController extends Controller
@@ -45,7 +46,6 @@ class HomePersonController extends Controller
         }
 
         // جلب الزوجات/الزوج مرتبة (الأولى ثم الثانية...)
-        $orderService = app(\App\Services\MarriageOrderService::class);
         $spouses = collect();
         if ($person->gender === 'male') {
             // جلب الزوجات باستخدام Marriage model مرتبة لتجنب مشكلة ambiguous column
@@ -92,18 +92,16 @@ class HomePersonController extends Controller
             $siblings = $siblings->merge($motherSiblings)->unique('id');
         }
 
-        // جلب الأبناء — أبناء الزوجة الأولى أولاً عند الأب
-        $children = collect();
         if ($person->gender === 'male') {
             $children = Person::where('parent_id', $person->id)
-                ->select('id', 'first_name', 'last_name', 'gender', 'birth_date', 'death_date', 'photo_url', 'privacy_settings', 'parent_id', 'mother_id')
+                ->select('id', 'first_name', 'last_name', 'gender', 'birth_date', 'death_date', 'photo_url', 'privacy_settings', 'parent_id', 'mother_id', 'display_order')
                 ->get();
-            $children = $orderService->sortChildrenByMotherOrder($children, (int) $person->id);
         } else {
             $children = Person::where('mother_id', $person->id)
                 ->select('id', 'first_name', 'last_name', 'gender', 'birth_date', 'death_date', 'photo_url', 'privacy_settings', 'parent_id')
                 ->get();
         }
+        $children = app(ChildOrderService::class)->orderForParent($person, $children, useDisplayOrderByDefault: false);
 
         // إرسال بيانات الشخص إلى الـ view
         return view('web-site.persons.show', [

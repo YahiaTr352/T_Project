@@ -510,10 +510,13 @@
                                     <i class="fas fa-child text-success ml-2"></i>
                                     <span>سجل الأبناء والذرية ({{ $children->count() }})</span>
                                 </h4>
-                                <p class="text-muted mb-0 small">
-                                    <i class="fas fa-info-circle ml-1"></i>
-                                    يمكنك سحب وإفلات أي صف لإعادة ترتيب الأبناء وفق التسلسل العمري المرغوب
-                                </p>
+                                @can('people.update')
+                                    <p class="text-muted mb-0 small">
+                                        <i class="fas fa-info-circle ml-1"></i>
+                                        اسحب أي صف لتغيير مكانه، ثم أكّد الترتيب لحفظه.
+                                    </p>
+                                    <p id="children-order-status" class="small mb-0" role="status"></p>
+                                @endcan
                             </div>
                             <button type="button" class="btn btn-success ppl-btn-action shadow-sm" data-toggle="modal" data-target="#addChildModal">
                                 <i class="fas fa-plus"></i>
@@ -535,13 +538,15 @@
                                                 <th class="text-center" style="min-width: 130px;">الإجراءات</th>
                                             </tr>
                                         </thead>
-                                        <tbody id="children-sortable" data-url="{{ route('people.reorder') }}">
+                                        <tbody id="children-sortable" data-url="{{ route('people.children.reorder', $person) }}">
                                             @foreach ($children as $child)
                                                 <tr data-id="{{ $child->id }}">
                                                     <td class="text-center">
-                                                        <span class="ppl-drag-handle" title="اسحب للترتيب">
-                                                            <i class="fas fa-grip-vertical"></i>
-                                                        </span>
+                                                        @can('people.update')
+                                                            <span class="ppl-drag-handle" title="اسحب لتغيير مكان العضو">
+                                                                <i class="fas fa-grip-vertical" aria-hidden="true"></i>
+                                                            </span>
+                                                        @endcan
                                                     </td>
                                                     <td>
                                                         <div class="d-flex align-items-center">
@@ -944,35 +949,48 @@
 
             // ترتيب الأبناء بالسحب والإفلات
             const sortableElement = document.getElementById('children-sortable');
-            if (sortableElement) {
-                Sortable.create(sortableElement, {
+            if (sortableElement?.querySelector('.ppl-drag-handle') && typeof Sortable !== 'undefined') {
+                const status = document.getElementById('children-order-status');
+                let savedOrder = Array.from(sortableElement.rows, (row) => row.dataset.id);
+                const sortable = Sortable.create(sortableElement, {
                     animation: 150,
                     handle: '.ppl-drag-handle',
-                    onEnd: function(evt) {
-                        const order = Array.from(evt.to.children).map((row, index) => ({
-                            id: row.dataset.id,
-                            order: index + 1
-                        }));
-                        updateChildrenOrder(order, sortableElement.dataset.url);
-                    }
-                });
-            }
+                    onEnd: async function(evt) {
+                        if (evt.oldIndex === evt.newIndex) return;
+                        const order = sortable.toArray();
+                        sortable.sort(savedOrder);
+                        if (!window.confirm('هل أنت متأكد من تغيير ترتيب الأبناء؟')) return;
 
-            function updateChildrenOrder(order, url) {
-                fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({ order: order })
-                })
-                .then(response => {
-                    if (!response.ok) throw new Error('فشل تحديث الترتيب');
-                    return response.json();
-                })
-                .catch(error => {
-                    console.error('Error:', error);
+                        sortable.option('disabled', true);
+                        status.classList.remove('text-danger');
+                        status.textContent = 'جارٍ حفظ الترتيب…';
+                        let failureMessage = 'تعذّر حفظ الترتيب. حاول مرة ثانية.';
+                        try {
+                            const response = await fetch(sortableElement.dataset.url, {
+                                method: 'POST',
+                                headers: {
+                                    'Accept': 'application/json',
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                                },
+                                body: JSON.stringify({ order: order, previous_order: savedOrder, confirmed: true })
+                            });
+                            if (!response.ok) {
+                                const data = await response.json();
+                                failureMessage = data.errors?.order?.[0] || data.message || failureMessage;
+                                throw new Error(failureMessage);
+                            }
+                            sortable.sort(order, true);
+                            savedOrder = order;
+                            status.textContent = 'تم حفظ ترتيب الأبناء.';
+                        } catch {
+                            sortable.sort(savedOrder, true);
+                            status.classList.add('text-danger');
+                            status.textContent = failureMessage;
+                        } finally {
+                            sortable.option('disabled', false);
+                        }
+                    }
                 });
             }
 

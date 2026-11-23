@@ -6,6 +6,7 @@ use App\Http\Middleware\VerifyCsrfToken;
 use App\Models\Marriage;
 use App\Models\Person;
 use App\Models\User;
+use App\Services\TreeCacheService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
@@ -260,24 +261,58 @@ class PersonSearchAndMarriageTest extends TestCase
 
     public function test_reorder_people_updates_display_order_and_clears_caches(): void
     {
+        $this->son->update(['mother_id' => $this->outsideWife->id, 'display_order' => 1]);
+        $this->daughter->update(['mother_id' => $this->outsideWife->id, 'display_order' => 2]);
+        $youngerSon = Person::create([
+            'first_name' => 'يوسف',
+            'gender' => 'male',
+            'parent_id' => $this->father->id,
+            'mother_id' => $this->outsideWife->id,
+            'birth_date' => $this->daughter->birth_date,
+            'display_order' => 3,
+        ]);
         cache()->put('family_tree_data', 'cached_tree', 3600);
-        cache()->put("person_children_{$this->father->id}", 'cached_children', 3600);
+
+        $fatherOrder = [$this->son->id, $youngerSon->id, $this->daughter->id];
+        $publicFatherOrder = [$this->son->id, $this->daughter->id, $youngerSon->id];
+        $motherOrder = [$youngerSon->id, $this->daughter->id, $this->son->id];
+        $childrenEndpoints = [
+            "/api/person/{$this->father->id}/children" => $publicFatherOrder,
+            "/api/person/{$this->father->id}/children-details" => $publicFatherOrder,
+            "/api/person/{$this->outsideWife->id}/children-details" => $motherOrder,
+        ];
+        foreach (array_keys($childrenEndpoints) as $endpoint) {
+            $response = $this->getJson($endpoint)->assertOk();
+            $this->assertSame([$this->son->id, $this->daughter->id, $youngerSon->id], $response->json('children.*.id'));
+            $this->getJson($endpoint)->assertOk()->assertJsonPath('cached', true);
+        }
 
         $response = $this->actingAs($this->admin)->postJson(route('people.reorder'), [
             'order' => [
-                ['id' => $this->son->id, 'order' => 2],
-                ['id' => $this->daughter->id, 'order' => 1],
+                ['id' => $youngerSon->id, 'order' => 1],
+                ['id' => $this->daughter->id, 'order' => 2],
+                ['id' => $this->son->id, 'order' => 3],
             ],
         ]);
 
         $response->assertOk();
         $response->assertJson(['status' => 'success']);
 
-        $this->assertEquals(2, $this->son->fresh()->display_order);
-        $this->assertEquals(1, $this->daughter->fresh()->display_order);
+        $this->assertEquals(3, $this->son->fresh()->display_order);
+        $this->assertEquals(2, $this->daughter->fresh()->display_order);
+        $this->assertEquals(1, $youngerSon->fresh()->display_order);
 
         $this->assertNull(cache()->get('family_tree_data'));
-        $this->assertNull(cache()->get("person_children_{$this->father->id}"));
+        $this->get(route('people.show', $this->father))
+            ->assertOk()
+            ->assertViewHas('children', fn ($children) => $children->pluck('id')->all() === $fatherOrder);
+        $this->get(route('people.show', $this->outsideWife))
+            ->assertOk()
+            ->assertViewHas('children', fn ($children) => $children->pluck('id')->all() === $motherOrder);
+        foreach ($childrenEndpoints as $endpoint => $expectedOrder) {
+            $response = $this->getJson($endpoint)->assertOk()->assertJsonPath('cached', false);
+            $this->assertSame($expectedOrder, $response->json('children.*.id'));
+        }
     }
 
     public function test_marriages_reorder_updates_sort_order_and_clears_caches(): void
@@ -289,7 +324,7 @@ class PersonSearchAndMarriageTest extends TestCase
         $m2 = Marriage::create(['husband_id' => $this->father->id, 'wife_id' => $wife2->id, 'sort_order' => 2]);
 
         cache()->put('family_tree_data', 'cached_tree', 3600);
-        cache()->put("person_children_{$this->father->id}", 'cached_children', 3600);
+        cache()->put(TreeCacheService::childrenKey($this->father->id), 'cached_children', 3600);
 
         // إعادة ترتيب الزوجات بالسحب والإفلات لتقديم الزوجة الثانية
         $response = $this->actingAs($this->admin)->postJson(route('marriages.reorder'), [
@@ -304,7 +339,7 @@ class PersonSearchAndMarriageTest extends TestCase
         $this->assertEquals(2, $m1->fresh()->sort_order);
 
         $this->assertNull(cache()->get('family_tree_data'));
-        $this->assertNull(cache()->get("person_children_{$this->father->id}"));
+        $this->assertNull(cache()->get(TreeCacheService::childrenKey($this->father->id)));
     }
 
     public function test_marriages_ordered_scope_prioritizes_marriage_date_with_sort_order_fallback(): void
