@@ -5,7 +5,7 @@ import React from 'react';
 import { Platform, StyleSheet, View, useColorScheme } from 'react-native';
 
 type Props = {
-  todaySteps?: number;
+  todaySteps?: number | null;
   dailyGoal?: number;
   familyRankToday?: number | null;
   familyTotalToday?: number;
@@ -42,7 +42,7 @@ export function WalkingStatsGrid({
   // Resolved values
   const effectiveStreak = streak10k ?? currentStreak;
   const effectiveActiveDays = activeDaysCount ?? totalDaysActive;
-  const effectiveAvg30d = avgDaily30d ?? Math.round(avgDailySteps || todaySteps);
+  const effectiveAvg30d = avgDaily30d ?? Math.round(avgDailySteps || (todaySteps ?? 0));
 
   // Goal calculations: Silver (5,000) & Gold (10,000)
   const silverTarget = 5000;
@@ -52,7 +52,10 @@ export function WalkingStatsGrid({
   let goalTierSub = '';
   let goalBadge = '🥈';
 
-  if (todaySteps < silverTarget) {
+  if (todaySteps === null) {
+    goalRemainingValue = '—';
+    goalTierSub = 'بانتظار قراءة خطوات اليوم';
+  } else if (todaySteps < silverTarget) {
     const diff = silverTarget - todaySteps;
     goalRemainingValue = `باقي ${formatSteps(diff)}`;
     goalTierSub = `للهدف الفضي (5 آلاف)`;

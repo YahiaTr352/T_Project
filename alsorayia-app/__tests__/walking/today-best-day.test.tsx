@@ -1,11 +1,13 @@
+import { StepHeroCard } from '@/components/walking/StepHeroCard';
 import { WalkingHistoryList } from '@/components/walking/WalkingHistoryList';
 import type { PersonalStats, WalkingRecord } from '@/lib/api/walkingApi';
 import { computeBestDay } from '@/lib/walking/achievementMetrics';
 import { formatSteps } from '@/lib/walking/formatters';
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 
 jest.mock('@/components/themed-text', () => ({ ThemedText: jest.requireActual('react-native').Text }));
 jest.mock('@/components/ui/icon-symbol', () => ({ IconSymbol: () => null }));
+jest.mock('expo-linear-gradient', () => ({ LinearGradient: jest.requireActual('react-native').View }));
 
 const today = '2026-11-21';
 const yesterday = '2026-11-20';
@@ -53,7 +55,7 @@ it('uses one total for today in the history row and the best-day calculation', (
       records={input.historyRecords}
       isLoading={false}
       localSteps={{ [yesterday]: 900 }}
-      today={{ dateKey: today, steps: input.todaySteps, isDeviceTime: true }}
+      today={{ dateKey: today, steps: input.todaySteps }}
     />,
   );
 
@@ -130,4 +132,61 @@ it('keeps a dated server best from before the iOS history window', () => {
     personalStats: { ...personalStats, best_day_steps: 2000, best_day_date: '2026-10-01' },
     personalHistorySteps: { [yesterday]: 900 },
   })).toEqual({ bestDaySteps: 2000, bestDayDate: '2026-10-01' });
+});
+
+it('uses local history even when the corresponding day has not synced to Riyadh', () => {
+  const personalHistorySteps = { [yesterday]: 21200 };
+  expect(computeBestDay({ ...input, historyRecords: [], personalHistorySteps }))
+    .toEqual({ bestDaySteps: 21200, bestDayDate: yesterday });
+  render(<WalkingHistoryList
+    records={[{ ...todayRecord, date: yesterday, steps: 1600 }]}
+    isLoading={false}
+    localSteps={personalHistorySteps}
+    today={{ dateKey: today, steps: 300 }}
+  />);
+  expect(screen.getByText(`${formatSteps(300)} خطوة`)).toBeOnTheScreen();
+  expect(screen.getByText(`${formatSteps(21200)} خطوة`)).toBeOnTheScreen();
+});
+
+it('displays unavailable steps instead of showing the Riyadh record or zero', () => {
+  render(<WalkingHistoryList
+    records={[todayRecord]}
+    isLoading={false}
+    today={{ dateKey: today, steps: null, status: 'تعذّر تحديث خطوات صحتي' }}
+  />);
+  expect(screen.getByText('تعذّر تحديث خطوات صحتي')).toBeOnTheScreen();
+  expect(screen.queryByText(`${formatSteps(1600)} خطوة`)).toBeNull();
+  expect(screen.queryByText(`${formatSteps(0)} خطوة`)).toBeNull();
+});
+
+it('shows an inline warning and keeps the sync button usable when there is no reading', () => {
+  const retry = jest.fn();
+  render(<StepHeroCard
+    todaySteps={null}
+    distanceKm={null}
+    calories={null}
+    activeMinutes={null}
+    activityStatus="تعذّر تحديث خطوات صحتي"
+    activityUnavailable
+    onSyncPress={retry}
+  />);
+  expect(screen.getByRole('alert')).toHaveTextContent('تعذّر تحديث خطوات صحتي');
+  expect(screen.getByText('—')).toBeOnTheScreen();
+  expect(screen.queryByText('0%')).toBeNull();
+  expect(screen.queryByText('مزامنة لحظية مباشرة')).toBeNull();
+  fireEvent.press(screen.getByRole('button', { name: /مزامنة/ }));
+  expect(retry).toHaveBeenCalledTimes(1);
+});
+
+it('keeps the saved step count and shows when it was read', () => {
+  render(<StepHeroCard
+    todaySteps={1200}
+    distanceKm={0.91}
+    calories={48}
+    activeMinutes={12}
+    activityStatus="تعذّر تحديث خطوات صحتي · آخر قراءة ٧:٢١ م"
+    activityUnavailable
+  />);
+  expect(screen.getByText(formatSteps(1200))).toBeOnTheScreen();
+  expect(screen.getByRole('alert')).toHaveTextContent(/آخر قراءة/);
 });

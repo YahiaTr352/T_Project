@@ -11,7 +11,7 @@ import { WalkingHistoryList } from '@/components/walking/WalkingHistoryList';
 import { WalkingStatsGrid } from '@/components/walking/WalkingStatsGrid';
 import { Toast } from '@/components/toast';
 import { computeBestDay } from '@/lib/walking/achievementMetrics';
-import { cleanDateYMD, formatSteps, formatEnglishNumber } from '@/lib/walking/formatters';
+import { formatSteps, formatEnglishNumber } from '@/lib/walking/formatters';
 import { ReviewService } from '@/lib/review/reviewService';
 import { WalkingPermissionGuideModal } from '@/components/walking/WalkingPermissionGuideModal';
 import { SmartwatchGuideModal } from '@/components/walking/SmartwatchGuideModal';
@@ -19,7 +19,7 @@ import { useWalkingTrek } from '@/hooks/use-walking-trek';
 import { Colors, silaTheme } from '@/constants/theme';
 import { storage } from '@/contexts/auth-context';
 import { useWalking } from '@/hooks/use-walking';
-import { useLocalWalkingHistory, useLocalWalkingToday } from '@/hooks/use-local-walking-activity';
+import { personalHistoryRange, useLocalWalkingHistory, useLocalWalkingToday } from '@/hooks/use-local-walking-activity';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -74,29 +74,36 @@ export default function WalkingScreen() {
   const [primerDismissed, setPrimerDismissed] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
+  const [personalRefreshVersion, setPersonalRefreshVersion] = useState(0);
 
   const walking = useWalking();
   const isFocused = useIsFocused();
   const isIOS = Platform.OS === 'ios';
-  const { todayKey, timeZoneKey, today: localToday } = useLocalWalkingToday(
-    isIOS && isFocused && currentTab === 'overview' && walking.isHealthSource,
+  const { todayKey, timeZoneKey, today: localToday, status: personalStatus, lastRead } = useLocalWalkingToday(
+    isIOS && isFocused && currentTab === 'overview',
     walking.lastSyncTime?.getTime() ?? null,
+    personalRefreshVersion,
+    walking.isHealthSource,
   );
-  const historyDates = React.useMemo(() => walking.historyRecords
-    .map((record) => cleanDateYMD(record.date))
-    .filter((key) => key && key < todayKey)
-    .sort(), [walking.historyRecords, todayKey]);
-  const localHistory = useLocalWalkingHistory(timeZoneKey, historyDates[0] ?? null, historyDates.at(-1) ?? null);
-  const personalSteps = localToday?.total ?? walking.todaySteps;
-  const personalTodayKey = localToday ? todayKey : walking.currentDateKey;
+  const { from, through } = personalHistoryRange(todayKey);
+  const localHistory = useLocalWalkingHistory(timeZoneKey, from, through, false, personalRefreshVersion);
+  const personalSteps = isIOS ? localToday?.total ?? null : walking.todaySteps;
+  let personalStatusText: string | undefined;
+  if (personalStatus === 'loading') {
+    personalStatusText = 'جاري قراءة خطوات صحتي…';
+  } else if (personalStatus === 'unavailable') {
+    personalStatusText = lastRead
+      ? `تعذّر تحديث خطوات صحتي · آخر قراءة ${lastRead.toLocaleTimeString('ar', { hour: 'numeric', minute: '2-digit' })}`
+      : 'تعذّر تحديث خطوات صحتي';
+  }
   const personalBestDay = isIOS
     ? computeBestDay({
         personalStats: walking.personalStats,
         historyRecords: walking.historyRecords,
         ledger: walking.ledger,
-        todaySteps: personalSteps,
+        todaySteps: personalSteps ?? 0,
         currentDateKey: walking.currentDateKey,
-        personalTodayDateKey: personalTodayKey,
+        personalTodayDateKey: todayKey,
         personalHistorySteps: localHistory?.daily ?? {},
       })
     : walking;
@@ -175,12 +182,17 @@ export default function WalkingScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([walking.refreshAll(), refreshTrek()]);
-    setRefreshing(false);
-  }, [walking, refreshTrek]);
+    if (isIOS) setPersonalRefreshVersion((previous) => previous + 1);
+    try {
+      await Promise.all([walking.refreshAll(), refreshTrek()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [isIOS, walking, refreshTrek]);
 
   // مزامنة فورية صريحة عند ضغط زر «مزامنة مع صحتي / خطواتي» في كارت الخطوات
   const handleManualSync = useCallback(async () => {
+    if (isIOS) setPersonalRefreshVersion((previous) => previous + 1);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } catch {}
@@ -201,14 +213,11 @@ export default function WalkingScreen() {
       try {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch {}
-      const sourceLabel =
-        Platform.OS === 'ios'
-          ? 'صحتي'
-          : result.source === 'health_connect'
-          ? 'Health Connect'
-          : 'حساس جهازك';
+      const sourceLabel = result.source === 'health_connect' ? 'Health Connect' : 'حساس جهازك';
       const formattedCount = formatSteps(result.steps);
-      setToastMessage(`تمت المزامنة بنجاح! تم تحديث ${formattedCount} خطوة من ${sourceLabel} 🎉`);
+      setToastMessage(isIOS
+        ? `تمت مزامنة ${formattedCount} خطوة مع السيرفر بتوقيت الرياض`
+        : `تمت المزامنة بنجاح! تم تحديث ${formattedCount} خطوة من ${sourceLabel} 🎉`);
       setToastVisible(true);
     } else {
       try {
@@ -217,7 +226,7 @@ export default function WalkingScreen() {
       setToastMessage(result.message || 'لم يتم العثور على خطوات جديدة للمزامنة حالياً.');
       setToastVisible(true);
     }
-  }, [walking]);
+  }, [isIOS, walking]);
 
   const onRequestMotionPress = useCallback(async () => {
     grantIntentRef.current = true;
@@ -466,10 +475,12 @@ export default function WalkingScreen() {
               <StepHeroCard
                 todaySteps={personalSteps}
                 dailyGoal={walking.dailyGoal}
-                distanceKm={localToday ? Number((personalSteps * 0.00076).toFixed(2)) : walking.distanceKm}
-                calories={localToday ? Math.round(personalSteps * 0.04) : walking.calories}
-                activeMinutes={localToday ? Math.round(personalSteps / 100) : walking.activeMinutes}
-                stepTimeZoneLabel={isIOS ? (localToday ? 'بتوقيت الجهاز' : 'بتوقيت الرياض') : undefined}
+                distanceKm={isIOS ? (localToday ? Number((localToday.total * 0.00076).toFixed(2)) : null) : walking.distanceKm}
+                calories={isIOS ? (localToday ? Math.round(localToday.total * 0.04) : null) : walking.calories}
+                activeMinutes={isIOS ? (localToday ? Math.round(localToday.total / 100) : null) : walking.activeMinutes}
+                stepTimeZoneLabel={isIOS ? 'بتوقيت الجهاز' : undefined}
+                activityStatus={isIOS ? personalStatusText : undefined}
+                activityUnavailable={isIOS && personalStatus === 'unavailable'}
                 currentStreak={walking.streak10k ?? walking.currentStreak}
                 isSyncing={walking.isSyncing}
                 onSyncPress={handleManualSync}
@@ -506,10 +517,12 @@ export default function WalkingScreen() {
                 historyRecords={walking.historyRecords}
                 todaySteps={walking.todaySteps}
                 dailyGoal={walking.dailyGoal}
-                onLoadHourlyForDate={walking.loadHourlyForDate}
+                onLoadHourlyForDate={isIOS ? undefined : walking.loadHourlyForDate}
                 localTodayKey={isIOS ? todayKey : undefined}
                 localToday={localToday}
                 timeZoneKey={timeZoneKey}
+                refreshVersion={personalRefreshVersion}
+                activityStatus={isIOS ? personalStatusText : undefined}
               />
 
               <ThemedText type="subtitle" style={[styles.sectionTitle, { marginTop: 20 }]}>
@@ -526,7 +539,7 @@ export default function WalkingScreen() {
                 activeDaysCount={walking.activeDaysCount}
                 avgDaily30d={walking.avgDaily30d}
                 currentStreak={walking.currentStreak}
-                avgDailySteps={walking.personalStats?.avg_daily_steps || Math.round(walking.todaySteps)}
+                avgDailySteps={walking.personalStats?.avg_daily_steps || Math.round(personalSteps ?? 0)}
                 totalDaysActive={walking.personalStats?.total_days_active || 1}
               />
 
@@ -535,7 +548,7 @@ export default function WalkingScreen() {
                 <ThemedText type="subtitle" style={styles.sectionTitle}>
                   سجل الأيام السابقة
                 </ThemedText>
-                {walking.historyRecords.length > 0 && (
+                {!isIOS && walking.historyRecords.length > 0 && (
                   <View style={[styles.historyCountBadge, { backgroundColor: isDark ? '#27272A' : '#E5E7EB' }]}>
                     <ThemedText style={[styles.historyCountBadgeText, { color: colors.icon }]}>
                       {walking.historyRecords.length} يوم
@@ -547,8 +560,9 @@ export default function WalkingScreen() {
                 records={walking.historyRecords}
                 isLoading={walking.loadingHistory}
                 localSteps={localHistory?.daily}
-                today={isIOS ? { dateKey: personalTodayKey, steps: personalSteps, isDeviceTime: !!localToday } : undefined}
+                today={isIOS ? { dateKey: todayKey, steps: personalSteps, status: personalStatusText } : undefined}
                 showTimeZone={isIOS}
+                refreshFailed={localHistory?.failed}
               />
             </View>
           )}

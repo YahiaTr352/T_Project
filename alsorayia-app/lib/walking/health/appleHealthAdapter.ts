@@ -289,7 +289,7 @@ async function readPersonalManualSteps(
 
 interface AppleHealthProvider extends WalkingHealthProvider {
   readPersonalDay(day: Date): Promise<HealthDaySteps | null>;
-  readPersonalDays(firstDay: Date, lastDay: Date): Promise<Record<string, number>>;
+  readPersonalDays(firstDay: Date, lastDay: Date): Promise<Record<string, number> | null>;
 }
 
 export function createAppleHealthAdapter(deps: AppleHealthAdapterDeps): AppleHealthProvider {
@@ -450,7 +450,7 @@ export function createAppleHealthAdapter(deps: AppleHealthAdapterDeps): AppleHea
       const module = loadModule();
       const start = startOfDay(firstDay);
       const { end } = resolveDeviceDayRange(lastDay);
-      if (!module || start >= end) return {};
+      if (!module || start >= end) return null;
 
       try {
         const [stats, manualDays] = await Promise.all([
@@ -462,7 +462,7 @@ export function createAppleHealthAdapter(deps: AppleHealthAdapterDeps): AppleHea
           ),
           readPersonalManualSteps(module, start, end),
         ]);
-        if (!manualDays) return {};
+        if (!manualDays) return null;
 
         const daily: Record<string, number> = {};
         for (const item of stats) {
@@ -475,7 +475,7 @@ export function createAppleHealthAdapter(deps: AppleHealthAdapterDeps): AppleHea
         }
         return daily;
       } catch {
-        return {};
+        return null;
       }
     },
 

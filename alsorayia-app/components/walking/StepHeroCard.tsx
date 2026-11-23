@@ -14,17 +14,19 @@ import {
 } from 'react-native';
 
 type Props = {
-  todaySteps: number;
+  todaySteps: number | null;
   dailyGoal?: number;
   progress?: number;
-  distanceKm: number;
-  calories: number;
-  activeMinutes: number;
+  distanceKm: number | null;
+  calories: number | null;
+  activeMinutes: number | null;
   currentStreak?: number;
   isSyncing?: boolean;
   onSyncPress?: () => void;
   lastSyncTime?: Date | null;
   stepTimeZoneLabel?: string;
+  activityStatus?: string;
+  activityUnavailable?: boolean;
 };
 
 export function StepHeroCard({
@@ -38,10 +40,12 @@ export function StepHeroCard({
   onSyncPress,
   lastSyncTime,
   stepTimeZoneLabel,
+  activityStatus,
+  activityUnavailable = false,
 }: Props) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const pct = Math.min(100, Math.round((todaySteps / dailyGoal) * 100));
+  const pct = todaySteps === null ? null : Math.min(100, Math.round((todaySteps / dailyGoal) * 100));
 
   // أنيميشن دوران أيقونة المزامنة بسلاسة 60 إطار في الثانية
   const spinAnim = useRef(new Animated.Value(0)).current;
@@ -109,7 +113,7 @@ export function StepHeroCard({
         </View>
 
         {/* 3 Metrics inline */}
-        <View style={styles.metricsInline}>
+        {distanceKm !== null && calories !== null && activeMinutes !== null && <View style={styles.metricsInline}>
           <View style={styles.metricItem}>
             <IconSymbol name="mappin.circle.fill" size={10.5} color="#5EEAD4" />
             <ThemedText style={styles.metricText}>{distanceKm} كم</ThemedText>
@@ -124,14 +128,14 @@ export function StepHeroCard({
             <IconSymbol name="clock.fill" size={10.5} color="#5EEAD4" />
             <ThemedText style={styles.metricText}>{activeMinutes} د</ThemedText>
           </View>
-        </View>
+        </View>}
       </View>
 
       {/* Row 2: Steps Count on Right, Target Percentage on Left */}
       <View style={styles.middleRow}>
         <View style={styles.stepCountWrap}>
           <ThemedText style={styles.stepsNumber}>
-            {formatSteps(todaySteps)}
+            {todaySteps === null ? '—' : formatSteps(todaySteps)}
           </ThemedText>
           <ThemedText style={styles.stepLabel}>
             {stepTimeZoneLabel ? `خطوة · ${stepTimeZoneLabel}` : 'خطوة'}
@@ -140,20 +144,20 @@ export function StepHeroCard({
 
         <View style={styles.goalInfoWrap}>
           <ThemedText style={styles.goalTargetText}>
-            {pct >= 100 ? '🎉 الهدف مكتمل' : `الهدف: ${formatSteps(dailyGoal)}`}
+            {pct !== null && pct >= 100 ? '🎉 الهدف مكتمل' : `الهدف: ${formatSteps(dailyGoal)}`}
           </ThemedText>
-          <View
+          {pct !== null && <View
             style={[
               styles.goalPctBadge,
               pct >= 100 && styles.goalPctBadgeAchieved,
             ]}>
             <ThemedText style={styles.goalPctText}>{pct}%</ThemedText>
-          </View>
+          </View>}
         </View>
       </View>
 
       {/* Row 3: Slim Progress Bar (3.5px) */}
-      <View style={styles.progressBarTrack}>
+      {pct !== null && <View style={styles.progressBarTrack}>
         <View style={[styles.progressBarFill, { width: `${pct}%` }]}>
           <LinearGradient
             colors={['#F59E0B', '#10B981', '#34D399']}
@@ -162,12 +166,28 @@ export function StepHeroCard({
             style={StyleSheet.absoluteFill}
           />
         </View>
-      </View>
+      </View>}
+      {activityStatus && (
+        <View style={[styles.activityStatus, activityUnavailable && styles.activityWarning]}>
+          <ThemedText
+            accessibilityRole={activityUnavailable ? 'alert' : undefined}
+            accessibilityLiveRegion="polite"
+            style={[styles.activityStatusText, activityUnavailable && styles.activityWarningText]}>
+            {activityStatus}
+          </ThemedText>
+          <IconSymbol
+            name={activityUnavailable ? 'exclamationmark.triangle.fill' : 'info.circle'}
+            size={14}
+            color={activityUnavailable ? '#FCD34D' : '#99F6E4'}
+          />
+        </View>
+      )}
 
       {/* Row 4: Action Sync Bar (زر تفاعلي رئيسي للمزامنة الفورية مع صحتي / خطواتي) */}
       {onSyncPress && (
         <View style={styles.actionSyncRow}>
           <TouchableOpacity
+            accessibilityRole="button"
             activeOpacity={0.75}
             onPress={onSyncPress}
             disabled={isSyncing}
@@ -191,11 +211,11 @@ export function StepHeroCard({
             <ThemedText style={styles.lastSyncLabel}>
               آخر مزامنة: {lastSyncTimeText}
             </ThemedText>
-          ) : (
+          ) : !activityStatus ? (
             <ThemedText style={styles.lastSyncLabel}>
               مزامنة لحظية مباشرة
             </ThemedText>
-          )}
+          ) : null}
         </View>
       )}
     </LinearGradient>
@@ -374,5 +394,33 @@ const styles = StyleSheet.create({
     fontFamily: 'Tajawal-Regular',
     fontSize: 10,
     color: 'rgba(204, 251, 241, 0.75)',
+  },
+  activityStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#4D8078',
+    backgroundColor: '#134C46',
+  },
+  activityWarning: {
+    borderColor: '#B48B3C',
+    backgroundColor: '#423420',
+  },
+  activityStatusText: {
+    flex: 1,
+    fontFamily: 'Tajawal-Medium',
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#ECFEFF',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  activityWarningText: {
+    color: '#FEF3C7',
   },
 });

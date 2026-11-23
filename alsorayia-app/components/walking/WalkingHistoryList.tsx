@@ -10,16 +10,24 @@ type Props = {
   records: WalkingRecord[];
   isLoading: boolean;
   localSteps?: Record<string, number>;
-  today?: { dateKey: string; steps: number; isDeviceTime: boolean };
+  today?: { dateKey: string; steps: number | null; status?: string };
   showTimeZone?: boolean;
+  refreshFailed?: boolean;
 };
 
-export function WalkingHistoryList({ records, isLoading, localSteps, today, showTimeZone }: Props) {
+export function WalkingHistoryList({ records, isLoading, localSteps, today, showTimeZone, refreshFailed }: Props) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
   const isDark = colorScheme === 'dark';
+  const rows: { key: number | string; date: string; record?: WalkingRecord }[] = today
+    ? [...new Set([today.dateKey, ...records.map((record) => cleanDateYMD(record.date)), ...Object.keys(localSteps ?? {})])]
+      .filter((date) => date && date <= today.dateKey)
+      .sort((a, b) => b.localeCompare(a))
+      .slice(0, 30)
+      .map((date) => ({ key: date, date }))
+    : records.map((record) => ({ key: record.id || record.date, date: record.date, record }));
 
-  if (isLoading && records.length === 0) {
+  if (isLoading && rows.length === 0) {
     return (
       <View style={styles.loadingBox}>
         <ActivityIndicator size="large" color={silaTheme.primary} />
@@ -30,7 +38,7 @@ export function WalkingHistoryList({ records, isLoading, localSteps, today, show
     );
   }
 
-  if (records.length === 0) {
+  if (rows.length === 0) {
     return (
       <View
         style={[
@@ -51,21 +59,24 @@ export function WalkingHistoryList({ records, isLoading, localSteps, today, show
 
   return (
     <View style={styles.container}>
-      {records.map((rec) => {
-        const date = cleanDateYMD(rec.date);
+      {refreshFailed && <ThemedText style={[styles.metricText, { color: colors.icon }]}>
+        تعذّر تحديث الأيام السابقة من صحتي
+      </ThemedText>}
+      {rows.map(({ key, date: rowDate, record }) => {
+        const date = cleanDateYMD(rowDate);
         const currentDay = today?.dateKey === date ? today : undefined;
         const local = localSteps?.[date];
-        const displayedSteps = currentDay?.steps ?? local;
-        const steps = displayedSteps ?? rec.steps;
-        const distanceKm = displayedSteps != null ? Number((steps * 0.00076).toFixed(2)) : rec.distance_km;
-        const calories = displayedSteps != null ? Math.round(steps * 0.04) : rec.calories;
-        const minutes = displayedSteps != null ? Math.round(steps / 100) : rec.duration_minutes;
-        const isDeviceTime = currentDay?.isDeviceTime ?? (local != null);
-        const tier = getStepTierConfig(steps, isDark);
+        const displayedSteps = currentDay ? currentDay.steps : local;
+        const steps = displayedSteps ?? record?.steps ?? null;
+        const distanceKm = displayedSteps != null ? Number((displayedSteps * 0.00076).toFixed(2)) : record?.distance_km;
+        const calories = displayedSteps != null ? Math.round(displayedSteps * 0.04) : record?.calories;
+        const minutes = displayedSteps != null ? Math.round(displayedSteps / 100) : record?.duration_minutes;
+        const isDeviceTime = !!today || local != null;
+        const tier = getStepTierConfig(steps ?? 0, isDark);
 
         return (
           <View
-            key={rec.id || rec.date}
+            key={key}
             style={[
               styles.card,
               {
@@ -75,7 +86,7 @@ export function WalkingHistoryList({ records, isLoading, localSteps, today, show
             ]}>
             <View style={styles.headerRow}>
               <View style={styles.dateColumn}>
-                <ThemedText style={styles.dateText}>{formatDateAr(rec.date, { includeWeekday: true })}</ThemedText>
+                <ThemedText style={styles.dateText}>{formatDateAr(rowDate, { includeWeekday: true })}</ThemedText>
                 {showTimeZone && (
                   <ThemedText style={[styles.metricText, { color: colors.icon }]}>
                     {isDeviceTime ? 'بتوقيت الجهاز' : 'بتوقيت الرياض'}
@@ -92,12 +103,16 @@ export function WalkingHistoryList({ records, isLoading, localSteps, today, show
                   },
                 ]}>
                 <ThemedText style={[styles.stepsVal, { color: tier.textColor }]}>
-                  {formatSteps(steps)} خطوة
+                  {steps === null ? '—' : `${formatSteps(steps)} خطوة`}
                 </ThemedText>
               </View>
             </View>
 
-            <View style={styles.metricsRow}>
+            {currentDay?.status || steps === null ? (
+              <ThemedText style={[styles.metricText, { color: colors.icon }]}>
+                {currentDay?.status ?? 'قراءة صحتي غير متاحة لهذا اليوم'}
+              </ThemedText>
+            ) : <View style={styles.metricsRow}>
               {distanceKm != null && (
                 <View style={styles.metricItem}>
                   <IconSymbol name="mappin.circle.fill" size={14} color="#10B981" />
@@ -124,7 +139,7 @@ export function WalkingHistoryList({ records, isLoading, localSteps, today, show
                   </ThemedText>
                 </View>
               )}
-            </View>
+            </View>}
           </View>
         );
       })}

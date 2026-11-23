@@ -339,7 +339,7 @@ describe('createAppleHealthAdapter', () => {
       .resolves.toEqual({ '2025-03-09': 3000, '2025-03-10': 0, '2025-03-11': 0 });
   });
 
-  it('allows fallback to saved activity if the manual records cannot be checked', async () => {
+  it('marks personal activity as unavailable if manual records cannot be checked', async () => {
     const day = new Date(2025, 2, 9);
     const adapter = createAppleHealthAdapter({
       loadModule: () => createModule({
@@ -353,7 +353,7 @@ describe('createAppleHealthAdapter', () => {
     });
 
     await expect(adapter.readPersonalDay(day)).resolves.toBeNull();
-    await expect(adapter.readPersonalDays(day, day)).resolves.toEqual({});
+    await expect(adapter.readPersonalDays(day, day)).resolves.toBeNull();
   });
 
   it('starts a new local day at zero when yesterday confirms Health access', async () => {

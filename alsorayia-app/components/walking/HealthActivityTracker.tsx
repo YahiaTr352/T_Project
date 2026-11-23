@@ -38,7 +38,11 @@ export interface HealthActivityTrackerProps {
   localTodayKey?: string;
   localToday?: HealthDaySteps | null;
   timeZoneKey?: string | null;
+  refreshVersion?: number;
+  activityStatus?: string;
 }
+
+const EMPTY_LEDGER: WalkingLedger = { daily: {} };
 
 function periodDates(date: Date, period: ActivityPeriod): [Date, Date] {
   const year = date.getFullYear();
@@ -58,6 +62,8 @@ export function HealthActivityTracker({
   localTodayKey,
   localToday,
   timeZoneKey = null,
+  refreshVersion = 0,
+  activityStatus,
 }: HealthActivityTrackerProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
@@ -77,8 +83,9 @@ export function HealthActivityTracker({
   const to = dateKey(periodEnd);
   const yesterday = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate() - 1);
   const through = to < dateKey(yesterday) ? to : dateKey(yesterday);
+  const isDeviceTime = localTodayKey != null;
   const isSelectedDayToday = dateKey(selectedDate) === localTodayKey;
-  const localHistory = useLocalWalkingHistory(timeZoneKey, from <= through ? from : null, through, selectedPeriod === 'day');
+  const localHistory = useLocalWalkingHistory(timeZoneKey, from <= through ? from : null, through, selectedPeriod === 'day', refreshVersion);
   const localDay = isSelectedDayToday ? localToday : localHistory?.day;
   const localDaily = useMemo(() => {
     if (localToday && localTodayKey && from <= localTodayKey && localTodayKey <= to) {
@@ -86,6 +93,16 @@ export function HealthActivityTracker({
     }
     return localHistory?.daily;
   }, [from, to, localTodayKey, localToday, localHistory]);
+
+  const displayLedger = isDeviceTime ? EMPTY_LEDGER : ledger;
+  const displayRecords = isDeviceTime ? undefined : historyRecords;
+  const displayedTodaySteps = isDeviceTime ? localToday?.total : todaySteps;
+  const activityUnavailable = isDeviceTime && (selectedPeriod === 'day'
+    ? localDay == null
+    : !localDaily || Object.keys(localDaily).length === 0);
+  const includesLocalToday = isDeviceTime && from <= todayKey && todayKey <= to;
+  const updateStatus = (includesLocalToday ? activityStatus : undefined)
+    ?? (localHistory?.failed ? 'تعذّر تحديث الأيام السابقة من صحتي' : undefined);
 
   // 3. النقطة المحددة حالياً للتفاصيل (Inspector)
   const [selectedBarIndex, setSelectedBarIndex] = useState<number | null>(null);
@@ -120,23 +137,23 @@ export function HealthActivityTracker({
 
   // حساب ملخصات الفترات بدقة وسرعة عبر useMemo
   const daySummary = useMemo(
-    () => computeDaySummary(selectedDate, ledger, historyRecords, todaySteps, localDay),
-    [selectedDate, ledger, historyRecords, todaySteps, localDay]
+    () => computeDaySummary(selectedDate, displayLedger, displayRecords, displayedTodaySteps, localDay),
+    [selectedDate, displayLedger, displayRecords, displayedTodaySteps, localDay]
   );
 
   const weekSummary = useMemo(
-    () => computeWeekSummary(selectedDate, ledger, historyRecords, todaySteps, dailyGoal, localDaily),
-    [selectedDate, ledger, historyRecords, todaySteps, dailyGoal, localDaily]
+    () => computeWeekSummary(selectedDate, displayLedger, displayRecords, displayedTodaySteps, dailyGoal, localDaily),
+    [selectedDate, displayLedger, displayRecords, displayedTodaySteps, dailyGoal, localDaily]
   );
 
   const monthSummary = useMemo(
-    () => computeMonthSummary(selectedDate, ledger, historyRecords, todaySteps, dailyGoal, localDaily),
-    [selectedDate, ledger, historyRecords, todaySteps, dailyGoal, localDaily]
+    () => computeMonthSummary(selectedDate, displayLedger, displayRecords, displayedTodaySteps, dailyGoal, localDaily),
+    [selectedDate, displayLedger, displayRecords, displayedTodaySteps, dailyGoal, localDaily]
   );
 
   const yearSummary = useMemo(
-    () => computeYearSummary(selectedDate, ledger, historyRecords, todaySteps, localDaily),
-    [selectedDate, ledger, historyRecords, todaySteps, localDaily]
+    () => computeYearSummary(selectedDate, displayLedger, displayRecords, displayedTodaySteps, localDaily),
+    [selectedDate, displayLedger, displayRecords, displayedTodaySteps, localDaily]
   );
 
   const canGoForward = useMemo(
@@ -688,15 +705,16 @@ export function HealthActivityTracker({
         </TouchableOpacity>
       </View>
 
+      {activityUnavailable ? (
+        <ThemedText style={[styles.primaryLabel, { color: colors.icon }]}>
+          {updateStatus ?? 'قراءة صحتي غير متاحة لهذه الفترة'}
+        </ThemedText>
+      ) : <>
       {/* 3️⃣ ملخص الأرقام العلوية (Hero Metrics Header) */}
       <View style={styles.metricsSummaryWrap}>
         {Platform.OS === 'ios' && (
           <ThemedText style={[styles.primaryLabel, { color: colors.icon }]}>
-            {selectedPeriod === 'day'
-              ? (localDay ? 'بتوقيت الجهاز' : 'بتوقيت الرياض')
-              : localDaily && Object.keys(localDaily).length > 0
-                ? 'صحتي بتوقيت الجهاز، والسجل المحفوظ بتوقيت الرياض'
-                : 'بتوقيت الرياض'}
+            {updateStatus ?? 'بتوقيت الجهاز'}
           </ThemedText>
         )}
         <View style={styles.metricsTopRow}>
@@ -830,6 +848,7 @@ export function HealthActivityTracker({
           {currentInsight}
         </ThemedText>
       </View>
+      </>}
     </View>
   );
 }

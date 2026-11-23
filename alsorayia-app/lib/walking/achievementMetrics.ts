@@ -40,13 +40,14 @@ export function computeBestDay({
     : serverStatsDate >= todayKey && rawServerBest === personalStats?.today_steps;
 
   // Match an undated server best to the saved history before replacing its count.
-  const serverBestReplacedByHistory = personalHistorySteps != null && historyRecords?.some((record) => {
+  const serverBestHasLocalReading = personalHistorySteps?.[serverBestDate] != null && serverBestDate < todayKey;
+  const serverBestReplacedByHistory = serverBestHasLocalReading || (personalHistorySteps != null && historyRecords?.some((record) => {
     const date = cleanDateYMD(record.date);
     if (!date || date >= todayKey) return false;
     return serverBestDate
       ? date === serverBestDate
       : record.steps === rawServerBest && personalHistorySteps[date] != null;
-  });
+  }));
   let maxSteps = Number.isFinite(rawServerBest)
     && !(usePersonalToday && serverBestCouldBeToday)
     && !serverBestReplacedByHistory
@@ -68,8 +69,15 @@ export function computeBestDay({
 
   for (const [date, steps] of Object.entries(ledger.daily)) {
     if (usePersonalToday && date >= todayKey) continue;
-    if (historyDates?.has(date)) continue;
+    if (historyDates?.has(date) || personalHistorySteps?.[date] != null) continue;
     if (steps > maxSteps || (usePersonalToday && !bestDayDate && steps === maxSteps && maxSteps > 0)) {
+      maxSteps = steps;
+      bestDayDate = date;
+    }
+  }
+
+  for (const [date, steps] of Object.entries(personalHistorySteps ?? {})) {
+    if (date < todayKey && (steps > maxSteps || (!bestDayDate && steps === maxSteps && maxSteps > 0))) {
       maxSteps = steps;
       bestDayDate = date;
     }
