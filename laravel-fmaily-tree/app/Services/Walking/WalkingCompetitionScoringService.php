@@ -1099,9 +1099,17 @@ class WalkingCompetitionScoringService
      *
      * @return array<string, mixed>
      */
-    public function getDailyRaceTimeline(QuizCompetition $competition, QuizQuestion $question, ?Person $viewer = null): array
-    {
+    public function getDailyRaceTimeline(
+        QuizCompetition $competition,
+        QuizQuestion $question,
+        ?Person $viewer = null,
+        ?int $maxRanks = null,
+        bool $personalizeViewer = true,
+    ): array {
         $config = $question->getWalkingRaceConfig();
+        if ($maxRanks !== null) {
+            $config['max_ranks'] = $maxRanks;
+        }
         $targetGender = $question->getWalkingTargetGender();
         $canViewFemale = $this->canViewFemaleLeaderboard($viewer);
         $isGroupScoped = $question->isGroupWalkingChallenge();
@@ -1243,7 +1251,7 @@ class WalkingCompetitionScoringService
         });
 
         // Personalize viewer visibility if viewer is anonymous in their own race view
-        if ($viewer && ! empty($payload['sections'])) {
+        if ($personalizeViewer && $viewer && ! empty($payload['sections'])) {
             $viewerId = (int) $viewer->id;
             foreach ($payload['sections'] as &$sec) {
                 foreach ($sec['days'] as &$day) {

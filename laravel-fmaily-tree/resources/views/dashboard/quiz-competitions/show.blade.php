@@ -20,17 +20,153 @@
         direction: rtl;
         text-align: right;
     }
+    .quiz-mobile-action-label {
+        display: none;
+    }
+
+    @media (max-width: 991.98px) {
+        .quiz-competition-details {
+            padding-inline: .75rem;
+        }
+        .quiz-competition-details > .page-header,
+        .quiz-competition-details > .content-card > .card-header,
+        .quiz-competition-details > .content-card > .card-body {
+            padding: .875rem !important;
+        }
+        .quiz-competition-details > .page-header > div,
+        .quiz-competition-actions {
+            width: 100%;
+        }
+        .quiz-competition-details > .content-card > .card-header {
+            flex-wrap: wrap;
+            gap: .5rem;
+        }
+        .quiz-competition-details > .content-card .card-title {
+            font-size: 1.05rem !important;
+        }
+        .quiz-competition-actions > * {
+            flex: 1 1 8rem;
+        }
+        .quiz-competition-actions,
+        .quiz-race-actions,
+        .quiz-question-actions > div {
+            gap: .5rem !important;
+        }
+        .quiz-competition-actions .btn {
+            width: 100%;
+        }
+        .quiz-competition-schedule {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: .75rem;
+            margin: 0;
+        }
+        .quiz-competition-schedule > div {
+            max-width: none;
+            padding: 0;
+            margin: 0 !important;
+        }
+        .quiz-competition-details .quiz-questions-list {
+            overflow: visible;
+        }
+        .quiz-questions-table {
+            display: block;
+        }
+        .quiz-questions-table > thead {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            margin: -1px;
+            overflow: hidden;
+            clip-path: inset(50%);
+            white-space: nowrap;
+        }
+        .quiz-questions-table > tbody {
+            display: grid;
+            gap: .875rem;
+        }
+        .quiz-questions-table > tbody > tr {
+            display: grid;
+            grid-template-columns: max-content minmax(0, 1fr);
+            grid-template-areas:
+                "number title"
+                ". type"
+                "results results"
+                "winners winners"
+                "actions actions";
+            align-items: start;
+            gap: .625rem;
+            padding: .75rem;
+            border: 1px solid var(--premium-border);
+            border-radius: 12px;
+        }
+        .quiz-questions-table > tbody > tr > td {
+            display: block;
+            min-width: 0;
+            padding: 0;
+            border: 0;
+        }
+        .quiz-questions-table > tbody > tr > .quiz-question-number {
+            grid-area: number;
+            align-self: center;
+            padding: .125rem .375rem;
+            border-radius: 6px;
+            background: var(--premium-bg-light);
+        }
+        .quiz-question-title { grid-area: title; }
+        .quiz-question-title .question-row-text { overflow-wrap: anywhere; }
+        .quiz-question-type { grid-area: type; }
+        .quiz-question-results { grid-area: results; }
+        .quiz-question-winners { grid-area: winners; }
+        .quiz-question-actions { grid-area: actions; }
+        .quiz-questions-table > tbody > tr > :is(.quiz-question-results, .quiz-question-winners, .quiz-question-actions) {
+            padding-top: .625rem;
+            border-top: 1px solid var(--premium-border);
+        }
+        .quiz-competition-actions .btn,
+        .quiz-questions-table .btn {
+            display: inline-flex;
+            min-height: 44px;
+            align-items: center;
+            justify-content: center;
+            gap: .25rem;
+            white-space: normal;
+            line-height: 1.35;
+        }
+        .quiz-question-results .quiz-walking-standings {
+            width: 100%;
+        }
+        .quiz-race-actions .btn {
+            border-radius: 8px;
+        }
+        .quiz-race-actions > form {
+            flex: 0 0 100%;
+        }
+        .quiz-race-actions > button {
+            flex: 1 1 6rem;
+        }
+        .quiz-race-actions > form > button,
+        .quiz-question-actions .btn {
+            width: 100%;
+        }
+        .quiz-question-actions > div > * {
+            flex: 1;
+        }
+        .quiz-questions-table .quiz-mobile-action-label {
+            display: inline;
+        }
+    }
 </style>
 @endpush
 
 @section('content')
-<div class="container-fluid py-4">
+<div class="container-fluid py-4 quiz-competition-details">
     {{-- Page Header --}}
     <x-dashboard.page-header
         :title="$quizCompetition->title"
         description="إدارة البنود والأسئلة، إجراء القرعة والسحب الآلي للفائزين، واستعراض نتائج المشاركين.">
         <x-slot name="actions">
-            <div class="d-flex align-items-center flex-wrap gap-2">
+            <div class="d-flex align-items-center flex-wrap gap-2 quiz-competition-actions">
                 <a href="{{ route('dashboard.quiz-competitions.index') }}" class="btn btn-outline-secondary d-inline-flex align-items-center gap-1 px-3 py-2" style="border-radius: 12px; font-weight: 600;">
                     <i class="fe fe-arrow-right"></i>
                     <span>العودة للقائمة</span>
@@ -71,7 +207,7 @@
 
     {{-- Competition Info Glance Card --}}
     <x-dashboard.card title="بيانات الاستطلاع والجدولة" icon="fe-info" class="mb-4">
-        <div class="row g-3">
+        <div class="row g-3 quiz-competition-schedule">
             <div class="col-sm-6 col-md-3 mb-3">
                 <span class="text-muted d-block small font-weight-bold">الحالة الحالية:</span>
                 <div class="mt-1">
@@ -133,30 +269,30 @@
         </x-slot>
 
         @if($quizCompetition->questions->count() > 0)
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th style="width: 50px;">#</th>
-                            <th>نص البند / السؤال</th>
-                            <th>نوع الاستجابة</th>
-                            <th>الردود والإحصائيات</th>
-                            <th>الفائزون والقرعة</th>
-                            <th style="width: 100px;" class="text-center">الإجراءات</th>
+            <div class="table-responsive quiz-questions-list">
+                <table class="table table-hover align-middle mb-0 quiz-questions-table" role="table" aria-label="البنود والأسئلة المضافة">
+                    <thead role="rowgroup">
+                        <tr role="row">
+                            <th scope="col" role="columnheader" style="width: 50px;">#</th>
+                            <th scope="col" role="columnheader">نص البند / السؤال</th>
+                            <th scope="col" role="columnheader">نوع الاستجابة</th>
+                            <th scope="col" role="columnheader">الردود والإحصائيات</th>
+                            <th scope="col" role="columnheader">الفائزون والقرعة</th>
+                            <th scope="col" role="columnheader" style="width: 100px;" class="text-center">الإجراءات</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody role="rowgroup">
                         @foreach($quizCompetition->questions as $index => $question)
-                            <tr>
-                                <td>
+                            <tr role="row">
+                                <td class="quiz-question-number" role="cell">
                                     <span class="text-muted font-weight-bold">{{ sprintf('%02d', $index + 1) }}</span>
                                 </td>
-                                <td>
+                                <td class="quiz-question-title" role="cell">
                                     <div class="question-row-text">
                                         {!! Str::limit(strip_tags($question->question_text), 90) !!}
                                     </div>
                                 </td>
-                                <td>
+                                <td class="quiz-question-type" role="cell">
                                     @if($question->answer_type === 'multiple_choice')
                                         <span class="badge-modern badge-modern-primary">
                                             <i class="fe fe-check-square"></i> اختيار من متعدد
@@ -187,9 +323,9 @@
                                         </span>
                                     @endif
                                 </td>
-                                <td>
+                                <td class="quiz-question-results" role="cell">
                                     @if($question->answer_type === 'walking')
-                                        <a href="{{ route('dashboard.quiz-competitions.responses', ['quizCompetition' => $quizCompetition, 'question_id' => $question->id]) }}" class="btn btn-sm btn-outline-success px-3 font-weight-bold mb-1" style="border-radius: 8px;" title="عرض ترتيب المتسابقين وإدارة النقاط">
+                                        <a href="{{ route('dashboard.quiz-competitions.responses', ['quizCompetition' => $quizCompetition, 'question_id' => $question->id]) }}" class="btn btn-sm btn-outline-success px-3 font-weight-bold mb-1 quiz-walking-standings" style="border-radius: 8px;" title="عرض ترتيب المتسابقين وإدارة النقاط">
                                             <i class="fe fe-activity mr-1"></i> جدول الترتيب والنقاط
                                         </a>
                                         <small class="d-block text-muted mb-2">
@@ -197,7 +333,7 @@
                                         </small>
 
                                         @php $raceCfg = $question->getWalkingRaceConfig(); @endphp
-                                        <div class="d-flex flex-wrap align-items-center gap-1">
+                                        <div class="d-flex flex-wrap align-items-center gap-1 quiz-race-actions">
                                             <form action="{{ route('dashboard.quiz-questions.walking-race-settings', [$quizCompetition, $question]) }}" method="POST" class="d-inline">
                                                 @csrf
                                                 <input type="hidden" name="quick_toggle" value="1">
@@ -219,6 +355,15 @@
                                                     title="تخصيص إعدادات سباق الترتيب اليومي">
                                                 <i class="fe fe-sliders mr-1"></i> إعدادات السباق
                                             </button>
+                                            @if(auth()->user()->canAny(['site-content.view', 'dashboard.view']) && $question->canViewWalkingLeaderboard(auth()->user()->person))
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-success font-weight-bold"
+                                                        data-toggle="modal"
+                                                        data-target="#walkingRaceVideoModal"
+                                                        data-video-timeline="{{ route('dashboard.quiz-questions.walking-race-video', [$quizCompetition, $question], false) }}">
+                                                    <i class="fe fe-film mr-1" aria-hidden="true"></i> حفظ الفيديو
+                                                </button>
+                                            @endif
                                         </div>
                                     @elseif($question->answers_count > 0)
                                         <a href="{{ route('dashboard.quiz-competitions.responses', ['quizCompetition' => $quizCompetition, 'question_id' => $question->id]) }}" class="btn btn-sm btn-outline-info px-3 font-weight-bold" style="border-radius: 8px;" title="عرض إحصائيات الإجابات">
@@ -237,7 +382,7 @@
                                         </a>
                                     @endif
                                 </td>
-                                <td>
+                                <td class="quiz-question-winners" role="cell">
                                     @if($question->answer_type === 'walking')
                                         @if($question->winners->count() > 0)
                                             <button type="button" class="btn btn-sm btn-success px-3 font-weight-bold" style="border-radius: 8px;" data-toggle="modal" data-target="#winnersModal{{ $question->id }}">
@@ -248,6 +393,7 @@
                                                 @csrf
                                                 <button type="submit" class="btn btn-sm btn-outline-warning p-1" style="border-radius: 6px;" title="إعادة احتساب الفائزين">
                                                     <i class="fe fe-refresh-cw"></i>
+                                                    <span class="quiz-mobile-action-label">إعادة احتساب الفائزين</span>
                                                 </button>
                                             </form>
                                         @else
@@ -270,6 +416,7 @@
                                                 @csrf
                                                 <button type="submit" class="btn btn-sm btn-outline-warning p-1" style="border-radius: 6px;" title="إعادة إجراء السحب">
                                                     <i class="fe fe-refresh-cw"></i>
+                                                    <span class="quiz-mobile-action-label">إعادة إجراء السحب</span>
                                                 </button>
                                             </form>
                                         @endif
@@ -290,16 +437,18 @@
                                         @endif
                                     @endif
                                 </td>
-                                <td>
+                                <td class="quiz-question-actions" role="cell">
                                     <div class="d-flex align-items-center justify-content-center gap-1">
                                         <a href="{{ route('dashboard.quiz-questions.edit', [$quizCompetition, $question]) }}" class="btn btn-sm btn-outline-primary p-2" title="تعديل السؤال والخيارات" style="border-radius: 8px;">
                                             <i class="fe fe-edit-2"></i>
+                                            <span class="quiz-mobile-action-label">تعديل السؤال</span>
                                         </a>
                                         <form action="{{ route('dashboard.quiz-questions.destroy', [$quizCompetition, $question]) }}" method="POST" class="d-inline" onsubmit="return confirm('هل أنت متأكد من حذف هذا السؤال وكل خياراته ونتائجه نهائياً؟');">
                                             @csrf
                                             @method('DELETE')
                                             <button type="submit" class="btn btn-sm btn-outline-danger p-2" title="حذف السؤال" style="border-radius: 8px;">
                                                 <i class="fe fe-trash-2"></i>
+                                                <span class="quiz-mobile-action-label">حذف السؤال</span>
                                             </button>
                                         </form>
                                     </div>
@@ -572,6 +721,10 @@
         @endif
     </x-dashboard.card>
 </div>
+
+@if(auth()->user()->canAny(['site-content.view', 'dashboard.view']) && $quizCompetition->questions->contains(fn ($question) => $question->isWalkingChallenge() && $question->canViewWalkingLeaderboard(auth()->user()->person)))
+    @include('dashboard.quiz-competitions._walking-race-video')
+@endif
 
 @push('scripts')
 <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>

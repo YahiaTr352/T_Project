@@ -401,6 +401,9 @@ Route::group(['middleware' => ['auth'], 'prefix' => 'dashboard'], function () {
         ->name('dashboard.quiz-questions.destroy-walking-adjustment');
     Route::post('quiz-competitions/{quizCompetition}/questions/{quizQuestion}/walking-race-settings', [\App\Http\Controllers\admin\QuizQuestionController::class, 'updateWalkingRaceSettings'])
         ->name('dashboard.quiz-questions.walking-race-settings');
+    Route::get('quiz-competitions/{quizCompetition}/questions/{quizQuestion}/walking-race-video', [\App\Http\Controllers\admin\QuizQuestionController::class, 'walkingRaceVideoTimeline'])
+        ->middleware('permission:site-content.view|dashboard.view')
+        ->name('dashboard.quiz-questions.walking-race-video');
 
     // Stories routes
     Route::resource('stories', StoryController::class)->middleware(['permission:stories.view|stories.create|stories.update|stories.delete']);

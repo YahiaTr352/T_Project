@@ -1247,6 +1247,39 @@ class QuizQuestionController extends Controller
         ]);
     }
 
+    public function walkingRaceVideoTimeline(
+        Request $request,
+        QuizCompetition $quizCompetition,
+        QuizQuestion $quizQuestion,
+        WalkingCompetitionScoringService $scoring,
+    ): JsonResponse {
+        abort_unless(
+            (int) $quizQuestion->quiz_competition_id === (int) $quizCompetition->id && $quizQuestion->isWalkingChallenge(),
+            404,
+            'تحدي المشي غير موجود في هذه المسابقة.'
+        );
+
+        $viewer = $request->user()->person;
+        abort_unless($quizQuestion->canViewWalkingLeaderboard($viewer), 403, 'هذا الترتيب غير متاح لك.');
+
+        $timeline = $scoring->getDailyRaceTimeline($quizCompetition, $quizQuestion, $viewer, maxRanks: 10, personalizeViewer: false);
+        $entryAliases = [];
+        foreach ($timeline['sections'] as &$section) {
+            foreach ($section['days'] as &$day) {
+                foreach ($day['top_entries'] as &$entry) {
+                    $entryAliases[$entry['entry_id']] ??= count($entryAliases) + 1;
+                    $entry['entry_id'] = $entryAliases[$entry['entry_id']];
+                    unset($entry['person_id'], $entry['is_viewer']);
+                }
+                unset($entry);
+            }
+            unset($day);
+        }
+        unset($section);
+
+        return response()->json($timeline)->header('Cache-Control', 'private, no-store');
+    }
+
     /**
      * تحديث أو تفعيل/إخفاء إعدادات سباق الترتيب اليومي المتحرك مباشرة من صفحة تفاصيل المسابقة.
      */

@@ -9,5 +9,11 @@
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true
+  },
+  "resources/js/dashboard/walking-race-video.js": {
+    "file": "assets/walking-race-video-DVeyqkRk.js",
+    "name": "walking-race-video",
+    "src": "resources/js/dashboard/walking-race-video.js",
+    "isEntry": true
   }
 }
