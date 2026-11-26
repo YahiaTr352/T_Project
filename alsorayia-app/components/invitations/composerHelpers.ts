@@ -11,6 +11,7 @@ export interface InvitationComposerProps {
   templates: InvitationTemplate[];
   templatesLoading: boolean;
   groups: InvitationGroup[];
+  senderId?: number;
   colors: ThemeColors;
   isDark: boolean;
   onSent?: () => void;

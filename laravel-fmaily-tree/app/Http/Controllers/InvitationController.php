@@ -9,8 +9,9 @@ use App\Models\CreativeTemplate;
 use App\Models\InvitationBackground;
 use App\Models\NotificationGroup;
 use App\Models\Person;
+use App\Services\Invitations\CreativeArtworkReview;
 use App\Services\Invitations\CreativeTemplateService;
-use App\Services\Invitations\CreativeTextLayout;
+use App\Services\Invitations\CreativeSvgArtwork;
 use App\Services\Invitations\InvitationDispatchService;
 use App\Services\Invitations\InvitationGroupService;
 use App\Services\Invitations\InvitationMessageService;
@@ -91,7 +92,7 @@ class InvitationController extends Controller
         $templates = $this->messages->templates();
 
         $backgrounds = InvitationBackground::approved()->latest()->get();
-        $creatives = CreativeTemplate::approved()->whereNotNull('invitation_type')->latest()->get();
+        $creatives = CreativeTemplate::approved()->forEditablePicker()->latest()->get();
 
         return view('web-site.invitations.send', compact('person', 'groups', 'templates', 'backgrounds', 'creatives'));
     }
@@ -124,28 +125,66 @@ class InvitationController extends Controller
             ? $template->image_url : asset('storage/'.$template->image_path));
     }
 
-    public function submitCreative(Request $request, CreativeTemplateService $creatives): RedirectResponse
+    public function creativeSvgSource(int $id, CreativeSvgArtwork $svg): JsonResponse
+    {
+        $template = CreativeTemplate::approved()->forEditablePicker()->findOrFail($id);
+
+        return response()->json($svg->source($template), headers: ['Cache-Control' => 'private, no-store']);
+    }
+
+    public function previewCreativeFields(Request $request, CreativeArtworkReview $review): JsonResponse
+    {
+        $validated = $request->validate([
+            'image' => CreativeTemplateService::ARTWORK_RULES,
+            'fields' => 'required|string|json|max:30000',
+        ]);
+        try {
+            return response()->json($review->previewUpload($request->attributes->get('identity_person'), $request->file('image'), $validated['fields']));
+        } catch (InvitationException $exception) {
+            return response()->json(['message' => $exception->getMessage(), 'code' => $exception->errorCode], $exception->httpStatus);
+        }
+    }
+
+    public function submitCreative(Request $request, CreativeSvgArtwork $svg, CreativeArtworkReview $review): RedirectResponse|JsonResponse
     {
         $validated = $request->validateWithBag('creative', [
-            'image' => CreativeTemplateService::ARTWORK_RULES,
+            'image' => 'required|file|mimes:jpg,jpeg,png,webp,svg|max:16384',
             'name' => 'nullable|string|max:255',
             'invitation_type' => ['required', Rule::in(array_column($this->messages->templates(), 'key'))],
             'publication_consent' => ['accepted'],
-        ] + CreativeTemplateService::designRules(), [
+            'fields' => 'nullable|string|json|max:30000',
+            'proof' => 'nullable|string|regex:/^[a-f0-9]{64}$/',
+        ], [
+            'image.mimes' => 'اختر تصميمًا بصيغة JPG أو PNG أو WebP أو SVG.',
             'publication_consent.accepted' => 'يرجى الموافقة على عرض التصميم ضمن القوالب عند اعتماده.',
-            'text_layout.required_if' => 'احفظ توزيع النص في المحرر.',
         ]);
 
+        $file = $request->file('image');
+        $owner = $request->attributes->get('identity_person');
         try {
-            $layout = CreativeTextLayout::validate($validated['text_layout'] ?? null, $validated['invitation_type'], $validated['design_mode'] ?? null);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return back()->withErrors($e->errors(), 'creative')->withInput();
+            if ($file->getMimeType() === 'image/svg+xml') {
+                $design = $svg->upload($owner, $file, $validated['invitation_type'], $validated['name'] ?? null);
+            } else {
+                $request->validateWithBag('creative', ['image' => CreativeTemplateService::ARTWORK_RULES]);
+                $design = $review->submitUpload($owner, $file, $validated['invitation_type'], $validated['name'] ?? null, $validated['fields'] ?? null, $validated['proof'] ?? null);
+            }
+        } catch (InvitationException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage(), 'code' => $e->errorCode], $e->httpStatus);
+            }
+            return back()->withErrors(['image' => $e->getMessage()], 'creative')->withInput();
         }
-        $creatives->upload($request->attributes->get('identity_person'), $request->file('image'), $validated['name'] ?? null,
-            invitationType: $validated['invitation_type'], publicationConsent: true, textLayout: $layout,
-            designMode: $validated['design_mode'] ?? null);
 
-        return redirect()->route('invitations.creatives.index')->with('creative_success', 'تم إرسال التصميم إلى الإدارة للمراجعة.');
+        $message = $design->designMode() === CreativeTemplate::MODE_SVG && ! $design->svgReadyForReview()
+            ? 'تم إرسال التصميم إلى الإدارة. راجع ملاحظات فحص SVG ضمن تصاميمي.'
+            : 'تم إرسال التصميم إلى الإدارة للمراجعة.';
+        if ($request->expectsJson()) {
+            $request->session()->flash('creative_success', $message);
+
+            return response()->json(['redirect_url' => route('invitations.creatives.index', absolute: false)], 201);
+        }
+
+        return redirect()->route('invitations.creatives.index')->with('creative_success', $message);
     }
 
     public function consentToCreativePublication(Request $request, int $id, CreativeTemplateService $creatives): RedirectResponse
@@ -189,8 +228,9 @@ class InvitationController extends Controller
             'exclude_deceased' => 'nullable|string',
             'media_type' => 'nullable|string|in:image,video,voice',
             'media' => 'nullable|file|max:16384',
+            'svg_card' => 'nullable|'.CreativeSvgArtwork::PNG_RULES,
             'background_id' => 'nullable|integer',
-        ], [], [
+        ] + ['creative_edit_source' => 'nullable|string|regex:/^[0-9a-f]{64}$/'], [], [
             'channels' => 'قنوات الإرسال',
             'recipient_type' => 'نوع المستلمين',
             'person_ids' => 'الأشخاص',
@@ -217,8 +257,11 @@ class InvitationController extends Controller
                 'exclude_deceased' => $request->has('exclude_deceased'),
                 'media_type' => $validated['media_type'] ?? null,
                 'media' => $request->file('media'),
+                'svg_card' => $request->file('svg_card'),
+                'allow_web_template' => true,
                 'background_id' => $validated['background_id'] ?? null,
                 'creative_id' => $validated['creative_id'] ?? null,
+                'creative_edit_source' => $validated['creative_edit_source'] ?? null,
             ] + self::TYPOGRAPHY);
         } catch (InvitationException $e) {
             return back()->withInput()->with('error', $e->getMessage());
@@ -460,10 +503,17 @@ class InvitationController extends Controller
             'title' => 'nullable|string|max:255',
             'background_id' => 'nullable|integer',
             'creative_id' => 'nullable|integer',
-        ]) + self::TYPOGRAPHY;
+            'svg_card' => 'nullable|'.CreativeSvgArtwork::PNG_RULES,
+        ] + ['creative_edit_source' => 'nullable|string|regex:/^[0-9a-f]{64}$/']) + self::TYPOGRAPHY;
 
         try {
-            $creative = $this->dispatcher->creativeFor($validated);
+            $creative = $this->dispatcher->creativeFor($validated, allowWeb: true);
+            if ($request->routeIs('invitations.preview-artwork')) {
+                return response()->json([
+                    'success' => true,
+                    'artwork_image' => $this->dispatcher->creativeArtworkLivePreview($creative, $validated),
+                ]);
+            }
             $sampleId = $validated['person_id'] ?? null;
             if (! $sampleId && ($validated['recipient_type'] ?? null) === 'group' && ! empty($validated['group_id'])) {
                 $group = $this->groups->findOwned((int) $validated['group_id'], $person->id);
@@ -491,7 +541,7 @@ class InvitationController extends Controller
         return response()->json([
             'success' => true,
             'preview' => $preview,
-            'card_image_url' => $card ? Storage::disk('public')->url($card) : null,
+            'card_image_url' => $card ? ($creative ? url('storage/'.$card) : Storage::disk('public')->url($card)) : null,
             'web_card_image_url' => $card ? asset('storage/'.$card) : null,
         ]);
     }

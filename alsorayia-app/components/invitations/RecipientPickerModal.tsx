@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -50,6 +50,7 @@ export interface RecipientPickerModalProps {
   onClose: () => void;
   onConfirm: (persons: InvitationPersonBrief[]) => void;
   initialSelected?: InvitationPersonBrief[];
+  excludedPersonId?: number;
   title?: string;
   colors: ThemeColors;
   isDark: boolean;
@@ -65,6 +66,20 @@ function toBrief(person: {
     first_name: person.first_name,
     photo_url: resolveInvitationPhotoUrl(person.photo_url),
   };
+}
+
+function excludeFromTree(nodes: InvitationTreeNode[], personId: number): InvitationTreeNode[] {
+  return nodes.flatMap((node) => {
+    const children = excludeFromTree(node.children, personId);
+    if (node.id === personId) return children;
+
+    return [{
+      ...node,
+      children,
+      expandable: children.length > 0,
+      whatsapp_descendant_count: children.reduce((count, child) => count + Number(child.has_whatsapp) + child.whatsapp_descendant_count, 0),
+    }];
+  });
 }
 
 // ─────────────────────────────────────────────
@@ -391,6 +406,7 @@ export function RecipientPickerModal({
   onClose,
   onConfirm,
   initialSelected = [],
+  excludedPersonId,
   title = 'اختيار المستلمين من العائلة 👥',
   colors,
   isDark,
@@ -406,6 +422,11 @@ export function RecipientPickerModal({
   const [searchResults, setSearchResults] = useState<InvitationSearchPerson[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const visibleTree = useMemo(
+    () => excludedPersonId === undefined ? tree : excludeFromTree(tree, excludedPersonId),
+    [tree, excludedPersonId],
+  );
+  const visibleSearchResults = searchResults.filter((person) => person.id !== excludedPersonId);
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedOnce = useRef(false);
@@ -430,12 +451,12 @@ export function RecipientPickerModal({
   const wasVisible = useRef(false);
   useEffect(() => {
     if (visible && !wasVisible.current) {
-      setSelected(new Map(initialSelected.map((p) => [p.id, toBrief(p)])));
+      setSelected(new Map(initialSelected.filter((person) => person.id !== excludedPersonId).map((person) => [person.id, toBrief(person)])));
       setQuery('');
       setSearchResults([]);
     }
     wasVisible.current = visible;
-  }, [visible, initialSelected]);
+  }, [visible, initialSelected, excludedPersonId]);
 
   const loadTree = useCallback(async () => {
     setTreeLoading(true);
@@ -490,7 +511,7 @@ export function RecipientPickerModal({
   }, []);
 
   const toggleSelect = useCallback((person: InvitationPersonBrief, selectable: boolean) => {
-    if (!selectable) return;
+    if (!selectable || person.id === excludedPersonId) return;
     try {
       Haptics.selectionAsync();
     } catch {}
@@ -500,7 +521,7 @@ export function RecipientPickerModal({
       else next.set(person.id, toBrief(person));
       return next;
     });
-  }, []);
+  }, [excludedPersonId]);
 
   const handleRemovePerson = useCallback((id: number) => {
     try {
@@ -528,8 +549,8 @@ export function RecipientPickerModal({
     setActiveTab(tab);
   };
 
-  const selectedList = Array.from(selected.values());
-  const selectedCount = selected.size;
+  const selectedList = Array.from(selected.values()).filter((person) => person.id !== excludedPersonId);
+  const selectedCount = selectedList.length;
 
   const handleConfirm = () => {
     Keyboard.dismiss();
@@ -725,7 +746,7 @@ export function RecipientPickerModal({
                       <ThemedText style={styles.retryBtnText}>إعادة المحاولة</ThemedText>
                     </TouchableOpacity>
                   </View>
-                ) : tree.length === 0 ? (
+                ) : visibleTree.length === 0 ? (
                   <View style={styles.centeredState}>
                     <Ionicons name="leaf-outline" size={48} color={muted} />
                     <ThemedText style={{ color: muted, fontFamily: 'Tajawal-Regular', marginTop: 12 }}>
@@ -742,7 +763,7 @@ export function RecipientPickerModal({
                       showsVerticalScrollIndicator={false}
                       contentContainerStyle={{ paddingVertical: 16 }}>
                       <TreeColumn
-                        nodes={tree}
+                        nodes={visibleTree}
                         level={0}
                         selectedMap={selected}
                         expandedSet={expanded}
@@ -809,11 +830,11 @@ export function RecipientPickerModal({
                   </View>
                 ) : (
                   <FlatList
-                    data={searchResults}
+                    data={visibleSearchResults}
                     keyExtractor={(item) => String(item.id)}
                     keyboardShouldPersistTaps="handled"
                     contentContainerStyle={
-                      searchResults.length === 0 ? styles.emptyListState : styles.listScroll
+                      visibleSearchResults.length === 0 ? styles.emptyListState : styles.listScroll
                     }
                     ListEmptyComponent={
                       <View style={styles.emptyListState}>

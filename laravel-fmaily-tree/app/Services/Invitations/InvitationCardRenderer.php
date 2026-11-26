@@ -7,6 +7,7 @@ use App\Models\InvitationBackground;
 use App\Models\CreativeTemplate;
 use App\Models\Notification;
 use ArPHP\I18N\Arabic as ArabicGlyphs;
+use GdImage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
@@ -76,6 +77,22 @@ class InvitationCardRenderer
 
     public function renderTemplatePreview(CreativeTemplate $template, bool $allowOverflow = true): ?string
     {
+        if ($template->designMode() === CreativeTemplate::MODE_SVG) {
+            return $template->image_path;
+        }
+
+        if ($template->editable_text) {
+            if ($template->designMode() === CreativeTemplate::MODE_ARTWORK) {
+                return null;
+            }
+
+            return array_filter(array_column($template->editable_text, 'text'))
+                ? $this->renderEditableArtwork($template)
+                : null;
+        }
+        if ($template->status === CreativeTemplate::STATUS_PENDING && $template->design_mode === null && ! $template->text_layout) {
+            return null;
+        }
         if ($template->designMode() !== CreativeTemplate::MODE_OVERLAY || ! $template->invitation_type || ! $template->image_path) {
             return null;
         }
@@ -92,6 +109,40 @@ class InvitationCardRenderer
             'template_vars' => CreativeTextLayout::placeholders($template->invitation_type),
             'allow_placeholder_overflow' => $allowOverflow,
         ]);
+    }
+
+    public function renderEditableArtwork(CreativeTemplate $template, array $values = [], bool $inlinePreview = false, ?GdImage $cleaned = null): ?string
+    {
+        $nativePng = $template->designMode() === CreativeTemplate::MODE_WEB_ARTWORK;
+        $text = [];
+        $editedRegions = [];
+        foreach ($template->editable_text as $key => $box) {
+            $replacement = trim((string) ($values[$key] ?? ''));
+            if ($template->designMode() === CreativeTemplate::MODE_ARTWORK) {
+                if (array_key_exists($key, $values) && $replacement !== $box['text']) {
+                    $editedRegions[$key] = $box;
+                    $text[$key] = $replacement;
+                }
+            } elseif (isset($box['text']) || $replacement !== '') {
+                $editedRegions[$key] = $box;
+                $text[$key] = array_key_exists($key, $values) ? $replacement : $box['text'];
+            }
+        }
+        $key = 'creative_v2_' . $template->id . '_' . hash('sha256', serialize([$template->image_path, $text]));
+
+        $typography = [
+            'invitation_type' => $template->invitation_type,
+            'text_layout' => $template->editable_text,
+            'template_vars' => $text,
+            'font_family' => 'tajawal',
+            'allow_empty_layout' => true,
+            'original_artwork' => ! $nativePng && ($template->designMode() === CreativeTemplate::MODE_ARTWORK
+                || count($editedRegions) < count($template->editable_text)) ? $template : null,
+            'edited_regions' => $editedRegions,
+            'native_png' => $nativePng,
+        ];
+
+        return $this->renderCard($template->editable_image_path ?? $template->image_path, '', '', $key, $typography, $inlinePreview, $cleaned);
     }
 
     public function renderPreview(InvitationBackground|CreativeTemplate $background, string $title, string $body, array $typography = []): ?string
@@ -125,6 +176,11 @@ class InvitationCardRenderer
 
     public function render(string $sourcePath, string $title, string $body, string $cacheKey, array $typography = []): ?string
     {
+        return $this->renderCard($sourcePath, $title, $body, $cacheKey, $typography);
+    }
+
+    private function renderCard(string $sourcePath, string $title, string $body, string $cacheKey, array $typography, bool $inlinePreview = false, ?GdImage $preparedImage = null): ?string
+    {
         // Only supported bundled fonts are resolved; legacy cards keep their title/body weights.
         $family = ($typography['font_family'] ?? null) === 'tajawal' ? 'tajawal' : 'amiri';
         $weight = in_array($typography['font_weight'] ?? null, ['regular', 'bold'], true)
@@ -135,14 +191,16 @@ class InvitationCardRenderer
             $cacheKey .= '_v' . self::LAYOUT_RENDER_VERSION;
         }
         $safeKey = preg_replace('/[^a-zA-Z0-9_-]/', '', $cacheKey) ?: md5($cacheKey);
-        $relative = 'notifications/cards/' . $safeKey . '.jpg';
+        $nativePng = $typography['native_png'] ?? false;
+        $mime = $nativePng ? 'image/png' : 'image/jpeg';
+        $relative = 'notifications/cards/' . $safeKey . ($nativePng ? '.png' : '.jpg');
 
         try {
             $disk = Storage::disk('public');
-            if ($disk->exists($relative)) {
-                return $relative;
+            if ($preparedImage === null && $disk->exists($relative)) {
+                return $inlinePreview ? 'data:'.$mime.';base64,'.base64_encode($disk->get($relative)) : $relative;
             }
-            if (! $disk->exists($sourcePath)) {
+            if ($preparedImage === null && ! $disk->exists($sourcePath)) {
                 return null;
             }
 
@@ -151,15 +209,30 @@ class InvitationCardRenderer
                 return null;
             }
 
-            $image = @imagecreatefromstring($disk->get($sourcePath));
+            $image = $preparedImage ?? @imagecreatefromstring($disk->get($sourcePath));
             if (! $image) {
                 return null;
             }
+            if (isset($typography['original_artwork'])) {
+                $image = app(CreativeArtworkText::class)->restoreUneditedRegions(
+                    $typography['original_artwork'], $image, $typography['edited_regions'],
+                );
+            }
+            $canvas = $nativePng
+                ? ($preparedImage ? imagecrop($image, ['x' => 0, 'y' => 0, 'width' => imagesx($image), 'height' => imagesy($image)]) : $image)
+                : ($layout ? $this->fitArtwork($image) : $this->cover($image));
+            if (! $canvas) {
+                return null;
+            }
+            if ($canvas !== $image && $image !== $preparedImage) {
+                imagedestroy($image);
+            }
+            if ($nativePng) {
+                imagealphablending($canvas, true);
+                imagesavealpha($canvas, true);
+            }
 
             $type = $typography['invitation_type'] ?? null;
-            $canvas = $layout ? $this->fitArtwork($image) : $this->cover($image);
-            imagedestroy($image);
-
             try {
                 if ($type === null) {
                     $this->overlay($canvas);
@@ -175,7 +248,7 @@ class InvitationCardRenderer
                     );
                 } elseif ($layout) {
                     $fields = CreativeTextLayout::content($layout, ['title' => $title, 'message' => $body] + ($typography['template_vars'] ?? []));
-                    if ($fields === []) {
+                    if ($fields === [] && ! ($typography['allow_empty_layout'] ?? false)) {
                         return null;
                     }
                     $this->drawLayout($canvas, $fonts, $weight ?? 'regular', $layout, $fields, $typography['allow_placeholder_overflow'] ?? false);
@@ -188,15 +261,19 @@ class InvitationCardRenderer
 
                 ob_start();
                 try {
-                    $written = imagejpeg($canvas, null, 88);
+                    $written = $nativePng ? imagepng($canvas) : imagejpeg($canvas, null, 88);
                 } finally {
-                    $jpeg = ob_get_clean();
+                    $bytes = ob_get_clean();
                 }
             } finally {
                 imagedestroy($canvas);
             }
 
-            return $written && $disk->put($relative, $jpeg) ? $relative : null;
+            if ($inlinePreview) {
+                return $written && $bytes ? 'data:'.$mime.';base64,'.base64_encode($bytes) : null;
+            }
+
+            return $written && $bytes && $disk->put($relative, $bytes) ? $relative : null;
         } catch (InvitationException $e) {
             throw $e;
         } catch (\Throwable $e) {
@@ -302,6 +379,7 @@ class InvitationCardRenderer
                             imagettftext($canvas, $runSize, 0, $x + 2, $y + 2, $shadow, $font, $text);
                             imagettftext($canvas, $runSize, 0, $x, $y, $white, $font, $text);
                         }
+                        $lineY = null;
                         if ($underline) {
                             $lineY = $y + max(0, $bounds[3]) + max(1, (int) round($runSize * .10));
                             imagefilledrectangle($canvas, $x + $bounds[0] + $shift, $lineY, $x + $bounds[1] + $shift,
@@ -364,11 +442,18 @@ class InvitationCardRenderer
 
         foreach ($fields as $key => $value) {
             $box = $layout[$key];
-            $text = $this->clean($value);
+            $ink = isset($box['color']) ? (int) hexdec(substr($box['color'], 1)) : $white;
+            $fieldFonts = isset($box['fontFamily']) ? $this->fonts($box['fontFamily']) : $fonts;
+            $font = $fieldFonts[array_key_exists('bold', $box) ? ($box['bold'] ? 'bold' : 'regular') : $weight];
+            if (isset($box['alignment'])) {
+                $this->drawFixedArtworkText($canvas, $font, $ink, $box, $value);
+                continue;
+            }
+
+            $text = ($box['literal'] ?? false) ? str_replace(["\r\n", "\r"], "\n", trim($value)) : $this->clean($value);
             if ($text === '') {
                 continue;
             }
-            $font = $fonts[array_key_exists('bold', $box) ? ($box['bold'] ? 'bold' : 'regular') : $weight];
             $italic = $box['italic'] ?? false;
             $underline = $box['underline'] ?? false;
             $boxWidth = $width * $box['width'] / 100;
@@ -411,24 +496,73 @@ class InvitationCardRenderer
 
             $left = $width * $box['x'] / 100;
             $baseline = $height * $box['y'] / 100 + ($boxHeight - ($bottom - $top)) / 2 - $top;
-            foreach ($metrics as [$shaped, $minX, $maxX, $minY, $maxY]) {
+            foreach ($metrics as $index => [$shaped, $minX, $maxX, $minY, $maxY]) {
                 $inkCenter = ($minX + $maxX) / 2 - ($italic ? ($minY + $maxY) / 2 * self::ITALIC_SHEAR : 0);
                 $x = (int) round($left + $boxWidth / 2 - $inkCenter);
                 $y = (int) round($baseline);
                 if ($italic) {
                     $this->drawItalicLine($canvas, $font, $size, $shaped, $x, $y, [$minX, $maxX, $minY, $maxY]);
                 } else {
-                    imagettftext($canvas, $size, 0, $x + 2, $y + 2, $shadow, $font, $shaped);
-                    imagettftext($canvas, $size, 0, $x, $y, $white, $font, $shaped);
+                    if (! isset($box['color'])) {
+                        imagettftext($canvas, $size, 0, $x + 2, $y + 2, $shadow, $font, $shaped);
+                    }
+                    imagettftext($canvas, $size, 0, $x, $y, $ink, $font, $shaped);
                 }
+                $lineY = null;
                 if ($underline) {
                     $lineY = $y + max(0, $maxY) + $underlineGap;
                     $offset = $italic ? (int) round(($minY + $maxY) / -2 * self::ITALIC_SHEAR) : 0;
-                    imagefilledrectangle($canvas, $x + $minX + $offset, $lineY, $x + $maxX + $offset, $lineY + $underlineWeight - 1, $white);
+                    imagefilledrectangle($canvas, $x + $minX + $offset, $lineY, $x + $maxX + $offset, $lineY + $underlineWeight - 1, $ink);
                 }
                 $baseline += $step;
             }
         }
+    }
+
+    private function drawFixedArtworkText($canvas, string $font, int $ink, array $box, string $text): void
+    {
+        $width = imagesx($canvas);
+        $height = imagesy($canvas);
+        $left = (int) ceil($width * $box['x'] / 100);
+        $right = (int) floor($width * ($box['x'] + $box['width']) / 100) - 1;
+        $top = (int) ceil($height * $box['y'] / 100);
+        $bottom = (int) floor($height * ($box['y'] + $box['height']) / 100) - 1;
+        $size = max(1, min($width, $height) * $box['fontSize'] / 100 * .75);
+        $lines = preg_split('/\R/u', trim($text));
+
+        // Use the same font metrics for every value so different letter heights don't shift the baseline.
+        [, , $ascent, $descent] = $this->inkBounds($font, $size, $this->shape('أبجدية العربية'));
+        $step = (int) ceil(max($size * 1.5, $descent - $ascent));
+        $originalLineCount = isset($box['text']) ? count(preg_split('/\R/u', trim($box['text']))) : count($lines);
+        $baseline = (int) round(($top + $bottom - $ascent - $descent - ($originalLineCount - 1) * $step) / 2);
+        foreach ($lines as $logical) {
+            $line = $this->shape(trim($logical));
+            if ($line !== '') {
+                [$minX, $maxX, $minY, $maxY] = $this->inkBounds($font, $size, $line);
+                $x = match ($box['alignment']) {
+                    'right' => $right - $maxX,
+                    'left' => $left - $minX,
+                    default => (int) round(($left + $right - $minX - $maxX) / 2),
+                };
+                if ($x + $minX < $left || $x + $maxX > $right || $baseline + $minY < $top || $baseline + $maxY > $bottom) {
+                    throw new InvitationException(
+                        'النص لا يتّسع في الحقل «'.$box['label'].'». استخدم نصًا أقصر.',
+                        'CREATIVE_TEXT_OVERFLOW', 422,
+                    );
+                }
+                imagettftext($canvas, $size, 0, $x, $baseline, $ink, $font, $line);
+            }
+            $baseline += $step;
+        }
+    }
+
+    private function inkBounds(string $font, float $size, string $text): array
+    {
+        $bounds = imagettfbbox($size, 0, $font, $text);
+        $xs = [$bounds[0], $bounds[2], $bounds[4], $bounds[6]];
+        $ys = [$bounds[1], $bounds[3], $bounds[5], $bounds[7]];
+
+        return [min($xs), max($xs), min($ys), max($ys)];
     }
 
     protected function drawItalicLine($canvas, string $font, int $size, string $text, int $x, int $y, array $bounds): void
@@ -587,7 +721,7 @@ class InvitationCardRenderer
 
         foreach ($bodyLines as $line) {
             $y += $bodyStep;
-            $this->drawCentered($canvas, $bodyFont, $bodySize, $line, $y);
+            $this->drawCentered($canvas, $bodyFont, $bodySize, $line, $y, false);
         }
     }
 }

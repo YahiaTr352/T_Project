@@ -180,11 +180,16 @@ class InvitationApiController extends Controller
             'creative_id' => 'nullable|integer',
             'font_family' => 'nullable|string|in:amiri,tajawal',
             'font_weight' => 'nullable|string|in:regular,bold',
-        ]);
+        ] + ['creative_edit_source' => 'nullable|string|regex:/^[0-9a-f]{64}$/']);
 
         try {
             $background = $this->previewBackground($validated);
             $creative = $this->dispatcher->creativeFor($validated);
+            if ($request->routeIs('api.v1.invitations.preview-artwork')) {
+                return $this->ok('معاينة تعديل الصورة.', [
+                    'artwork_image' => $this->dispatcher->creativeArtworkLivePreview($creative, $validated),
+                ]);
+            }
             $preview = $this->dispatcher->preview(
                 $this->person($request),
                 $validated,
@@ -202,7 +207,7 @@ class InvitationApiController extends Controller
             'background' => $background?->toPickerArray(),
             'creative' => $creative?->toPickerArray(),
             'card_image_url' => $typedCreative
-                ? ($card ? \Illuminate\Support\Facades\Storage::disk('public')->url($card) : null)
+                ? ($card ? url('storage/'.$card) : null)
                 : $this->previewCard($creative ?? $background, $validated, $preview),
         ]);
     }
@@ -301,7 +306,7 @@ class InvitationApiController extends Controller
             'font_family' => 'nullable|string|in:amiri,tajawal',
             'font_weight' => 'nullable|string|in:regular,bold',
             'media' => 'nullable|file|max:16384',
-        ]);
+        ] + ['creative_edit_source' => 'nullable|string|regex:/^[0-9a-f]{64}$/']);
 
         try {
             $result = $this->dispatcher->send($this->person($request), [
@@ -321,6 +326,7 @@ class InvitationApiController extends Controller
                 'media_type' => $validated['media_type'] ?? null,
                 'background_id' => $validated['background_id'] ?? null,
                 'creative_id' => $validated['creative_id'] ?? null,
+                'creative_edit_source' => $validated['creative_edit_source'] ?? null,
                 'font_family' => $validated['font_family'] ?? null,
                 'font_weight' => $validated['font_weight'] ?? null,
                 'media' => $request->file('media'),

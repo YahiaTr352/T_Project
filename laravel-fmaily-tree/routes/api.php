@@ -94,6 +94,8 @@ Route::prefix('v1/invitations')->name('api.v1.invitations.')->middleware($invita
     Route::post('/groups/{group}/persons', [InvitationApiController::class, 'attachPerson'])->name('groups.attach');
     Route::delete('/groups/{group}/persons/{member}', [InvitationApiController::class, 'detachPerson'])->name('groups.detach');
     Route::post('/preview', [InvitationApiController::class, 'preview'])->middleware('throttle:30,1')->name('preview');
+    Route::post('/preview-artwork', [InvitationApiController::class, 'preview'])
+        ->middleware('throttle:invitation-artwork-preview')->name('preview-artwork');
     Route::post('/send', [InvitationApiController::class, 'send'])->middleware('throttle:20,1')->name('send');
     Route::get('/logs', [InvitationApiController::class, 'logs'])->name('logs');
     Route::get('/logs/{notification}', [InvitationApiController::class, 'logShow'])->name('logs.show');
@@ -104,6 +106,7 @@ Route::prefix('v1/invitations')->name('api.v1.invitations.')->middleware($invita
     Route::delete('/backgrounds/{id}', [\App\Http\Controllers\Api\V1\InvitationBackgroundApiController::class, 'destroyMine'])->name('backgrounds.destroy');
     Route::get('/creatives', [\App\Http\Controllers\Api\V1\CreativeTemplateApiController::class, 'index'])->name('creatives.index');
     Route::get('/creatives/mine', [\App\Http\Controllers\Api\V1\CreativeTemplateApiController::class, 'mine'])->name('creatives.mine');
+    Route::post('/creatives/field-preview', [\App\Http\Controllers\Api\V1\CreativeTemplateApiController::class, 'previewFields'])->middleware('throttle:20,1')->name('creatives.field-preview');
     Route::post('/creatives', [\App\Http\Controllers\Api\V1\CreativeTemplateApiController::class, 'store'])->middleware('throttle:20,1')->name('creatives.store');
     Route::post('/creatives/{id}/publication-consent', [\App\Http\Controllers\Api\V1\CreativeTemplateApiController::class, 'consent'])->whereNumber('id')->name('creatives.consent');
     Route::delete('/creatives/{id}', [\App\Http\Controllers\Api\V1\CreativeTemplateApiController::class, 'destroyMine'])->name('creatives.destroy');

@@ -1,6 +1,9 @@
 import type { ThemeColors } from '@/constants/theme';
+import type { ReactNode } from 'react';
 import { ThemedText } from '@/components/themed-text';
 import {
+  creativeArtworkSource,
+  resolveCreativeArtworkUrl,
   type CreativeTemplate,
 } from '@/lib/api/invitations';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,11 +27,15 @@ interface DesignSectionProps {
   body: string;
   fontFamily: string;
   selectedCreative: CreativeTemplate | null;
+  artworkEdited?: boolean;
+  artworkPreviewImage?: string;
+  onEditArtwork?: () => void;
   attachedImage: { uri: string } | null;
   onOpenCreative: () => void;
   onClearCreative: () => void;
   onPickAttachment: () => void;
   onRemoveAttachment: () => void;
+  children?: ReactNode;
 }
 
 export function DesignSection({
@@ -42,11 +49,15 @@ export function DesignSection({
   body,
   fontFamily,
   selectedCreative,
+  artworkEdited,
+  artworkPreviewImage,
+  onEditArtwork,
   attachedImage,
   onOpenCreative,
   onClearCreative,
   onPickAttachment,
   onRemoveAttachment,
+  children,
 }: DesignSectionProps) {
   return (
     <>
@@ -61,13 +72,15 @@ export function DesignSection({
       /> : null}
         {selectedCreative ? (
           <View style={[styles.creativeSelectedRow, { marginBottom: 12 }]}>
-            <View style={[styles.miniBadgeOk, { backgroundColor: '#10B98118' }]}>
-              <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-              <ThemedText style={[styles.miniBadgeOkText, { color: '#059669' }]}>
-                {selectedCreative.design_mode === 'ready' ? 'تُرسل الصورة كما هي'
-                  : 'تظهر عناصر الدعوة داخل التصميم'}
-              </ThemedText>
-            </View>
+            {onEditArtwork ? (
+              <TouchableOpacity accessibilityRole="button" onPress={onEditArtwork}
+                style={[styles.miniBadgeOk, { backgroundColor: '#10B98118', paddingVertical: 10 }]}>
+                <Ionicons name="pencil-outline" size={15} color={colors.primary} />
+                <ThemedText style={[styles.miniBadgeOkText, { color: colors.primary }]}>
+                  {artworkEdited ? 'مراجعة تعديل الكتابة' : 'تعديل كتابة القالب'}
+                </ThemedText>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity onPress={() => void onClearCreative()} style={styles.clearVisual}>
               <ThemedText style={[styles.clearVisualText, { color: muted }]}>
                 إزالة القالب
@@ -75,6 +88,12 @@ export function DesignSection({
             </TouchableOpacity>
           </View>
         ) : null}
+      {selectedCreative && artworkPreviewImage ? (
+        <Image source={artworkPreviewImage.startsWith('data:') ? { uri: artworkPreviewImage }
+          : creativeArtworkSource(resolveCreativeArtworkUrl(artworkPreviewImage))}
+          accessibilityLabel="معاينة صورة الدعوة" style={designStyles.artworkPreview} contentFit="contain" />
+      ) : null}
+      {children}
 
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: attachedImage ? colors.primary : border, borderWidth: attachedImage ? 1.5 : 1 }]}>
         <View style={styles.creativeHeaderRow}>
@@ -188,6 +207,7 @@ function DesignEntryButton({ title, description, icon, color, onPress }: {
 }
 
 const designStyles = StyleSheet.create({
+  artworkPreview: { width: '100%', height: 210, borderRadius: 12, marginBottom: 12 },
   creativeEntry: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -104,6 +104,69 @@
         }
     }
 
+    function bindPreviewRegions(modal) {
+        var layer = modal && modal.querySelector('[data-visual-preview-regions]');
+        if (!layer) return null;
+        var image = modal.querySelector('[data-visual-preview-image]');
+        var toggle = modal.querySelector('[data-visual-preview-fields-toggle]');
+        var show = true;
+
+        function position() {
+            var frame = image.getBoundingClientRect();
+            if (!show || !layer.childElementCount || !image.naturalWidth || !frame.width || !frame.height) {
+                layer.hidden = true;
+                return;
+            }
+            var parent = layer.parentElement.getBoundingClientRect();
+            var scale = Math.min(frame.width / image.naturalWidth, frame.height / image.naturalHeight);
+            var width = image.naturalWidth * scale;
+            var height = image.naturalHeight * scale;
+            Object.assign(layer.style, {
+                left: (frame.left - parent.left + (frame.width - width) / 2) + 'px',
+                top: (frame.top - parent.top + (frame.height - height) / 2) + 'px',
+                width: width + 'px', height: height + 'px',
+            });
+            layer.hidden = false;
+        }
+
+        function setFields(fields) {
+            layer.replaceChildren();
+            var list = Array.isArray(fields) ? fields : [];
+            list.forEach(function (field) {
+                if (![field.x, field.y, field.width, field.height].every(Number.isFinite)
+                    || field.width <= 0 || field.height <= 0) return;
+                var box = document.createElement('div');
+                box.className = 'visual-preview-field';
+                box.toggleAttribute('data-label-inside', field.y < 7);
+                Object.assign(box.style, {
+                    left: field.x + '%', top: field.y + '%',
+                    width: field.width + '%', height: field.height + '%',
+                });
+                var label = document.createElement('span');
+                label.textContent = field.label;
+                box.append(label);
+                layer.append(box);
+            });
+            show = true;
+            toggle.hidden = !layer.childElementCount;
+            toggle.setAttribute('aria-pressed', 'true');
+            position();
+            window.requestAnimationFrame(position);
+        }
+
+        toggle.addEventListener('click', function () {
+            show = !show;
+            toggle.setAttribute('aria-pressed', String(show));
+            position();
+        });
+        image.addEventListener('load', position);
+        image.addEventListener('error', position);
+        if ('ResizeObserver' in window) new ResizeObserver(position).observe(image);
+        else window.addEventListener('resize', position);
+        if (window.jQuery && window.jQuery(modal).on) window.jQuery(modal).on('shown.bs.modal', position);
+        return setFields;
+    }
+
     function init(root) {
         root = root || document;
 
@@ -123,6 +186,7 @@
 
         var pendingConfirm = null;
         var pendingRejectUrl = null;
+        var showPreviewFields = bindPreviewRegions(root.querySelector(previewModalSel));
 
         // ---- Preview (event delegation, keyboard accessible) ----
         document.addEventListener('click', function (e) {
@@ -142,6 +206,7 @@
             if (captionEl) captionEl.textContent = title;
             if (openEl) openEl.href = img;
             showModal(previewModalSel);
+            if (showPreviewFields) showPreviewFields(parseJsonSafe(trigger.dataset.visualPreviewFields));
         });
 
         document.addEventListener('keydown', function (e) {

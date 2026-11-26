@@ -30,42 +30,57 @@ class CreativeTemplateService
             return null;
         }
 
-        return $path ? Storage::disk('public')->url($path) : null;
+        return $path ? url('storage/'.$path) : null;
     }
 
     public static function designRules(): array
     {
         return [
-            'design_mode' => ['sometimes', 'required', Rule::in(array_keys(CreativeTemplate::MODES))],
-            'text_layout' => 'required_if:design_mode,overlay|prohibited_if:design_mode,ready|nullable|string|max:12000',
+            'design_mode' => ['sometimes', 'required', Rule::in(array_diff(array_keys(CreativeTemplate::MODES), CreativeTemplate::WEB_MODES))],
+            'text_layout' => 'required_if:design_mode,overlay|prohibited_if:design_mode,ready,artwork|nullable|string|max:12000',
         ];
     }
 
-    public function upload(?Person $uploader, UploadedFile $file, ?string $name = null, ?string $description = null, ?string $invitationType = null, bool $publicationConsent = false, ?array $textLayout = null, ?string $designMode = null): CreativeTemplate
+    public function upload(?Person $uploader, UploadedFile $file, ?string $name = null, ?string $description = null, ?string $invitationType = null, bool $publicationConsent = false, ?array $textLayout = null, ?string $designMode = null, ?string $editableImage = null, ?array $editableText = null): CreativeTemplate
     {
         if ($uploader && ! $publicationConsent) {
             throw new InvitationException('يرجى الموافقة على عرض التصميم ضمن القوالب عند اعتماده.', 'PUBLICATION_CONSENT_REQUIRED', 422);
         }
 
-        $path = $file->store('creative-templates', 'public');
-
-        $template = CreativeTemplate::create([
-            'invitation_type' => $invitationType,
-            'name' => $name ?: $file->getClientOriginalName(),
-            'description' => $description,
-            'image_path' => $path,
-            'text_layout' => $textLayout,
-            'design_mode' => $designMode,
-            'uploaded_by' => $uploader?->id,
-            'publication_consented_at' => $uploader ? now() : null,
-            'status' => CreativeTemplate::STATUS_PENDING,
-        ]);
-
-        if ($uploader && config('invitations.delivery_enabled')) {
-            NotifyEditorsOfPendingVisualJob::dispatch('creative', $template->id);
+        $path = null;
+        try {
+            $path = $file->store('creative-templates', 'public');
+            if (! $path) {
+                throw new InvitationException('تعذّر حفظ صورة التصميم.', 'CREATIVE_IMAGE_STORAGE');
+            }
+            $template = CreativeTemplate::create([
+                'invitation_type' => $invitationType,
+                'name' => $name ?: $file->getClientOriginalName(),
+                'description' => $description,
+                'image_path' => $path,
+                'editable_image_path' => $editableImage,
+                'editable_text' => $editableText,
+                'text_layout' => $textLayout,
+                'design_mode' => $designMode ?? ($textLayout === null ? CreativeTemplate::MODE_READY : null),
+                'uploaded_by' => $uploader?->id,
+                'publication_consented_at' => $uploader ? now() : null,
+                'status' => CreativeTemplate::STATUS_PENDING,
+            ]);
+        } catch (\Throwable $error) {
+            Storage::disk('public')->delete(array_values(array_filter([$path, $editableImage])));
+            throw $error;
         }
 
+        $this->notifyPending($template);
+
         return $template;
+    }
+
+    public function notifyPending(CreativeTemplate $template): void
+    {
+        if ($template->uploaded_by && config('invitations.delivery_enabled')) {
+            NotifyEditorsOfPendingVisualJob::dispatch('creative', $template->id);
+        }
     }
 
     public function approve(CreativeTemplate $template, User $editor): CreativeTemplate
@@ -99,6 +114,14 @@ class CreativeTemplateService
             if ($template->status !== CreativeTemplate::STATUS_PENDING) {
                 throw new InvitationException('هذا القالب تمت مراجعته مسبقا.', 'INVALID_STATUS');
             }
+            if ($decision === CreativeTemplate::STATUS_APPROVED && $template->designMode() === CreativeTemplate::MODE_ARTWORK
+                && (! $template->editable_text || ! $template->editable_image_path || ! $template->canPrepareArtwork())) {
+                throw new InvitationException('جهّز حقول الكتابة وراجع معاينتها قبل اعتماد القالب.', 'CREATIVE_ARTWORK_REVIEW_REQUIRED');
+            }
+            if ($decision === CreativeTemplate::STATUS_APPROVED && $template->designMode() === CreativeTemplate::MODE_SVG
+                && (! $template->svgReadyForReview() || ! $template->image_path || ! $template->editable_text || ! $template->invitation_type)) {
+                throw new InvitationException('راجع فحص ملف SVG وجرّب استبدال النص قبل اعتماد القالب.', 'CREATIVE_SVG_REVIEW_REQUIRED');
+            }
             if ($decision === CreativeTemplate::STATUS_APPROVED && $template->uploaded_by) {
                 if (! $template->invitation_type) {
                     throw new InvitationException('حدّد نوع الدعوة قبل اعتماد التصميم.', 'CREATIVE_TYPE_REQUIRED', 422);
@@ -107,9 +130,10 @@ class CreativeTemplateService
                     throw new InvitationException('لا يمكن اعتماد التصميم قبل موافقة العضو على عرضه.', 'PUBLICATION_CONSENT_REQUIRED', 422);
                 }
             }
-
             $template->update([
                 'status' => $decision,
+                'design_mode' => $template->design_mode ?? ($decision === CreativeTemplate::STATUS_APPROVED
+                    && ! $template->text_layout && ! $template->editable_text ? CreativeTemplate::MODE_READY : null),
                 'reviewed_by' => $editor->id,
                 'reviewed_at' => now(),
                 'rejection_reason' => $reason,
@@ -123,19 +147,21 @@ class CreativeTemplateService
 
     public function destroy(CreativeTemplate $template): void
     {
-        $imagePath = DB::transaction(function () use ($template) {
+        [$imagePaths, $svgPath] = DB::transaction(function () use ($template) {
             $template = CreativeTemplate::lockForUpdate()->findOrFail($template->id);
-            $imagePath = $template->image_path;
+            $paths = [$template->image_path, $template->editable_image_path];
+            $svgPath = $template->svg_path;
             $template->delete();
 
-            return $imagePath;
+            return [$paths, $svgPath];
         });
 
-        if ($imagePath && ! filter_var($imagePath, FILTER_VALIDATE_URL)) {
-            try {
-                Storage::disk('public')->delete($imagePath);
-            } catch (\Throwable) {
+        try {
+            Storage::disk('public')->delete(array_values(array_filter($imagePaths, fn ($path) => $path && ! filter_var($path, FILTER_VALIDATE_URL))));
+            if ($svgPath) {
+                Storage::disk('local')->delete($svgPath);
             }
+        } catch (\Throwable) {
         }
     }
 

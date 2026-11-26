@@ -39,17 +39,16 @@ class InvitationImageTemplatesTest extends TestCase
         Storage::fake('public');
     }
 
-    public function test_admin_can_upload_and_reclassify_images_and_api_filters_by_invitation_type(): void
+    public function test_admin_can_review_and_reclassify_images_and_api_filters_by_invitation_type(): void
     {
         $admin = User::factory()->createQuietly();
         $admin->assignRole(Role::findOrCreate('super_admin', 'web'));
-        $this->actingAs($admin)->postJson('/dashboard/creative-templates', [
-            'image' => $this->image(),
+        $upload = $this->actingAs($admin)->postJson('/dashboard/creative-templates', [
+            'image' => UploadedFile::fake()->image('card.png', 600, 400),
             'invitation_type' => 'greeting',
-        ])->assertCreated()->assertJsonPath('data.template.invitation_type', 'greeting')
-            ->assertJsonPath('data.template.name', 'card.png')
-            ->assertJsonPath('data.redirect_url', '/dashboard/creative-templates?status=approved&invitation_type=greeting&source=admin');
+        ])->assertCreated();
         $creative = CreativeTemplate::sole();
+        $upload->assertJsonPath('data.redirect_url', '/dashboard/creative-templates?status=approved&invitation_type=greeting&source=admin');
         $this->assertSame(CreativeTemplate::STATUS_APPROVED, $creative->status);
         $this->patchJson("/dashboard/creative-templates/{$creative->id}", [
             'invitation_type' => 'condolences',
@@ -74,6 +73,101 @@ class InvitationImageTemplatesTest extends TestCase
         $this->get('/dashboard/creative-templates?status=approved')->assertOk()->assertSee('حفظ التصنيف');
         Queue::assertNothingPushed();
         Http::assertNothingSent();
+    }
+
+    public function test_prepared_artwork_keeps_its_fixed_text_style_from_review_to_delivery(): void
+    {
+        $member = $this->person();
+        $this->asIdentity($member);
+        $image = imagecreatetruecolor(600, 400);
+        imagefill($image, 0, 0, 0xffffff);
+        imagefilledrectangle($image, 100, 170, 180, 189, 0x6e1238);
+        imagefilledrectangle($image, 440, 140, 480, 175, 0x005c45);
+        ob_start();
+        imagepng($image);
+        $original = ob_get_clean();
+        $id = $this->postJson('/api/v1/invitations/creatives', [
+            'image' => UploadedFile::fake()->createWithContent('artwork.png', $original),
+            'invitation_type' => 'greeting', 'publication_consent' => true, 'design_mode' => 'artwork',
+        ])->assertCreated()->assertJsonPath('data.template.status', 'pending')->json('data.template.id');
+        $this->getJson('/api/v1/invitations/creatives')->assertJsonCount(0, 'data.templates');
+
+        $admin = User::factory()->createQuietly();
+        $admin->assignRole(Role::findOrCreate('super_admin', 'web'));
+        $this->actingAs($admin)->postJson("/dashboard/creative-templates/{$id}/approve")
+            ->assertUnprocessable()->assertJsonPath('code', 'CREATIVE_ARTWORK_REVIEW_REQUIRED');
+        $endpoint = "/dashboard/creative-templates/{$id}/artwork";
+        $this->get($endpoint)->assertOk()->assertSee('نص للتجربة');
+        $this->get($endpoint.'/source')->assertOk()->assertHeader('Content-Type', 'image/png');
+        $field = [
+            'id' => 1, 'label' => 'اسم المدعو', 'text' => 'أحمد محمد', 'sample' => 'سارة',
+            'x' => 13, 'y' => 35, 'width' => 48, 'height' => 20,
+            'fontSize' => 5, 'fontFamily' => 'amiri', 'bold' => true, 'alignment' => 'right',
+            'color' => '#6e1238', 'sourceColor' => '',
+        ];
+        $draft = ['fields' => json_encode([$field], JSON_UNESCAPED_UNICODE)];
+        $this->postJson($endpoint, $draft)->assertUnprocessable()->assertJsonValidationErrors('proof');
+        $preview = $this->postJson($endpoint.'/preview', $draft)->assertOk()->json();
+        $this->assertStringStartsWith('data:image/jpeg;base64,', $preview['image']);
+        $this->postJson($endpoint, [
+            'fields' => json_encode([array_replace($field, ['fontSize' => 7])]),
+            'proof' => $preview['proof'],
+        ])->assertUnprocessable()->assertJsonPath('code', 'CREATIVE_ARTWORK_PREVIEW_REQUIRED');
+        $this->postJson($endpoint, $draft + ['proof' => $preview['proof']])->assertOk();
+        $this->postJson($endpoint, $draft + ['proof' => $preview['proof']])->assertUnprocessable();
+
+        $creative = CreativeTemplate::findOrFail($id);
+        $this->assertSame('approved', $creative->status);
+        $this->assertSame($original, Storage::disk('public')->get($creative->image_path));
+        Storage::disk('public')->assertExists($creative->editable_image_path);
+
+        $sender = $this->person();
+        $recipient = $this->person();
+        $this->asIdentity($sender);
+        $this->get('/invitations/send')->assertOk()->assertSee('data-prepared-artwork="true"', false);
+        $this->getJson('/api/v1/invitations/creatives?editable_only=1')->assertOk()
+            ->assertJsonPath('data.templates.0.editable_text_fields.0.default_text', 'أحمد محمد')
+            ->assertJsonPath('data.templates.0.editable_text_fields.0.x', 13);
+        $payload = ['template_key' => 'greeting', 'creative_id' => $id, 'body' => ''];
+        $key = 'creative_text_1';
+        $edit = $payload + ['template_vars' => [$key => 'سارة']];
+        $this->postJson('/api/v1/invitations/preview-artwork', $edit)
+            ->assertOk()->assertJsonPath('data.artwork_image', $preview['image']);
+        $this->postJson('/invitations/preview-artwork', $edit)
+            ->assertOk()->assertJsonPath('artwork_image', $preview['image']);
+        $card = $this->postJson('/api/v1/invitations/preview', $edit)->assertOk()->json('data.card_image_url');
+        $this->postJson('/invitations/preview-message', $edit)->assertOk()->assertJsonPath('card_image_url', $card);
+        $cardBytes = Storage::disk('public')->get('notifications/cards/'.basename($card));
+        $this->assertSame($preview['image'], 'data:image/jpeg;base64,'.base64_encode($cardBytes));
+
+        $rendered = imagecreatefromstring($cardBytes);
+        $this->assertGreaterThan(230, (imagecolorat($rendered, 243, 324) >> 8) & 255);
+        $this->assertLessThan(30, (imagecolorat($rendered, 828, 279) >> 16) & 255);
+        $unchanged = $this->postJson('/api/v1/invitations/preview', $payload + ['template_vars' => [$key => $field['text']]])
+            ->assertOk()->json('data.card_image_url');
+        $unchangedImage = imagecreatefromstring(Storage::disk('public')->get('notifications/cards/'.basename($unchanged)));
+        $this->assertLessThan(40, (imagecolorat($unchangedImage, 243, 324) >> 8) & 255);
+
+        $delivery = ['channels' => ['push'], 'recipient_type' => 'persons', 'person_ids' => [$recipient->id]];
+        $overflow = $payload + ['template_vars' => [$key => str_repeat('محمد ', 40)]];
+        $this->postJson('/api/v1/invitations/preview-artwork', $overflow)
+            ->assertUnprocessable()->assertJsonPath('code', 'CREATIVE_TEXT_OVERFLOW');
+        $this->postJson('/api/v1/invitations/send', $overflow + $delivery)
+            ->assertUnprocessable()->assertJsonPath('code', 'CREATIVE_TEXT_OVERFLOW');
+        $this->postJson('/api/v1/invitations/send', $edit + $delivery + ['creative_edit_source' => str_repeat('0', 64)])
+            ->assertUnprocessable()->assertJsonPath('code', 'CREATIVE_EDIT_SOURCE_CHANGED');
+        $this->postJson('/api/v1/invitations/send', $edit + $delivery + ['creative_edit_source' => $creative->artworkRevision()])->assertCreated();
+        $this->assertSame($card, url('storage/'.Notification::where('person_id', $sender->id)->sole()->media_path));
+
+        $updatedDraft = [
+            'fields' => json_encode([array_replace($field, ['label' => 'اسم الضيف'])]),
+            'reuse_background' => true,
+        ];
+        $updatedPreview = $this->actingAs($admin)->postJson($endpoint.'/preview', $updatedDraft)->assertOk()->json();
+        $this->assertSame($preview['image'], $updatedPreview['image']);
+        $this->postJson($endpoint, $updatedDraft + ['proof' => $updatedPreview['proof']])->assertOk();
+        $this->assertNotSame($creative->artworkRevision(), $creative->fresh()->artworkRevision());
+        $this->assertSame($cardBytes, Storage::disk('public')->get('notifications/cards/'.basename($card)));
     }
 
     public function test_ready_and_overlay_templates_are_filtered_and_delivered_in_their_respective_modes(): void
@@ -206,7 +300,7 @@ class InvitationImageTemplatesTest extends TestCase
         $this->assertStringContainsString('{event_name}', $fields[0]['sample']);
         $this->assertStringContainsString('{name}', $fields[0]['sample']);
         $layout = array_column($fields, 'box', 'key');
-        $layout['message']['inline']['event_name'] = ['bold' => true, 'offsetY' => -2, 'fontSize' => 6];
+        $layout['message']['inline']['event_name'] = ['bold' => true, 'italic' => true, 'underline' => true, 'offsetY' => -2, 'fontSize' => 6];
         $id = $this->postJson('/api/v1/invitations/creatives', [
             'image' => UploadedFile::fake()->image('overlay.png', 900, 740),
             'name' => 'معاينة الدعوة',
@@ -231,10 +325,13 @@ class InvitationImageTemplatesTest extends TestCase
         $this->postJson("/dashboard/creative-templates/{$id}/approve")->assertOk();
         $this->getJson('/api/v1/invitations/creatives?invitation_type=event_invitation')
             ->assertOk()->assertJsonPath('data.templates.0.preview_image_url', $preview);
-        $this->postJson('/api/v1/invitations/preview', [
+        $payload = [
             'template_key' => 'event_invitation', 'creative_id' => $id,
             'template_vars' => ['event_name' => 'اللقاء السنوي'],
-        ])->assertOk()->assertJsonMissingExact(['card_image_url' => $preview]);
+            'font_family' => 'amiri', 'font_weight' => 'bold',
+        ];
+        $base = $this->postJson('/api/v1/invitations/preview', $payload)->assertOk()->json('data.card_image_url');
+        $this->assertNotSame($preview, $base);
     }
 
     public function test_member_layout_must_fit_the_image_and_match_the_invitation_type(): void
@@ -346,17 +443,18 @@ class InvitationImageTemplatesTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_approved_wedding_submission_becomes_a_personalized_attachment(): void
+    public function test_legacy_wedding_layout_becomes_a_personalized_attachment(): void
     {
         $sender = $this->person();
         $recipient = $this->person();
         $this->asIdentity($sender);
-        $this->post('/invitations/creatives', [
+        $this->postJson('/api/v1/invitations/creatives', [
             'image' => UploadedFile::fake()->image('wedding.png', 900, 330),
             'name' => 'بطاقة زفاف', 'invitation_type' => 'wedding', 'publication_consent' => '1',
-        ])->assertRedirect(route('invitations.creatives.index'))->assertSessionHas('creative_success');
+        ])->assertCreated();
 
         $design = CreativeTemplate::sole();
+        $design->update(['design_mode' => null]);
         $this->get('/invitations/creatives')->assertOk()->assertSee('تصاميمي')->assertSee('بطاقة زفاف')
             ->assertSee(route('invitations.creatives.preview-image', $design->id));
         $this->get(route('invitations.creatives.preview-image', $design->id))->assertRedirect();
@@ -407,7 +505,7 @@ class InvitationImageTemplatesTest extends TestCase
         $notification = Notification::where('person_id', $sender->id)->sole();
         $this->assertSame('image', $notification->media_type);
         $this->assertTrue($notification->targeting_filters['creative_card_rendered']);
-        $this->assertSame(Storage::disk('public')->url($notification->media_path), $preview);
+        $this->assertSame(url('storage/'.$notification->media_path), $preview);
         $firstImage = Storage::disk('public')->get($notification->media_path);
         [$width, $height] = getimagesizefromstring($firstImage);
         $this->assertEqualsWithDelta(900 / 330, $width / $height, 0.01);
@@ -438,6 +536,7 @@ class InvitationImageTemplatesTest extends TestCase
         $draft = CreativeTemplate::create([
             'uploaded_by' => $owner->id, 'image_path' => 'draft.png', 'name' => 'بطاقة',
             'invitation_type' => 'wedding', 'status' => CreativeTemplate::STATUS_PENDING,
+            'design_mode' => 'overlay', 'text_layout' => CreativeTextLayout::defaults('wedding'),
         ]);
         $rejected = $draft->replicate();
         $rejected->save();

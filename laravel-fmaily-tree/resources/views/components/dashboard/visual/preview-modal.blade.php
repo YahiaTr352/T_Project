@@ -1,7 +1,23 @@
 @props([
     'id' => 'visualPreviewModal',
     'title' => 'معاينة سريعة',
+    'showFields' => false,
 ])
+
+@if ($showFields)
+    <style>
+        .visual-preview-fields { position: absolute; pointer-events: none; }
+        .visual-preview-field {
+            position: absolute; box-sizing: border-box; border: 2px dashed #ecfdf5; outline: 1px solid #146348;
+            border-radius: 3px; background: #16a36e30;
+        }
+        .visual-preview-field span {
+            position: absolute; inset-inline-start: 0; bottom: 100%; white-space: nowrap; padding: 2px 6px;
+            border-radius: 4px; color: white; background: #145740; font-size: .75rem; font-weight: 700;
+        }
+        .visual-preview-field[data-label-inside] span { top: 0; bottom: auto; }
+    </style>
+@endif
 
 <div class="modal fade" id="{{ $id }}" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
@@ -17,21 +33,27 @@
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
-            <div class="modal-body p-0" style="background:#0f172a;">
+            <div class="modal-body p-0" style="position:relative;background:#0f172a;">
                 <img
                     data-visual-preview-image
-                    src=""
                     alt="معاينة"
                     class="w-100 d-block"
                     style="max-height:70vh;object-fit:contain;background:#0f172a;"
                 >
+                @if ($showFields)
+                    <div id="{{ $id }}Fields" class="visual-preview-fields" data-visual-preview-regions hidden></div>
+                @endif
             </div>
             <div
                 class="modal-footer justify-content-between"
                 style="border-top:1px solid var(--dash-card-border, #e2e8f0);"
             >
                 <span class="notif-muted" style="font-size:11px;" data-visual-preview-caption></span>
-                <div class="d-flex" style="gap:8px;">
+                <div class="d-flex flex-wrap" style="gap:8px;">
+                    @if ($showFields)
+                        <button type="button" class="btn btn-sm btn-outline-secondary font-bold" data-visual-preview-fields-toggle
+                            aria-pressed="true" aria-controls="{{ $id }}Fields" hidden>أماكن المتغيّرات</button>
+                    @endif
                     <a
                         data-visual-preview-open
                         href="#"

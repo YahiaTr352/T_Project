@@ -154,6 +154,9 @@
             <div class="glass-card rounded-3xl p-6">
                 <h2 class="text-xl font-bold mb-4">الصورة والتصميم</h2>
                 <input type="hidden" name="creative_id" id="creative_id" value="{{ old('creative_id') }}">
+                <span id="preparedArtworkPreview" hidden></span>
+                <input type="hidden" name="creative_edit_source" id="creativeArtworkSource"
+                    value="{{ is_string(old('creative_edit_source')) ? old('creative_edit_source') : '' }}">
                 <input type="hidden" name="background_id" id="background_id" value="{{ old('background_id') }}">
                 <button type="button" id="creativeOpen" aria-haspopup="dialog" aria-controls="creativeDialog" style="display:none"
                     class="w-full flex items-center gap-3 rounded-2xl bg-emerald-600 p-4 text-white text-right">
@@ -165,6 +168,8 @@
                     <i class="fas fa-chevron-left" aria-hidden="true"></i>
                 </button>
                 <div class="flex flex-wrap gap-4 mt-2">
+                    <button type="button" id="preparedArtworkOpen" aria-haspopup="dialog" aria-controls="preparedArtworkDialog"
+                        class="rounded-xl border border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-800" hidden>تعديل كتابة القالب</button>
                     <button type="button" id="creativeClear" class="text-xs underline" hidden>إزالة قالب الصورة</button>
                 </div>
 
@@ -176,15 +181,21 @@
                             class="px-3 py-2 rounded-xl border">إغلاق</button>
                     </div>
                     <p id="creativeLibraryLabel" class="text-sm text-slate-600 mb-4"></p>
-                    @include('web-site.invitations.partials.creative-modes', ['fieldName' => 'gallery_mode'])
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         @foreach($creatives as $creative)
                             <div class="creative-card rounded-xl border border-slate-200 p-2" data-gallery-card hidden>
                                 <button type="button" class="creative-pick w-full rounded-lg border-2 border-transparent p-1"
                                 data-id="{{ $creative->id }}" data-type="{{ $creative->invitation_type }}"
-                                data-mode="{{ $creative->designMode() }}" data-variables="{{ json_encode($creative->variableKeys()) }}"
+                                data-prepared-artwork="{{ $creative->hasPreparedArtwork() || $creative->designMode() === \App\Models\CreativeTemplate::MODE_SVG ? 'true' : 'false' }}"
+                                data-artwork-revision="{{ $creative->artworkRevision() }}"
+                                @if ($creative->designMode() === \App\Models\CreativeTemplate::MODE_SVG)
+                                    data-svg-source="{{ route('invitations.creatives.svg-source', $creative->id, absolute: false) }}"
+                                @endif
+                                data-variables="{{ json_encode($creative->variableKeys()) }}" data-editable-fields="{{ json_encode($creative->editableTextFields(), JSON_UNESCAPED_UNICODE) }}"
                                 data-name="{{ $creative->name }}"
-                                data-url="{{ filter_var($creative->image_path, FILTER_VALIDATE_URL) ? $creative->image_url : ($creative->image_path ? asset('storage/'.$creative->image_path) : '') }}"
+                                data-url="{{ $creative->designMode() === \App\Models\CreativeTemplate::MODE_WEB_ARTWORK && $creative->hasPreparedArtwork()
+                                    ? route('invitations.creatives.preview-image', $creative->id, absolute: false)
+                                    : (filter_var($creative->image_path, FILTER_VALIDATE_URL) ? $creative->image_url : ($creative->image_path ? asset('storage/'.$creative->image_path) : '')) }}"
                                 aria-pressed="false">
                                     <img data-gallery-image="{{ route('invitations.creatives.preview-image', $creative->id, absolute: false) }}" alt="" class="w-full h-36 object-contain">
                                     <span class="text-xs font-bold">{{ $creative->name }}</span>
@@ -196,6 +207,29 @@
                     </div>
                     <p id="creativeEmpty" class="text-xs text-slate-500 mt-2"></p>
                     <button type="button" id="creativeConfirm" disabled class="mt-4 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white disabled:opacity-50">استخدام القالب</button>
+                </dialog>
+                <dialog id="preparedArtworkDialog" aria-labelledby="preparedArtworkTitle" dir="rtl"
+                    data-preview-url="{{ route('invitations.preview-artwork', absolute: false) }}"
+                    data-svg-fonts="{{ asset('fonts') }}"
+                    class="rounded-3xl p-5 shadow-xl" style="width:min(94vw,680px);max-height:90vh;overflow:auto">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <h3 id="preparedArtworkTitle" class="font-bold text-xl">تعديل كتابة القالب</h3>
+                        <button type="button" id="preparedArtworkCancel" class="rounded-xl border px-3 py-2">إلغاء</button>
+                    </div>
+                    <p class="text-sm mb-3">اضغط على النص في الصورة أو اختر الحقل أدناه.</p>
+                    <div class="text-center">
+                        <div dir="ltr" style="display:inline-block;position:relative;max-width:100%;line-height:0">
+                            <img id="preparedArtworkOriginal" alt="صورة القالب" style="display:block;max-width:100%;max-height:48vh;width:auto;height:auto">
+                            <img id="preparedArtworkLive" alt="معاينة الكتابة المعدّلة" hidden
+                                style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none">
+                            <div id="preparedArtworkTargets"></div>
+                        </div>
+                    </div>
+                    <div id="preparedArtworkFields" class="grid gap-3 mt-3"></div>
+                    <p id="preparedArtworkStatus" class="text-sm mt-2" role="status"></p>
+                    <button type="button" id="preparedArtworkRetry" class="text-sm underline" hidden>إعادة المعاينة</button>
+                    <button type="button" id="preparedArtworkApply"
+                        class="mt-4 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white disabled:opacity-50">تطبيق التعديلات</button>
                 </dialog>
                 @if($backgrounds->isNotEmpty())
                     <details class="mt-4">
@@ -258,35 +292,33 @@
 
 @section('scripts')
     @include('web-site.invitations.partials.tree-picker-script')
+    <script src="{{ asset('js/invitations/editable-svg.js') }}?v={{ filemtime(public_path('js/invitations/editable-svg.js')) }}" defer></script>
+    <script src="{{ asset('js/invitations/prepared-artwork.js') }}?v={{ filemtime(public_path('js/invitations/prepared-artwork.js')) }}" defer></script>
     <script>
         const templates = @json($templates);
         const senderName = @json($person->full_name ?: $person->first_name);
         const invitationForm = document.getElementById('invitationForm');
         const creativeInput = document.getElementById('creative_id');
+        const preparedArtworkPreview = document.getElementById('preparedArtworkPreview');
         const backgroundInput = document.getElementById('background_id');
         const attachment = document.getElementById('media');
         const previewImage = document.getElementById('simBg');
         let attachmentUrl = null;
         const creativeDialog = document.getElementById('creativeDialog');
-        const galleryModes = Array.from(creativeDialog.querySelectorAll('[name="gallery_mode"]'));
         const creativeCards = Array.from(creativeDialog.querySelectorAll('.creative-pick'));
         const creativeOpen = document.getElementById('creativeOpen');
         const creativeConfirm = document.getElementById('creativeConfirm');
         const galleryPreview = document.getElementById('galleryPreviewDialog');
         let pendingCreative = null;
+        let renderedCreativeId = null;
         creativeOpen.addEventListener('click', function () {
             pendingCreative = getSelectedCreative();
-            galleryModes.forEach((radio) => { radio.checked = radio.value === pendingCreative?.dataset.mode; });
             refreshGallery();
             creativeDialog.showModal();
         });
         document.getElementById('creativeClose').addEventListener('click', function () {
             creativeDialog.close();
         });
-        galleryModes.forEach((radio) => radio.addEventListener('change', () => {
-            if (pendingCreative?.dataset.mode !== radio.value) pendingCreative = null;
-            refreshGallery();
-        }));
 
         function getSelectedCreative() {
             return creativeCards.find((button) => button.dataset.id === creativeInput.value);
@@ -294,10 +326,9 @@
 
         function refreshGallery() {
             const type = document.getElementById('template_select').value;
-            const mode = galleryModes.find((radio) => radio.checked)?.value;
             let count = 0;
             creativeCards.forEach((button) => {
-                const visible = button.dataset.type === type && button.dataset.mode === mode;
+                const visible = button.dataset.type === type;
                 button.closest('[data-gallery-card]').hidden = !visible;
                 if (visible) {
                     count++;
@@ -307,14 +338,15 @@
                 button.classList.toggle('ring-2', button === pendingCreative);
                 button.setAttribute('aria-pressed', String(button === pendingCreative));
             });
-            document.getElementById('creativeEmpty').textContent = mode && !count ? 'لا توجد قوالب معتمدة لهذا الوضع ونوع الدعوة.' : '';
+            document.getElementById('creativeEmpty').textContent = !count ? 'لا توجد قوالب معتمدة لهذا النوع من الدعوات.' : '';
             document.getElementById('creativeLibraryLabel').textContent = templates.find((item) => item.key === type)?.name || '';
             creativeConfirm.disabled = !pendingCreative;
         }
 
         function selectedArtworkUrl() {
             const background = Array.from(document.querySelectorAll('.bg-pick')).find((button) => button.dataset.bgId === backgroundInput.value);
-            return attachmentUrl || getSelectedCreative()?.dataset.url || background?.dataset.bgUrl;
+            const edited = preparedArtworkPreview.dataset.templateId === creativeInput.value ? preparedArtworkPreview.dataset.previewImage : null;
+            return attachmentUrl || edited || getSelectedCreative()?.dataset.url || background?.dataset.bgUrl;
         }
 
         function refreshImages() {
@@ -336,7 +368,9 @@
             if (url) previewImage.src = url;
             else previewImage.removeAttribute('src');
             updatePreview();
+            creativeInput.dispatchEvent(new Event('change'));
         }
+        preparedArtworkPreview.addEventListener('change', refreshImages);
         function clearAttachment() {
             attachment.value = '';
             if (attachmentUrl) URL.revokeObjectURL(attachmentUrl);
@@ -364,6 +398,9 @@
             renderTemplateVars(document.getElementById('body').value);
             refreshImages();
             creativeDialog.close();
+            if (pendingCreative.dataset.preparedArtwork !== 'true' && JSON.parse(pendingCreative.dataset.editableFields).length) {
+                document.getElementById('inv-var-creative_text_1')?.focus();
+            }
         });
 
         const previewButton = document.getElementById('previewInvitation');
@@ -378,7 +415,7 @@
         previewButton.addEventListener('click', async function () {
             const data = new FormData();
             for (const [name, value] of new FormData(invitationForm)) {
-                if (name.startsWith('template_vars[') || ['_token', 'title', 'body', 'template_key', 'creative_id', 'background_id', 'recipient_type'].includes(name)) {
+                if (name.startsWith('template_vars[') || ['_token', 'title', 'body', 'template_key', 'creative_id', 'creative_edit_source', 'svg_card', 'background_id', 'recipient_type'].includes(name)) {
                     data.append(name, value);
                 }
                 if (name === 'person_ids[]' && !data.has('person_id')) data.set('person_id', value);
@@ -466,26 +503,42 @@
 
         function renderTemplateVars(body, values) {
             const box = document.getElementById('templateVars');
-            const designVars = JSON.parse(getSelectedCreative()?.dataset.variables || '[]');
+            const creative = getSelectedCreative();
+            const creativeId = creative?.dataset.id ?? null;
+            const creativeChanged = renderedCreativeId !== creativeId;
+            renderedCreativeId = creativeId;
+            const designVars = JSON.parse(creative?.dataset.variables || '[]');
+            const editableFields = new Map(JSON.parse(creative?.dataset.editableFields || '[]').map((field) => [field.key, field]));
             const vars = [...new Set([...extractVars(body), ...designVars.map((name) => '{' + name + '}')])];
             const inputs = Array.from(box.querySelectorAll('.tpl-var'));
-            if (!values && inputs.map((input) => input.dataset.var).join() === vars.join()) return;
-            values ??= Object.fromEntries(inputs.map((input) => [input.dataset.var.slice(1, -1), input.value]));
+            if (!values && !creativeChanged && inputs.map((input) => input.dataset.var).join() === vars.join()) return;
+            values ??= Object.fromEntries(inputs.map((input) => [input.dataset.var.slice(1, -1), input.value])
+                .filter(([key]) => !creativeChanged || !key.startsWith('creative_text_')));
             const labels = { hosts: 'أصحاب الدعوة', groom: 'اسم العريس', date: 'التاريخ', time: 'الوقت', location: 'القاعة أو المكان',
                 event_name: 'اسم المناسبة', occasion: 'المناسبة', announcement_title: 'عنوان الإعلان', announcement_details: 'تفاصيل الإعلان',
                 topic: 'الموضوع', deceased_name: 'اسم المتوفى', urgent_matter: 'موضوع التنبيه' };
             box.innerHTML = '';
-            document.getElementById('templateVarSection').hidden = !vars.length;
+            const prepared = creative?.dataset.preparedArtwork === 'true';
+            document.getElementById('templateVarSection').hidden = !vars.some((key) => !prepared || !editableFields.has(key.slice(1, -1)));
             vars.forEach(function (v) {
                 const key = v.replace(/[{}]/g, '');
                 const wrap = document.createElement('div');
-                wrap.innerHTML = '<label for="inv-var-' + key + '" class="text-xs font-bold text-slate-500 mb-1 block">' + (labels[key] || key) + '</label>' +
-                    '<input id="inv-var-' + key + '" name="template_vars[' + key + ']" data-var="' + v + '" class="tpl-var w-full px-3 py-2 border rounded-xl" maxlength="255">';
-                wrap.querySelector('input').value = values[key] || '';
-                box.appendChild(wrap);
-            });
-            box.querySelectorAll('.tpl-var').forEach(function (input) {
+                const field = editableFields.get(key);
+                const label = document.createElement('label');
+                label.htmlFor = 'inv-var-' + key;
+                label.className = 'text-xs font-bold text-slate-500 mb-1 block';
+                label.textContent = field?.label || labels[key] || key;
+                const input = document.createElement(prepared && field ? 'textarea' : 'input');
+                wrap.hidden = Boolean(prepared && field);
+                input.id = label.htmlFor;
+                input.name = 'template_vars[' + key + ']';
+                input.dataset.var = v;
+                input.className = 'tpl-var w-full px-3 py-2 border rounded-xl';
+                input.maxLength = 255;
+                input.value = Object.hasOwn(values, key) ? (values[key] ?? '') : (field?.default_text ?? '');
                 input.addEventListener('input', updatePreview);
+                wrap.append(label, input);
+                box.appendChild(wrap);
             });
         }
 
@@ -551,7 +604,15 @@
             renderTemplateVars(this.value);
             updatePreview();
         });
-        renderTemplateVars(document.getElementById('body').value, @json(old('template_vars', [])));
+        const previousValues = @json(old('template_vars', [])) || {};
+        const currentRevision = getSelectedCreative()?.dataset.artworkRevision;
+        const previousRevision = document.getElementById('creativeArtworkSource').value;
+        if (currentRevision && previousRevision && currentRevision !== previousRevision) {
+            for (const key of Object.keys(previousValues)) {
+                if (key.startsWith('creative_text_')) delete previousValues[key];
+            }
+        }
+        renderTemplateVars(document.getElementById('body').value, previousValues);
         refreshImages();
         syncRecipientType();
     </script>

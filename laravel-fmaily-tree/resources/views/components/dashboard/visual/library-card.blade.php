@@ -10,6 +10,7 @@
     'rejectionReason' => null,
     'extraBadge' => null,
     'previewTitle' => null,
+    'previewFields' => [],
     'approveUrl' => null,
     'rejectUrl' => null,
     'deleteUrl' => null,
@@ -231,6 +232,9 @@
             data-visual-preview-trigger
             data-image="{{ $imageUrl }}"
             data-title="{{ $previewTitle ?? $displayName }}"
+            @if ($previewFields)
+                data-visual-preview-fields="{{ json_encode($previewFields, JSON_UNESCAPED_UNICODE) }}"
+            @endif
         @endif
     >
         @if ($imageUrl)

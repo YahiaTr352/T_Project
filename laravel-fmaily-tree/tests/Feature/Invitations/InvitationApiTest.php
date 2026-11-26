@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Invitations;
 
+use App\Jobs\IndexPersonEmbeddingJob;
 use App\Jobs\SendExpoPushNotificationJob;
 use App\Jobs\SendWhatsAppInvitationJob;
 use App\Models\Notification;
@@ -12,6 +13,7 @@ use App\Models\UserDevice;
 use App\Services\ExpoNotificationService;
 use App\Services\SiteMobileAccessToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -24,6 +26,7 @@ class InvitationApiTest extends TestCase
     {
         parent::setUp();
         config(['site.password_protection_enabled' => false]);
+        Bus::fake([IndexPersonEmbeddingJob::class]);
     }
 
     public function test_pin_token_is_rejected(): void
@@ -170,13 +173,15 @@ class InvitationApiTest extends TestCase
 
         $me = Person::factory()->create(['gender' => 'male', 'death_date' => null]);
         $target = Person::factory()->create(['gender' => 'male', 'death_date' => null]);
+        $this->giveWhatsapp($me);
         $this->giveWhatsapp($target);
 
         $group = NotificationGroup::create([
             'name' => 'مجموعة',
             'person_id' => $me->id,
         ]);
-        $group->persons()->attach($target->id, ['sort_order' => 1]);
+        $group->persons()->attach($me->id, ['sort_order' => 1]);
+        $group->persons()->attach($target->id, ['sort_order' => 2]);
 
         $this->withHeaders($this->identityHeaders($me))
             ->postJson('/api/v1/invitations/send', [
@@ -187,7 +192,29 @@ class InvitationApiTest extends TestCase
             ])
             ->assertCreated();
 
-        Queue::assertPushed(SendWhatsAppInvitationJob::class);
+        Queue::assertPushed(SendWhatsAppInvitationJob::class, 1);
+        $this->assertSame([$target->id], Notification::sole()->recipients()->pluck('person_id')->all());
+    }
+
+    public function test_member_cannot_send_an_invitation_to_their_own_account_or_number(): void
+    {
+        Queue::fake();
+        $sender = Person::factory()->create(['birth_date' => '1990-01-01', 'death_date' => null]);
+        PersonContactAccount::create(['person_id' => $sender->id, 'type' => 'whatsapp', 'value' => '050 000 0142']);
+        $this->withHeaders($this->identityHeaders($sender));
+
+        $this->postJson('/api/v1/invitations/send', [
+            'channels' => ['push'], 'recipient_type' => 'persons',
+            'person_ids' => [$sender->id], 'body' => 'مرحبا',
+        ])->assertUnprocessable()->assertJsonPath('code', 'SELF_INVITATION');
+
+        $this->postJson('/api/v1/invitations/send', [
+            'channels' => ['whatsapp'], 'recipient_type' => 'external', 'external_name' => 'العضو',
+            'external_phone' => '500000142', 'external_country_code' => '+966', 'body' => 'مرحبا',
+        ])->assertUnprocessable()->assertJsonPath('code', 'SELF_INVITATION');
+
+        $this->assertDatabaseCount('notifications', 0);
+        Queue::assertNothingPushed();
     }
 
     public function test_cannot_send_from_someone_elses_group(): void

@@ -15,6 +15,7 @@
     'invitationTypes' => [],
     'layoutFields' => [],
     'creativeModes' => [],
+    'defaultCreativeMode' => null,
 ])
 
 <div class="modal fade" id="{{ $id }}" tabindex="-1" role="dialog" aria-hidden="true">
@@ -46,10 +47,10 @@
                             <select id="{{ $formId }}Mode" class="dashboard-input" data-creative-design-mode required>
                                 <option value="">اختر طريقة العرض</option>
                                 @foreach ($creativeModes as $key => $label)
-                                    <option value="{{ $key }}">{{ $label }}</option>
+                                    <option value="{{ $key }}" @selected($key === $defaultCreativeMode)>{{ $label }}</option>
                                 @endforeach
                             </select>
-                            <p class="notif-muted small mb-0 mt-1">الصورة الثابتة تُرسل كما هي. القالب القابل للتخصيص يتيح ترتيب النص والمتغيرات داخل الصورة.</p>
+                            <p class="notif-muted small mb-0 mt-1">ارفع SVG فيه كتابة قابلة للتعديل. لإرسال الصورة نفسها كما هي، اختر صورة ثابتة.</p>
                         </div>
                     @endif
                     @if ($invitationTypes)

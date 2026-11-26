@@ -2,12 +2,8 @@
 
 @section('title', 'مساحة إبداع')
 
-@section('extra_styles')
-    @include('web-site.invitations.partials.typography-fonts')
-    [data-creative-layout] .dashboard-input { border: 1px solid #cbd5e1; border-radius: .625rem; padding: .4rem; }
-    [data-creative-layout] h2, [data-creative-layout] legend { font-weight: 700; }
-    [data-creative-layout] .btn { border: 1px solid #cbd5e1; border-radius: .625rem; padding: .45rem .7rem; }
-    [data-creative-layout] .notif-muted { color: #475569; font-size: .875rem; margin-bottom: .5rem; }
+@section('head')
+    <link rel="stylesheet" href="{{ asset('css/invitations/creative-field-editor.css') }}?v={{ filemtime(public_path('css/invitations/creative-field-editor.css')) }}">
 @endsection
 
 @section('content')
@@ -19,37 +15,57 @@
         <p role="alert" class="mb-3 rounded-xl bg-rose-50 p-3 text-rose-800">{{ $error }}</p>
     @endforeach
 
-    <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <form action="{{ route('invitations.creatives.submit') }}" method="POST" enctype="multipart/form-data" class="glass-card space-y-3 rounded-3xl p-5 sm:p-6" id="creativeSubmission">
+    <div class="space-y-8">
+        <form action="{{ route('invitations.creatives.submit', absolute: false) }}" method="POST" enctype="multipart/form-data"
+            class="glass-card space-y-5 rounded-3xl p-5 sm:p-6" id="creativeSubmission"
+            data-preview-url="{{ route('invitations.creatives.fields.preview', absolute: false) }}">
             @csrf
-            <h2 class="text-xl font-bold">قدّم تصميمك</h2>
-            @include('web-site.invitations.partials.creative-modes', ['fieldName' => 'design_mode', 'selectedMode' => old('design_mode'), 'required' => true])
-            <input type="hidden" value="{{ old('design_mode') }}" data-creative-design-mode>
-            <label class="block text-sm font-bold" for="submissionType">نوع الدعوة</label>
-            <select id="submissionType" name="invitation_type" required class="w-full rounded-xl border p-2" data-visual-invitation-type>
-                <option value="">اختر نوع الدعوة</option>
-                @foreach ($templates as $tpl)
-                    <option value="{{ $tpl['key'] }}" @selected(old('invitation_type') === $tpl['key'])>{{ $tpl['name'] }}</option>
-                @endforeach
-            </select>
-            <label class="block text-sm font-bold" for="submissionName">اسم التصميم (اختياري)</label>
-            <input id="submissionName" name="name" value="{{ old('name') }}" maxlength="255" class="w-full rounded-xl border p-2">
-            <label class="block text-sm font-bold" for="submissionImage">صورة التصميم</label>
-            <input id="submissionImage" name="image" type="file" accept="image/jpeg,image/png,image/webp,image/gif" required class="w-full" data-visual-file-input>
-            <img id="submissionArtwork" class="mx-auto max-h-64 max-w-full rounded-xl" alt="صورة التصميم المختارة" hidden>
-            <x-dashboard.visual.text-layout-editor
-                :fields-by-type="collect($templates)->mapWithKeys(fn ($tpl) => [$tpl['key'] => \App\Services\Invitations\CreativeTextLayout::editableFields($tpl['key'])])->all()"
-            />
-            <label class="flex items-start gap-2 text-sm">
-                <input type="checkbox" name="publication_consent" value="1" required @checked(old('publication_consent'))>
-                <span>أوافق على عرض تصميمي للأعضاء في قوالب الصور إذا اعتمدته الإدارة.</span>
-            </label>
-            <button type="submit" class="rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white">إرسال للمراجعة</button>
+            <div class="grid gap-5 lg:grid-cols-[minmax(12rem,1.2fr)_1fr_1fr] lg:items-end">
+                <div>
+                    <h2 class="text-xl font-bold mb-2">قدّم تصميمك</h2>
+                    <label class="creative-editor-upload" for="submissionImage">
+                        <i class="fas fa-cloud-upload-alt" aria-hidden="true"></i>
+                        <span id="submissionFileName">اختر صورة تصميمك</span>
+                        <small>JPG أو PNG أو WebP أو SVG · حتى ١٦ ميغابايت</small>
+                    </label>
+                    <input id="submissionImage" name="image" type="file" accept=".jpg,.jpeg,.png,.webp,.svg,image/svg+xml" required class="sr-only">
+                </div>
+                <label class="block text-sm font-bold">نوع الدعوة
+                    <select id="submissionType" name="invitation_type" required class="mt-1 w-full rounded-xl border p-2">
+                        <option value="">اختر نوع الدعوة</option>
+                        @foreach ($templates as $tpl)
+                            <option value="{{ $tpl['key'] }}" @selected(old('invitation_type') === $tpl['key'])>{{ $tpl['name'] }}</option>
+                        @endforeach
+                    </select>
+                </label>
+                <label class="block text-sm font-bold">اسم التصميم (اختياري)
+                    <input id="submissionName" name="name" value="{{ old('name') }}" maxlength="255" class="mt-1 w-full rounded-xl border p-2">
+                </label>
+            </div>
+
+            @include('web-site.invitations.partials.creative-field-editor')
+
+            <div class="creative-editor-footer">
+                <label class="flex items-start gap-2 text-sm">
+                    <input type="checkbox" name="publication_consent" value="1" required @checked(old('publication_consent'))>
+                    <span>أوافق على عرض تصميمي للأعضاء إذا اعتمدته الإدارة.</span>
+                </label>
+                <p id="submissionStatus" class="creative-editor-status" role="status"></p>
+                <button type="submit" id="submissionSend" class="creative-editor-button creative-editor-primary">إرسال للمراجعة</button>
+            </div>
+            <dialog id="creativeSubmissionReview" class="creative-editor-review" aria-labelledby="creativeSubmissionReviewTitle">
+                <h3 id="creativeSubmissionReviewTitle">راجع التصميم قبل الإرسال</h3>
+                <img id="creativeSubmissionPreview" alt="معاينة التصميم مع المتغيّرات">
+                <div class="creative-editor-review-actions">
+                    <button id="creativeSubmissionReturn" type="button" class="creative-editor-button">رجوع للتعديل</button>
+                    <button id="creativeSubmissionConfirm" type="button" class="creative-editor-button creative-editor-primary">تأكيد الإرسال للمراجعة</button>
+                </div>
+            </dialog>
         </form>
 
         <section aria-labelledby="my-designs">
             <h2 id="my-designs" class="mb-3 text-xl font-bold">تصاميمي</h2>
-            <div class="space-y-3">
+            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 @php($typeNames = array_column($templates, 'name', 'key'))
                 @forelse ($myCreatives as $design)
                     <article class="glass-card rounded-2xl p-4">
@@ -60,12 +76,20 @@
                             @endif
                             <div class="min-w-0">
                                 <h3 class="break-words font-bold">{{ $design->name }}</h3>
-                                <p class="text-xs text-slate-600">{{ $typeNames[$design->invitation_type] ?? 'تصميم عام' }} · {{ \App\Models\CreativeTemplate::MODES[$design->designMode()] }}</p>
+                                <p class="text-xs text-slate-600">{{ $typeNames[$design->invitation_type] ?? 'تصميم عام' }}</p>
                                 <p class="mt-1 text-sm font-bold">{{ $design->status_label }}</p>
                             </div>
                         </div>
                         @if ($design->rejection_reason)
                             <p class="mt-2 break-words text-sm text-rose-700">{{ $design->rejection_reason }}</p>
+                        @endif
+                        @if ($design->designMode() === \App\Models\CreativeTemplate::MODE_SVG)
+                            @foreach ($design->svg_inspection['warnings'] ?? [] as $warning)
+                                <p class="mt-2 break-words text-sm text-amber-800">{{ $warning }}</p>
+                            @endforeach
+                            @if ($design->status === 'pending' && $design->svgReadyForReview())
+                                <p class="mt-2 text-sm text-emerald-800">الملف فيه نص قابل للتعديل وهو جاهز لمعاينة الإدارة.</p>
+                            @endif
                         @endif
                         @if ($design->awaitsPublicationConsent())
                             <form method="POST" action="{{ route('invitations.creatives.consent', $design->id) }}" class="mt-3 space-y-2">
@@ -90,26 +114,5 @@
 @endsection
 
 @section('scripts')
-    <script>
-        (() => {
-            const form = document.getElementById('creativeSubmission');
-            const mode = form.querySelector('[data-creative-design-mode]');
-            const file = form.querySelector('[data-visual-file-input]');
-            const image = document.getElementById('submissionArtwork');
-            let imageUrl;
-            form.querySelectorAll('[name="design_mode"]').forEach((radio) => radio.addEventListener('change', () => {
-                mode.value = radio.value;
-                mode.dispatchEvent(new Event('change'));
-                image.hidden = !imageUrl || mode.value !== 'ready';
-            }));
-            file.addEventListener('change', () => {
-                if (imageUrl) URL.revokeObjectURL(imageUrl);
-                imageUrl = file.files[0] ? URL.createObjectURL(file.files[0]) : null;
-                if (imageUrl) image.src = imageUrl;
-                else image.removeAttribute('src');
-                image.hidden = !imageUrl || mode.value !== 'ready';
-            });
-        })();
-    </script>
-    <script src="{{ asset('js/dashboard/creative-text-layout.js') }}?v={{ filemtime(public_path('js/dashboard/creative-text-layout.js')) }}" defer></script>
+    <script src="{{ asset('js/invitations/creative-field-editor.js') }}?v={{ filemtime(public_path('js/invitations/creative-field-editor.js')) }}" defer></script>
 @endsection

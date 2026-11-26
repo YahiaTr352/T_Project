@@ -6,6 +6,7 @@ use App\Exceptions\InvitationException;
 use App\Http\Controllers\Controller;
 use App\Models\CreativeTemplate;
 use App\Models\Person;
+use App\Services\Invitations\CreativeArtworkReview;
 use App\Services\Invitations\CreativeTemplateService;
 use App\Services\Invitations\CreativeTextLayout;
 use Illuminate\Http\JsonResponse;
@@ -22,9 +23,12 @@ class CreativeTemplateApiController extends Controller
     {
         $validated = $request->validate([
             'invitation_type' => ['sometimes', Rule::in(array_column(config('invitation_templates.templates', []), 'key'))],
-            'design_mode' => ['sometimes', Rule::in(array_keys(CreativeTemplate::MODES))],
+            'design_mode' => ['sometimes', Rule::in(array_diff(array_keys(CreativeTemplate::MODES), CreativeTemplate::WEB_MODES))],
+            'editable_only' => 'sometimes|boolean',
+            'member_fields' => 'sometimes|boolean',
         ]);
-        $list = CreativeTemplate::approved()
+        $list = CreativeTemplate::approved()->availableInApp($validated['member_fields'] ?? false)
+            ->when($validated['editable_only'] ?? false, fn ($query) => $query->forEditablePicker())
             ->when(isset($validated['invitation_type']), fn ($query) => $query->where('invitation_type', $validated['invitation_type']))
             ->when(isset($validated['design_mode']), fn ($query) => $query->forDesignMode($validated['design_mode']))
             ->latest()
@@ -38,8 +42,9 @@ class CreativeTemplateApiController extends Controller
     public function mine(Request $request): JsonResponse
     {
         $person = $this->person($request);
+        $validated = $request->validate(['member_fields' => 'sometimes|boolean']);
 
-        $list = CreativeTemplate::query()
+        $list = CreativeTemplate::availableInApp($validated['member_fields'] ?? false)
             ->where('uploaded_by', $person->id)
             ->latest()
             ->get()
@@ -57,7 +62,23 @@ class CreativeTemplateApiController extends Controller
         return $this->ok('تصاميمك المرفوعة.', ['templates' => $list]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function previewFields(Request $request, CreativeArtworkReview $review): JsonResponse
+    {
+        $validated = $request->validate([
+            'image' => CreativeTemplateService::ARTWORK_RULES,
+            'fields' => 'required|string|json|max:30000',
+        ]);
+
+        try {
+            $preview = $review->previewUpload($this->person($request), $request->file('image'), $validated['fields']);
+        } catch (InvitationException $e) {
+            return $this->fail($e);
+        }
+
+        return $this->ok('معاينة التصميم.', $preview);
+    }
+
+    public function store(Request $request, CreativeArtworkReview $review): JsonResponse
     {
         $validated = $request->validate([
             'image' => CreativeTemplateService::ARTWORK_RULES,
@@ -65,6 +86,8 @@ class CreativeTemplateApiController extends Controller
             'description' => 'nullable|string|max:1000',
             'invitation_type' => ['required', Rule::in(array_column(config('invitation_templates.templates', []), 'key'))],
             'publication_consent' => ['accepted'],
+            'fields' => 'required_with:proof|prohibits:text_layout|nullable|string|json|max:30000',
+            'proof' => 'nullable|string|size:64',
         ] + CreativeTemplateService::designRules(), [
             'image.required' => 'يرجى اختيار صورة التصميم.',
             'image.image' => 'الملف المرفوع يجب ان يكون صورة.',
@@ -76,7 +99,11 @@ class CreativeTemplateApiController extends Controller
         ]);
 
         try {
-            $template = $this->creatives->upload(
+            $template = isset($validated['fields']) ? $review->submitUpload(
+                $this->person($request), $request->file('image'), $validated['invitation_type'],
+                $validated['name'] ?? null, $validated['fields'], $validated['proof'] ?? null,
+                description: $validated['description'] ?? null,
+            ) : $this->creatives->upload(
                 $this->person($request),
                 $request->file('image'),
                 $validated['name'] ?? null,

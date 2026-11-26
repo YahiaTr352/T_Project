@@ -83,6 +83,10 @@ class RouteServiceProvider extends ServiceProvider
             return Limit::perMinute($limit)->by($key)->response($throttleResponse);
         });
 
+        RateLimiter::for('invitation-artwork-preview', function (Request $request) use ($resolveClientKey, $throttleResponse) {
+            return Limit::perMinute(90)->by($resolveClientKey($request))->response($throttleResponse);
+        });
+
         // 2. Walking Challenge / Group Creation Limiter (Generous 30/min per identified client)
         RateLimiter::for('walking-group-store', function (Request $request) use ($resolveClientKey, $throttleResponse) {
             return Limit::perMinute(30)->by($resolveClientKey($request))->response($throttleResponse);

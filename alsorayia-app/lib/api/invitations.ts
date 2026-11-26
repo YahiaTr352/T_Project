@@ -77,8 +77,7 @@ export type CreativeCardField = {
   kind?: 'variable' | 'text';
   segments?: { key: string; text: string; label: string; variable: boolean }[];
 };
-export type CreativeDesignMode = 'ready' | 'overlay';
-type CreativeUploadDesign = { designMode: 'ready' } | { designMode: 'overlay'; textLayout: CreativeTextLayout };
+export type CreativeDesignMode = 'ready' | 'overlay' | 'artwork' | 'web_artwork';
 
 export interface InvitationTemplate {
   key: string;
@@ -166,6 +165,7 @@ export interface PreviewInvitationInput {
   title?: string;
   background_id?: number;
   creative_id?: number;
+  creative_edit_source?: string;
   body?: string;
   template_key?: string;
   template_vars?: Record<string, string>;
@@ -185,14 +185,24 @@ export interface MyInvitationBackground extends InvitationBackground {
   created_at?: string;
 }
 
+export type CreativeArtworkEdit = { x: number; y: number; width: number; height: number; text: string };
+export type CreativeUploadField = CreativeArtworkEdit & {
+  id: number; label: string; fontFamily: 'tajawal' | 'amiri'; fontSize: number; bold: boolean;
+  alignment: 'right' | 'center' | 'left'; color: string;
+};
+export type CreativeTextField = { key: string; label: string; default_text: string }
+  & Partial<Pick<CreativeArtworkEdit, 'x' | 'y' | 'width' | 'height'>>;
+
 export interface CreativeTemplate {
   invitation_type?: string | null;
   design_mode?: CreativeDesignMode;
   variable_keys?: string[];
+  editable_text_fields?: CreativeTextField[];
   id: number;
   name?: string | null;
   image_url?: string | null;
   preview_image_url?: string | null;
+  artwork_revision?: string | null;
 }
 
 export interface MyCreativeTemplate extends CreativeTemplate {
@@ -205,10 +215,11 @@ export interface MyCreativeTemplate extends CreativeTemplate {
 
 export function resolveCreativeArtworkUrl(url: string): string {
   const source = new URL(url, WEB_BASE_URL);
-  const backendOrigin = new URL(api.defaults.baseURL ?? WEB_BASE_URL).origin;
+  const backend = new URL(api.defaults.baseURL ?? WEB_BASE_URL);
   const generatedOnBackend = /^\/storage\/(?:creative-templates|notifications\/cards)\//.test(source.pathname);
-  if (source.origin === new URL(WEB_BASE_URL).origin && generatedOnBackend) {
-    return `${backendOrigin}${source.pathname}${source.search}`;
+  const localHost = /^(?:localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)$/i.test(source.hostname);
+  if (generatedOnBackend && (source.host === backend.host || source.origin === new URL(WEB_BASE_URL).origin || localHost)) {
+    return `${backend.origin}${source.pathname}${source.search}`;
   }
 
   return source.href;
@@ -219,9 +230,13 @@ export function creativeArtworkSource(uri: string) {
   return { uri, headers };
 }
 
-export function creativePreviewImage(creative: CreativeTemplate) {
-  const url = creative.preview_image_url || creative.image_url;
-  return url ? creativeArtworkSource(resolveCreativeArtworkUrl(url)) : null;
+export function creativePreviewImage(creative: CreativeTemplate, failedUrls: readonly string[] = []) {
+  for (const url of [creative.preview_image_url, creative.image_url]) {
+    if (!url) continue;
+    const uri = resolveCreativeArtworkUrl(url);
+    if (!failedUrls.includes(uri)) return creativeArtworkSource(uri);
+  }
+  return null;
 }
 
 export interface SendInvitationInput {
@@ -237,6 +252,7 @@ export interface SendInvitationInput {
   title?: string | null;
   background_id?: number | null;
   creative_id?: number | null;
+  creative_edit_source?: string;
   body?: string;
   template_key?: string | null;
   template_vars?: Record<string, string>;
@@ -482,6 +498,16 @@ export async function detachPersonFromGroup(
   );
 }
 
+export async function previewCreativeArtwork(
+  input: PreviewInvitationInput,
+  signal: AbortSignal
+): Promise<InvitationsApiResponse<{ artwork_image: string }>> {
+  return request('تعذّر تحديث المعاينة.', () =>
+    api.post('/v1/invitations/preview-artwork', input,
+      { timeout: 15000, skipRetry: true, signal, ...skipHandler })
+  );
+}
+
 export async function previewInvitation(
   input: PreviewInvitationInput
 ): Promise<InvitationsApiResponse<{ preview: string; background?: InvitationBackground | null; creative?: CreativeTemplate | null; card_image_url?: string | null }>> {
@@ -565,7 +591,7 @@ export async function fetchCreatives(): Promise<
   InvitationsApiResponse<{ templates: CreativeTemplate[] }>
 > {
   return request('تعذر جلب القوالب.', () =>
-    api.get('/v1/invitations/creatives', skipHandler as any)
+    api.get('/v1/invitations/creatives', { ...skipHandler, params: { editable_only: 1, member_fields: 1 } } as any)
   );
 }
 
@@ -573,14 +599,13 @@ export async function fetchMyCreatives(): Promise<
   InvitationsApiResponse<{ templates: MyCreativeTemplate[] }>
 > {
   return request('تعذر جلب تصاميمك.', () =>
-    api.get('/v1/invitations/creatives/mine', skipHandler as any)
+    api.get('/v1/invitations/creatives/mine', { ...skipHandler, params: { member_fields: 1 } } as any)
   );
 }
 
-export async function uploadCreative(
-  artwork: { uri: string; mimeType?: string | null; fileName?: string | null; file?: File },
-  input: { name?: string; invitationType: string; publicationConsent: true } & CreativeUploadDesign,
-): Promise<InvitationsApiResponse<{ template: MyCreativeTemplate }>> {
+type CreativeUploadImage = { uri: string; mimeType?: string | null; fileName?: string | null; file?: File };
+
+function creativeUploadForm(artwork: CreativeUploadImage) {
   const form = new FormData();
   const mimeType = artwork.mimeType || 'image/jpeg';
   form.append('image', artwork.file ?? ({
@@ -588,11 +613,29 @@ export async function uploadCreative(
     name: artwork.fileName || `creative-${Date.now()}.${mimeType.split('/')[1] || 'jpg'}`,
     type: mimeType,
   } as unknown as Blob));
+  return form;
+}
+
+export async function previewCreativeUpload(artwork: CreativeUploadImage, fields: CreativeUploadField[]): Promise<
+  InvitationsApiResponse<{ design: string; proof: string }>
+> {
+  const form = creativeUploadForm(artwork);
+  form.append('fields', JSON.stringify(fields));
+  return request('تعذّر تجهيز معاينة التصميم.', () => apiUpload('/v1/invitations/creatives/field-preview', form));
+}
+
+export async function uploadCreative(
+  artwork: CreativeUploadImage,
+  input: { name?: string; invitationType: string; publicationConsent: true; prepared?: { fields: CreativeUploadField[]; proof: string } },
+): Promise<InvitationsApiResponse<{ template: MyCreativeTemplate }>> {
+  const form = creativeUploadForm(artwork);
   if (input.name?.trim()) form.append('name', input.name.trim());
   form.append('invitation_type', input.invitationType);
   form.append('publication_consent', input.publicationConsent ? '1' : '0');
-  form.append('design_mode', input.designMode);
-  if (input.designMode === 'overlay') form.append('text_layout', JSON.stringify(input.textLayout));
+  if (input.prepared) {
+    form.append('fields', JSON.stringify(input.prepared.fields));
+    form.append('proof', input.prepared.proof);
+  }
   return request('تعذر رفع التصميم.', () => apiUpload('/v1/invitations/creatives', form));
 }
 
@@ -620,6 +663,7 @@ export async function sendInvitationWithMedia(
   // مساحة الإبداع والصورة المرفقة وضعان متنافيان، لكن نمرر المعرفات إن وجدت للتوافق
   if (input.background_id) form.append('background_id', String(input.background_id));
   if (input.creative_id) form.append('creative_id', String(input.creative_id));
+  if (input.creative_edit_source) form.append('creative_edit_source', input.creative_edit_source);
   form.append('body', input.body ?? '');
   if (input.template_key) form.append('template_key', input.template_key);
   Object.entries(input.template_vars ?? {}).forEach(([k, v]) => form.append(`template_vars[${k}]`, v));

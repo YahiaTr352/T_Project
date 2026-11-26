@@ -1,10 +1,9 @@
 import type { ThemeColors } from '@/constants/theme';
-import { CreativeModePicker } from '@/components/invitations/CreativeModePicker';
 import { ImageViewerModal, type ViewerImage } from '@/components/ui/zoomable-image';
-import { creativePreviewImage, type CreativeDesignMode, type CreativeTemplate } from '@/lib/api/invitations';
+import { creativePreviewImage, type CreativeTemplate } from '@/lib/api/invitations';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { composerStyles as styles } from './composerStyles';
 
@@ -17,8 +16,6 @@ interface CreativePickerModalProps {
   muted: string;
   invitationTypeName?: string;
   loading: boolean;
-  mode: CreativeDesignMode | null;
-  onModeChange: (mode: CreativeDesignMode) => void;
   creatives: CreativeTemplate[];
   tempCreativeId: number | null;
   onSelect: (id: number | null) => void;
@@ -27,11 +24,15 @@ interface CreativePickerModalProps {
 
 export function CreativePickerModal({
   visible, onClose, colors, cardBg, border, muted, invitationTypeName, loading, creatives,
-  mode, onModeChange, tempCreativeId, onSelect, onConfirm,
+  tempCreativeId, onSelect, onConfirm,
 }: CreativePickerModalProps) {
   const [preview, setPreview] = useState<ViewerImage | null>(null);
-  const available = creatives.filter((creative) => (creative.design_mode ?? 'overlay') === mode);
+  const [failedImages, setFailedImages] = useState<string[]>([]);
   const closePreview = () => setPreview(null);
+
+  useEffect(() => {
+    if (!visible) setFailedImages([]);
+  }, [visible]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={preview ? closePreview : onClose}>
@@ -43,22 +44,22 @@ export function CreativePickerModal({
             <Text style={[styles.sectionLabel, { color: colors.text }]}>صور {invitationTypeName}</Text>
           ) : null}
           <ScrollView style={styles.previewBody} showsVerticalScrollIndicator={false}>
-            <CreativeModePicker colors={colors} value={mode} onChange={onModeChange} />
-            {mode && loading ? (
+            {loading ? (
               <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} />
-            ) : mode ? (
+            ) : (
               <View style={{ marginTop: 12 }}>
                 <View style={styles.ctGrid}>
-                  {available.map((creative) => {
+                  {creatives.map((creative) => {
                     const selected = tempCreativeId === creative.id;
                     const name = creative.name || 'قالب صورة';
-                    const image = creativePreviewImage(creative);
+                    const image = creativePreviewImage(creative, failedImages);
                     return (
                       <View key={creative.id}>
                         <TouchableOpacity accessibilityRole="button" accessibilityLabel={name} accessibilityState={{ selected }}
                           onPress={() => onSelect(selected ? null : creative.id)}
                           style={[styles.bgThumb, { borderColor: selected ? colors.primary : border, borderWidth: selected ? 3 : 1 }]}>
-                          {image ? <Image source={image} style={styles.bgThumbImg} contentFit="contain" /> : null}
+                          {image ? <Image source={image} style={styles.bgThumbImg} contentFit="contain"
+                            onError={() => setFailedImages((previous) => [...previous, image.uri])} /> : null}
                           {creative.name ? (
                             <View style={styles.bgNameBadge}>
                               <Text style={styles.bgNameBadgeText} numberOfLines={1}>{creative.name}</Text>
@@ -80,11 +81,11 @@ export function CreativePickerModal({
                     );
                   })}
                 </View>
-                {available.length === 0 ? (
-                  <Text style={[styles.emptyCreativeText, { color: muted }]}>لا توجد قوالب معتمدة لهذا الوضع ونوع الدعوة.</Text>
+                {creatives.length === 0 ? (
+                  <Text style={[styles.emptyCreativeText, { color: muted }]}>لا توجد قوالب معتمدة لهذا النوع من الدعوات.</Text>
                 ) : null}
               </View>
-            ) : null}
+            )}
           </ScrollView>
           <View style={styles.modalFooterRow}>
             <Pressable onPress={onClose} style={[styles.modalCancelBtn, { borderColor: border }]}>

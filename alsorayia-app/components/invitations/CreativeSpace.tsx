@@ -1,6 +1,5 @@
 import { ThemedText } from '@/components/themed-text';
-import { CreativeTextEditor } from '@/components/invitations/CreativeTextEditor';
-import { CreativeModePicker, creativeModeLabels } from '@/components/invitations/CreativeModePicker';
+import { CreativeUploadEditor, type PreparedCreativeUpload } from '@/components/invitations/composer/CreativeUploadEditor';
 import { CustomAlert } from '@/components/ui/AlertModal';
 import { ImageViewerModal, type ViewerImage } from '@/components/ui/zoomable-image';
 import { Colors } from '@/constants/theme';
@@ -10,8 +9,8 @@ import {
   creativePreviewImage,
   extractInvitationError,
   fetchMyCreatives,
-  type CreativeDesignMode,
-  type CreativeTextLayout,
+  previewCreativeUpload,
+  type CreativeUploadField,
   type MyCreativeTemplate,
   uploadCreative,
 } from '@/lib/api/invitations';
@@ -35,23 +34,20 @@ export function CreativeSpace({ active, types }: { active: boolean; types: Retur
   const insets = useSafeAreaInsets();
   const colors = Colors[useColorScheme() ?? 'light'];
   const [type, setType] = useState('');
-  const [mode, setMode] = useState<CreativeDesignMode | null>(null);
   const [name, setName] = useState('');
   const [artwork, setArtwork] = useState<ImagePicker.ImagePickerAsset | null>(null);
-  const [textLayout, setTextLayout] = useState<CreativeTextLayout | null>(null);
-  const [editingLayout, setEditingLayout] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [prepared, setPrepared] = useState<PreparedCreativeUpload>();
   const [agreed, setAgreed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [designs, setDesigns] = useState<MyCreativeTemplate[]>([]);
+  const [failedImages, setFailedImages] = useState<string[]>([]);
   const [previewImage, setPreviewImage] = useState<ViewerImage | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ text: string; error: boolean } | null>(null);
   const [savingConsent, setSavingConsent] = useState(false);
-  const messageField = types.templates.find((item) => item.key === type)?.overlay_fields?.find((field) => field.key === 'message');
-  const canChooseArtwork = Boolean(type && (mode === 'ready' || (mode === 'overlay' && messageField)));
-  const buttonDisabled = !artwork || !canChooseArtwork || !agreed || saving
-    || (mode === 'overlay' && !textLayout);
+  const buttonDisabled = !artwork || !type || !agreed || saving;
 
   const loadDesigns = useCallback(async () => {
     if (!active) return;
@@ -59,7 +55,10 @@ export function CreativeSpace({ active, types }: { active: boolean; types: Retur
     setListError(null);
     try {
       const result = await fetchMyCreatives();
-      if (result.success) setDesigns(result.data?.templates ?? []);
+      if (result.success) {
+        setDesigns(result.data?.templates ?? []);
+        setFailedImages([]);
+      }
       else setListError(extractInvitationError(result));
     } finally {
       setRefreshing(false);
@@ -80,8 +79,8 @@ export function CreativeSpace({ active, types }: { active: boolean; types: Retur
       const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.9 });
       if (!picked.canceled && picked.assets[0]) {
         setArtwork(picked.assets[0]);
-        setTextLayout(null);
-        if (mode === 'overlay') setEditingLayout(true);
+        setEditorOpen(false);
+        setPrepared(undefined);
         setAgreed(false);
         setFeedback(null);
       }
@@ -90,27 +89,29 @@ export function CreativeSpace({ active, types }: { active: boolean; types: Retur
     }
   };
 
+  const renderPreview = async (fields: CreativeUploadField[]) => {
+    if (!artwork) throw new Error('اختر صورة التصميم أولًا.');
+    const result = await previewCreativeUpload(artwork, fields);
+    if (!result.success || !result.data?.design || !result.data.proof) throw new Error(extractInvitationError(result));
+    return result.data;
+  };
+
   const submit = async () => {
-    if (buttonDisabled || !artwork) return;
-    const design = mode === 'ready'
-      ? { designMode: mode } as const
-      : textLayout && { designMode: 'overlay', textLayout } as const;
-    if (!design) return;
+    if (buttonDisabled || !artwork || !agreed) return;
     setSaving(true);
     setFeedback(null);
     try {
       const result = await uploadCreative(artwork, {
         name, invitationType: type, publicationConsent: agreed,
-        ...design,
+        ...(prepared ? { prepared: { fields: prepared.fields, proof: prepared.proof } } : {}),
       });
       if (!result.success) {
         setFeedback({ text: extractInvitationError(result), error: true });
         return;
       }
       setArtwork(null);
-      setTextLayout(null);
+      setPrepared(undefined);
       setType('');
-      setMode(null);
       setName('');
       setAgreed(false);
       setFeedback({ text: 'تم إرسال التصميم إلى الإدارة للمراجعة.', error: false });
@@ -144,13 +145,7 @@ export function CreativeSpace({ active, types }: { active: boolean; types: Retur
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadDesigns()} tintColor={colors.primary} />}>
       <View style={[styles.card, cardColors]}>
         <ThemedText style={styles.heading}>قدّم تصميمك</ThemedText>
-        <CreativeModePicker colors={colors} value={mode} disabled={saving} onChange={(next) => {
-          if (next === mode) return;
-          setMode(next);
-          setAgreed(false);
-          setFeedback(null);
-          if (next === 'overlay' && artwork && messageField && !textLayout) setEditingLayout(true);
-        }} />
+        <ThemedText style={[styles.text, { color: colors.icon }]}>ارفع تصميمك كاملًا وأرسله للإدارة للمراجعة.</ThemedText>
         <ThemedText style={styles.label}>نوع الدعوة</ThemedText>
         {types.loading ? <ActivityIndicator color={colors.primary} /> : null}
         {types.error ? (
@@ -164,9 +159,7 @@ export function CreativeSpace({ active, types }: { active: boolean; types: Retur
               disabled={saving} onPress={() => {
                 if (item.key === type) return;
                 setType(item.key);
-                setTextLayout(null);
                 setAgreed(false);
-                if (mode === 'overlay' && artwork && item.overlay_fields?.some((field) => field.key === 'message')) setEditingLayout(true);
               }}
               style={[styles.category, { borderColor: type === item.key ? colors.primary : colors.border, backgroundColor: type === item.key ? `${colors.primary}19` : colors.card }]}>
               {type === item.key ? <Ionicons name="checkmark" size={15} color={colors.primary} /> : null}
@@ -180,29 +173,27 @@ export function CreativeSpace({ active, types }: { active: boolean; types: Retur
           style={[styles.input, { borderColor: colors.border, color: colors.text }]} />
 
         <Pressable accessibilityRole="button" accessibilityLabel={artwork ? 'تغيير صورة التصميم' : 'اختيار صورة التصميم'}
-          disabled={saving || !canChooseArtwork} onPress={() => void chooseArtwork()}
-          style={[styles.artwork, { borderColor: colors.border, opacity: canChooseArtwork ? 1 : 0.55 }]}>
-          {artwork ? <Image source={{ uri: artwork.uri }} style={styles.preview} contentFit="contain" /> : null}
+          disabled={saving} onPress={() => void chooseArtwork()}
+          style={[styles.artwork, { borderColor: colors.border }]}>
+          {artwork ? <Image source={{ uri: prepared?.design ?? artwork.uri }} style={styles.preview} contentFit="contain" /> : null}
           <Ionicons name={artwork ? 'images-outline' : 'cloud-upload-outline'} size={24} color={colors.primary} />
           <ThemedText style={[styles.label, { color: colors.primary }]}>{artwork ? 'تغيير الصورة' : 'اختيار صورة التصميم'}</ThemedText>
         </Pressable>
 
-        {mode === 'overlay' && type && !types.loading && !messageField ? (
-          <ThemedText style={[styles.text, { color: colors.icon }]}>المحرر غير متاح لهذا النوع حاليًا.</ThemedText>
-        ) : null}
-        {mode === 'overlay' && artwork && messageField ? (
-          <Pressable accessibilityRole="button" disabled={saving} onPress={() => setEditingLayout(true)}>
-            <ThemedText style={[styles.label, { color: colors.primary }]}>
-              {textLayout ? 'تعديل توزيع العناصر' : 'افتح محرر القالب'}
-            </ThemedText>
+        <View style={[styles.editorIntro, { borderColor: colors.border, backgroundColor: `${colors.primary}12` }]}>
+          <View style={styles.editorDescription}>
+            <Ionicons name="create-outline" size={21} color={colors.primary} />
+            <View style={styles.designInfo}>
+              <ThemedText style={styles.label}>متغيّرات التصميم</ThemedText>
+              <ThemedText style={[styles.text, { color: colors.icon }]}>أضف حقولًا مثل الاسم والتاريخ والمكان ليقدر العضو يغيّرها عند استخدام القالب.</ThemedText>
+            </View>
+          </View>
+          <Pressable accessibilityRole="button" disabled={!artwork || saving} onPress={() => setEditorOpen(true)}
+            style={[styles.editorButton, { backgroundColor: colors.card, borderColor: colors.primary, opacity: artwork && !saving ? 1 : .55 }]}>
+            <ThemedText style={[styles.label, { color: colors.primary }]}>فتح محرّر المتغيّرات</ThemedText>
           </Pressable>
-        ) : null}
-        {mode === 'overlay' && editingLayout && artwork && messageField ? (
-          <CreativeTextEditor colors={colors} artwork={artwork} field={messageField}
-            initialLayout={textLayout ?? { message: messageField.box }}
-            onClose={() => setEditingLayout(false)}
-            onSave={(layout) => { setTextLayout(layout); setEditingLayout(false); }} />
-        ) : null}
+          {prepared ? <ThemedText style={[styles.text, { color: colors.primary }]}>{`الحقول المحفوظة (${prepared.fields.length})`}</ThemedText> : null}
+        </View>
 
         <Pressable accessibilityRole="checkbox" accessibilityLabel={consentText} accessibilityState={{ checked: agreed, disabled: saving }}
           disabled={saving} onPress={() => setAgreed(!agreed)} style={styles.consent}>
@@ -223,16 +214,17 @@ export function CreativeSpace({ active, types }: { active: boolean; types: Retur
       {designs.map((design) => {
         const typeName = types.templates.find((item) => item.key === design.invitation_type)?.name;
         const name = design.name || 'تصميمك';
-        const image = creativePreviewImage(design);
+        const image = creativePreviewImage(design, failedImages);
         return (
           <View key={design.id} style={[styles.card, cardColors]}>
             <Pressable style={styles.designRow} disabled={!image} accessible={Boolean(image)}
               accessibilityRole={image ? 'button' : undefined} accessibilityLabel={image ? `معاينة ${name}` : undefined}
               onPress={() => { if (image) setPreviewImage({ ...image, title: name }); }}>
-              {image ? <Image source={image} style={styles.thumbnail} contentFit="contain" /> : null}
+              {image ? <Image source={image} style={styles.thumbnail} contentFit="contain"
+                onError={() => setFailedImages((previous) => [...previous, image.uri])} /> : null}
               <View style={styles.designInfo}>
                 <ThemedText style={styles.label}>{name}</ThemedText>
-                <ThemedText style={[styles.text, { color: colors.icon }]}>{[typeName, creativeModeLabels[design.design_mode ?? 'overlay'], design.status_label || statusLabels[design.status]].filter(Boolean).join(' · ')}</ThemedText>
+                <ThemedText style={[styles.text, { color: colors.icon }]}>{[typeName, design.status_label || statusLabels[design.status]].filter(Boolean).join(' · ')}</ThemedText>
               </View>
               {image ? <Ionicons name="expand-outline" size={20} color={colors.primary} /> : null}
             </Pressable>
@@ -252,6 +244,10 @@ export function CreativeSpace({ active, types }: { active: boolean; types: Retur
       {previewImage ? (
         <ImageViewerModal visible images={[previewImage]} showDownload={false} onClose={() => setPreviewImage(null)} />
       ) : null}
+      {editorOpen && artwork ? (
+        <CreativeUploadEditor imageUri={artwork.uri} initial={prepared} colors={colors} renderPreview={renderPreview}
+          onClose={() => setEditorOpen(false)} onApply={(draft) => { setPrepared(draft); setEditorOpen(false); }} />
+      ) : null}
     </ScrollView>
   );
 }
@@ -268,6 +264,9 @@ const styles = StyleSheet.create({
   input: { minHeight: 48, borderWidth: 1, paddingHorizontal: 12, borderRadius: 12, textAlign: 'right', writingDirection: 'rtl', fontFamily: 'Tajawal-Medium' },
   artwork: { alignItems: 'center', gap: 8, padding: 14, borderWidth: 1, borderStyle: 'dashed', borderRadius: 14 },
   preview: { width: '100%', height: 220, borderRadius: 10 },
+  editorIntro: { borderWidth: 1, borderRadius: 14, padding: 12, gap: 8 },
+  editorDescription: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  editorButton: { borderWidth: 1, borderRadius: 12, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
   consent: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48 },
   consentLabel: { flex: 1 },
   submit: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, minHeight: 48, borderRadius: 14 },

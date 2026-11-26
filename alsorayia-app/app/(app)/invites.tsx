@@ -172,6 +172,7 @@ export default function InvitesScreen() {
                 templates={templates.templates}
                 templatesLoading={templates.loading}
                 groups={groups.groups}
+                senderId={user?.id}
                 colors={colors}
                 isDark={isDark}
                 onSent={handleSent}

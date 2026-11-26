@@ -7,6 +7,8 @@ import { Pressable, StyleSheet, View } from 'react-native';
 export const creativeModeLabels: Record<CreativeDesignMode, string> = {
   ready: 'صورة ثابتة',
   overlay: 'قالب قابل للتخصيص',
+  artwork: 'تصميم مع كتابة قابلة للتعديل',
+  web_artwork: 'تصميم من محرّر الأعضاء',
 };
 
 const options = [

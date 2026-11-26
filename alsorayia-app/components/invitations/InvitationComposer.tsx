@@ -5,6 +5,7 @@ import {
   toWesternDigits,
 } from '@/components/auth/countryData';
 import { InvitationField } from '@/components/invitations/InvitationField';
+import { PreparedArtworkEditor } from '@/components/invitations/composer/PreparedArtworkEditor';
 import { PersonAvatar } from '@/components/invitations/PersonAvatar';
 import { RecipientPickerModal } from '@/components/invitations/RecipientPickerModal';
 import { ThemedText } from '@/components/themed-text';
@@ -18,7 +19,6 @@ import {
   type SendInvitationInput,
   type InvitationTemplate,
   type CreativeTemplate,
-  type CreativeDesignMode,
   extractInvitationError,
   extractTemplateVarKeys,
   fetchCreatives,
@@ -26,6 +26,7 @@ import {
   isIdentityRequired,
   isUnderageBlocked,
   previewInvitation,
+  previewCreativeArtwork,
   sendInvitation,
   templateVarLabel,
   sendInvitationWithMedia,
@@ -67,6 +68,7 @@ export function InvitationComposer({
   templates,
   templatesLoading,
   groups,
+  senderId,
   colors,
   isDark,
   onSent,
@@ -85,7 +87,7 @@ export function InvitationComposer({
   const [externalPhone, setExternalPhone] = useState('');
   const [selectedCountry, setSelectedCountry] = useState<CountryCodeItem>(DEFAULT_COUNTRY);
   const [countryPickerVisible, setCountryPickerVisible] = useState(false);
-  const [selectedPersons, setSelectedPersons] = useState<InvitationPersonBrief[]>([]);
+  const [chosenPersons, setChosenPersons] = useState<InvitationPersonBrief[]>([]);
   const [groupId, setGroupId] = useState<number | null>(null);
   const [excludeDeceased] = useState(true);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -98,9 +100,11 @@ export function InvitationComposer({
   const [creatives, setCreatives] = useState<CreativeTemplate[]>([]);
   const [creativeLoading, setCreativeLoading] = useState(false);
   const [selectedCreativeId, setSelectedCreativeId] = useState<number | null>(null);
+  const [artworkRevision, setArtworkRevision] = useState<string>();
+  const [preparedEditorOpen, setPreparedEditorOpen] = useState(false);
+  const [appliedArtworkImage, setAppliedArtworkImage] = useState<string>();
   // اختيار مؤقت داخل المودال لا يُعتمد إلا بزر التأكيد
   const [tempCreativeId, setTempCreativeId] = useState<number | null>(null);
-  const [creativeMode, setCreativeMode] = useState<CreativeDesignMode | null>(null);
 
   // ── إرفاق صورة: صورة عادية تُرسل بجانب النص كما هي بدون دمج ──
   const [attachedImage, setAttachedImage] = useState<{ uri: string } | null>(null);
@@ -109,7 +113,12 @@ export function InvitationComposer({
   const [previewBg, setPreviewBg] = useState<{ id: number; name?: string | null; image_url?: string | null } | null>(null);
   const [previewCreative, setPreviewCreative] = useState<{ id: number; name?: string | null; image_url?: string | null } | null>(null);
 
-  const selectedGroup = groups.find((g) => g.id === groupId) ?? null;
+  const selectedPersons = useMemo(() => chosenPersons.filter((person) => person.id !== senderId), [chosenPersons, senderId]);
+  const recipientGroups = useMemo(() => groups.map((group) => {
+    const persons = group.persons.filter((person) => person.id !== senderId);
+    return { ...group, persons, persons_count: persons.length };
+  }), [groups, senderId]);
+  const selectedGroup = recipientGroups.find((group) => group.id === groupId);
 
   const insets = useSafeAreaInsets();
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
@@ -129,11 +138,18 @@ export function InvitationComposer({
       hideSub.remove();
     };
   }, []);
+  const resetArtwork = useCallback(() => {
+    setPreparedEditorOpen(false);
+    setAppliedArtworkImage(undefined);
+    setArtworkRevision(undefined);
+  }, []);
+
   const applyTemplate = (tpl: InvitationTemplate) => {
     const nextKey = templateKey === tpl.key ? null : tpl.key;
     setTemplateKey(nextKey);
     setSelectedCreativeId(null);
     setTempCreativeId(null);
+    resetArtwork();
     if (nextKey) {
       setTitle(tpl.title);
       setBody(tpl.body);
@@ -142,13 +158,30 @@ export function InvitationComposer({
   };
 
   const selectedCreative = creatives.find((b) => b.id === selectedCreativeId) ?? null;
+  const preparedCreative = selectedCreative?.editable_text_fields?.length && selectedCreative.image_url
+    && (selectedCreative.design_mode === 'artwork' || selectedCreative.design_mode === 'web_artwork') ? selectedCreative : null;
+  const preparedImage = preparedCreative?.preview_image_url || preparedCreative?.image_url;
   const varKeys = useMemo(() => Array.from(new Set([
     ...extractTemplateVarKeys(body),
-    ...(selectedCreative?.variable_keys ?? []),
+    ...(selectedCreative?.editable_text_fields?.length ? [] : selectedCreative?.variable_keys ?? []),
   ])), [body, selectedCreative]);
   const matchingCreatives = creatives.filter((item) => templateKey && item.invitation_type === templateKey);
   const invitationTemplate = templates.find((item) => item.key === templateKey);
   const invitationTypeName = invitationTemplate?.name;
+
+  const renderPreparedPreview = useCallback(async (values: Record<string, string>, signal: AbortSignal) => {
+    const response = await previewCreativeArtwork({
+      creative_id: selectedCreativeId ?? undefined,
+      template_key: templateKey ?? undefined,
+      template_vars: values,
+      creative_edit_source: artworkRevision,
+    }, signal);
+    if (!response.success || !response.data?.artwork_image) {
+      throw new Error(extractInvitationError(response));
+    }
+
+    return response.data.artwork_image;
+  }, [artworkRevision, selectedCreativeId, templateKey]);
 
   const loadCreatives = useCallback(async () => {
     setCreativeLoading(true);
@@ -172,15 +205,20 @@ export function InvitationComposer({
   // فتح المودال ينسخ الاختيار الحالي إلى المؤقت حتى لا يُعتمد إلا بالتأكيد
   const openCreativeModal = useCallback(() => {
     setTempCreativeId(selectedCreativeId);
-    setCreativeMode(selectedCreative ? selectedCreative.design_mode ?? 'overlay' : null);
     setCreativeModalVisible(true);
     void loadCreatives();
-  }, [selectedCreativeId, selectedCreative, loadCreatives]);
+  }, [selectedCreativeId, loadCreatives]);
 
 
   const confirmCreativeSelection = () => {
     const choice = matchingCreatives.find((item) => item.id === tempCreativeId);
+    const revision = choice?.artwork_revision ?? undefined;
+    if (choice?.id !== selectedCreativeId || revision !== artworkRevision) {
+      resetArtwork();
+      setTemplateVars((vars) => Object.fromEntries(Object.entries(vars).filter(([key]) => !key.startsWith('creative_text_'))));
+    }
     setSelectedCreativeId(choice?.id ?? null);
+    setArtworkRevision(revision);
     if (choice) {
       setAttachedImage(null);
     }
@@ -190,7 +228,9 @@ export function InvitationComposer({
   const clearCreativeSelection = useCallback(() => {
     setSelectedCreativeId(null);
     setTempCreativeId(null);
-  }, []);
+    resetArtwork();
+    setTemplateVars((vars) => Object.fromEntries(Object.entries(vars).filter(([key]) => !key.startsWith('creative_text_'))));
+  }, [resetArtwork]);
 
   const wrapBodySelection = (mark: string) => {
     const sel = bodySel ?? { start: body.length, end: body.length };
@@ -218,8 +258,7 @@ export function InvitationComposer({
     if (picked.canceled || !picked.assets?.[0]?.uri) return;
     // فصل ذكي: إرفاق صورة عادية يلغي قالب مساحة الإبداع لأن النص لن يُدمج داخل الصورة
     setAttachedImage({ uri: picked.assets[0].uri });
-    setSelectedCreativeId(null);
-    setTempCreativeId(null);
+    clearCreativeSelection();
   };
 
 
@@ -264,6 +303,7 @@ export function InvitationComposer({
         template_vars: templateVars,
         title: title.trim() || undefined,
         creative_id: selectedCreativeId ?? undefined,
+        creative_edit_source: artworkRevision,
         ...invitationTypography,
       });
       setPreviewing(false);
@@ -280,18 +320,19 @@ export function InvitationComposer({
     }
 
     const personId = samplePersonId();
-    if (!personId) {
+    if (!personId && !selectedCreative) {
       CustomAlert.alert('المعاينة', 'اختر مستلمًا واحدًا على الأقل لمعاينة النص.');
       return;
     }
     setPreviewing(true);
     const res = await previewInvitation({
-      person_id: personId,
+      person_id: personId ?? undefined,
       body,
       template_key: templateKey ?? undefined,
       template_vars: templateVars,
       title: title.trim() || undefined,
       creative_id: selectedCreativeId ?? undefined,
+      creative_edit_source: artworkRevision,
       ...invitationTypography,
     });
     setPreviewing(false);
@@ -341,8 +382,12 @@ export function InvitationComposer({
       CustomAlert.alert('الإرسال', 'اختر شخصًا واحدًا على الأقل.');
       return;
     }
-    if (recipientType === 'group' && !groupId) {
+    if (recipientType === 'group' && !selectedGroup) {
       CustomAlert.alert('الإرسال', 'اختر مجموعة للمستلمين.');
+      return;
+    }
+    if (recipientType === 'group' && selectedGroup?.persons_count === 0) {
+      CustomAlert.alert('الإرسال', 'لا يوجد مستلمون في المجموعة.');
       return;
     }
     if (!body.trim() && !attachedImage && !selectedCreativeId) {
@@ -382,6 +427,7 @@ export function InvitationComposer({
       external_country_code: recipientType === 'external' ? selectedCountry.dialCode : undefined,
       title: title.trim() || null,
       creative_id: selectedCreativeId,
+      creative_edit_source: artworkRevision,
       ...invitationTypography,
       body,
       template_key: templateKey,
@@ -570,6 +616,9 @@ export function InvitationComposer({
           title={title}
           body={body}
           selectedCreative={selectedCreative}
+          artworkEdited={Boolean(preparedCreative && appliedArtworkImage)}
+          artworkPreviewImage={appliedArtworkImage ?? preparedImage ?? undefined}
+          onEditArtwork={preparedCreative ? () => setPreparedEditorOpen(true) : undefined}
           fontFamily={invitationTextFont}
           attachedImage={attachedImage}
           onOpenCreative={() => void openCreativeModal()}
@@ -697,7 +746,7 @@ export function InvitationComposer({
                   <Pressable
                     key={p.id}
                     onPress={() =>
-                      setSelectedPersons((prev) => prev.filter((x) => x.id !== p.id))
+                      setChosenPersons((prev) => prev.filter((x) => x.id !== p.id))
                     }
                     style={[styles.personChip, { borderColor: border }]}>
                     <PersonAvatar uri={p.photo_url} size={22} mutedColor={muted} />
@@ -710,12 +759,12 @@ export function InvitationComposer({
           </View>
         ) : recipientType === 'group' ? (
           <View style={styles.groupsList}>
-            {groups.length === 0 ? (
+            {recipientGroups.length === 0 ? (
               <ThemedText style={[styles.hint, { color: muted }]}>
                 لا توجد مجموعات بعد — أنشئ مجموعة من تبويب المجموعات.
               </ThemedText>
             ) : (
-              groups.map((g) => {
+              recipientGroups.map((g) => {
                 const active = groupId === g.id;
                 return (
                   <Pressable
@@ -866,8 +915,9 @@ export function InvitationComposer({
 
         visible={pickerVisible}
         onClose={() => setPickerVisible(false)}
-        onConfirm={setSelectedPersons}
+        onConfirm={setChosenPersons}
         initialSelected={selectedPersons}
+        excludedPersonId={senderId}
         colors={colors}
         isDark={isDark}
       />
@@ -881,17 +931,23 @@ export function InvitationComposer({
         border={border}
         muted={muted}
         loading={creativeLoading}
-        mode={creativeMode}
-        onModeChange={(mode) => {
-          if (mode === creativeMode) return;
-          setCreativeMode(mode);
-          setTempCreativeId(null);
-        }}
         creatives={matchingCreatives}
         tempCreativeId={tempCreativeId}
         onSelect={setTempCreativeId}
         onConfirm={() => void confirmCreativeSelection()}
       />
+
+      {preparedEditorOpen && preparedImage && preparedCreative?.editable_text_fields ? (
+        <PreparedArtworkEditor imageUrl={preparedImage} fields={preparedCreative.editable_text_fields}
+          values={templateVars} colors={colors} background={cardBg} border={border} renderPreview={renderPreparedPreview}
+          onClose={() => setPreparedEditorOpen(false)}
+          onApply={(values, image) => {
+            setTemplateVars((current) => ({ ...current, ...values }));
+            setAppliedArtworkImage(image);
+            setPreparedEditorOpen(false);
+          }}
+        />
+      ) : null}
 
       <CountryPickerModal
         visible={countryPickerVisible}

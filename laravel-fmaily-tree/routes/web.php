@@ -109,13 +109,18 @@ Route::prefix('invitations')->name('invitations.')->group(function () {
         Route::post('/send', [\App\Http\Controllers\InvitationController::class, 'sendSubmit'])->name('send.submit');
         Route::get('/creatives', [\App\Http\Controllers\InvitationController::class, 'creativeSpace'])->name('creatives.index');
         Route::post('/creatives', [\App\Http\Controllers\InvitationController::class, 'submitCreative'])->middleware('throttle:20,1')->name('creatives.submit');
+        Route::post('/creatives/field-preview', [\App\Http\Controllers\InvitationController::class, 'previewCreativeFields'])
+            ->middleware('throttle:invitation-artwork-preview')->name('creatives.fields.preview');
         Route::get('/creatives/{id}/preview-image', [\App\Http\Controllers\InvitationController::class, 'previewCreativeArtwork'])->whereNumber('id')->name('creatives.preview-image');
+        Route::get('/creatives/{id}/svg-source', [\App\Http\Controllers\InvitationController::class, 'creativeSvgSource'])->whereNumber('id')->name('creatives.svg-source');
         Route::post('/creatives/{id}/publication-consent', [\App\Http\Controllers\InvitationController::class, 'consentToCreativePublication'])->whereNumber('id')->name('creatives.consent');
         Route::get('/logs', [\App\Http\Controllers\InvitationController::class, 'logs'])->name('logs');
         Route::put('/logs/{notification}/response', [\App\Http\Controllers\InvitationController::class, 'respond'])->name('logs.respond');
         Route::get('/tree-picker', [\App\Http\Controllers\InvitationController::class, 'treePicker'])->name('tree-picker');
         Route::get('/persons-search', [\App\Http\Controllers\InvitationController::class, 'searchPersons'])->name('persons-search');
         Route::post('/preview-message', [\App\Http\Controllers\InvitationController::class, 'previewMessage'])->name('preview-message');
+        Route::post('/preview-artwork', [\App\Http\Controllers\InvitationController::class, 'previewMessage'])
+            ->middleware('throttle:invitation-artwork-preview')->name('preview-artwork');
 
         Route::prefix('groups')->name('groups.')->group(function () {
             Route::get('/', [\App\Http\Controllers\InvitationController::class, 'groupsIndex'])->name('index');
@@ -837,6 +842,15 @@ Route::group(['middleware' => ['auth'], 'prefix' => 'dashboard'], function () {
         Route::get('/{template}/text-layout', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'editLayout'])->name('layout.edit')->middleware(['permission:notifications.send']);
         Route::put('/{template}/text-layout', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'saveLayout'])->name('layout.save')->middleware(['permission:notifications.send']);
         Route::post('/{template}/text-layout/preview', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'previewLayout'])->name('layout.preview')->middleware(['permission:notifications.send', 'throttle:30,1']);
+        Route::middleware(['permission:notifications.send'])->group(function () {
+            Route::get('/{template}/svg', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'editSvg'])->name('svg.edit');
+            Route::get('/{template}/svg/source', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'svgSource'])->name('svg.source');
+            Route::post('/{template}/svg', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'saveSvg'])->name('svg.save')->middleware('throttle:30,1');
+            Route::get('/{template}/artwork', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'editArtwork'])->name('artwork.edit');
+            Route::get('/{template}/artwork/source', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'artworkSource'])->name('artwork.source');
+            Route::post('/{template}/artwork/preview', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'previewArtwork'])->name('artwork.preview')->middleware('throttle:30,1');
+            Route::post('/{template}/artwork', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'saveArtwork'])->name('artwork.save');
+        });
         Route::post('/', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'store'])->name('store')->middleware(['permission:notifications.send']);
         Route::post('/{template}/approve', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'approve'])->name('approve')->middleware(['permission:notifications.send']);
         Route::post('/{template}/reject', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'reject'])->name('reject')->middleware(['permission:notifications.send']);

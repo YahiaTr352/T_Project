@@ -145,13 +145,6 @@
                         <option value="admin" @selected($source === 'admin')>تصاميم الإدارة</option>
                         <option value="members" @selected($source === 'members')>تصاميم الأعضاء</option>
                     </select>
-                    <label class="notif-title mb-0" for="creativeDesignMode">طريقة عرض القالب</label>
-                    <select id="creativeDesignMode" name="design_mode" class="dashboard-input">
-                        <option value="">كل طرق العرض</option>
-                        @foreach ($modes as $key => $label)
-                            <option value="{{ $key }}" @selected($mode === $key)>{{ $label }}</option>
-                        @endforeach
-                    </select>
                     <button type="submit" class="btn btn-success btn-sm creative-filter-submit">تصفية</button>
                 </form>
             </div>
@@ -170,6 +163,7 @@
                     <x-dashboard.visual.library-card
                         :id="$ct->id"
                         :imageUrl="$previewUrls[$ct->id]"
+                        :previewFields="$ct->editableTextFields()"
                         :name="$ct->name"
                         :description="$ct->description"
                         :uploaderName="$ct->uploader?->full_name ?? ($ct->publication_consented_at ? 'عضو سابق' : null)"
@@ -177,18 +171,34 @@
                         :status="$ct->status"
                         :statusLabel="$ct->status_label"
                         :rejectionReason="$ct->rejection_reason"
-                        :approveUrl="$ct->awaitsPublicationConsent() ? null : route('dashboard.creatives.approve', $ct)"
+                        :approveUrl="$ct->awaitsPublicationConsent() || !$ct->invitation_type || in_array($ct->designMode(), [\App\Models\CreativeTemplate::MODE_ARTWORK, \App\Models\CreativeTemplate::MODE_SVG], true) ? null : route('dashboard.creatives.approve', $ct)"
                         :rejectUrl="route('dashboard.creatives.reject', $ct)"
                         :deleteUrl="route('dashboard.creatives.destroy', $ct)"
                         :canManage="auth()->user()?->can('notifications.send') ?? false"
                     >
                         <x-slot name="details">
+                            @if ($ct->designMode() === \App\Models\CreativeTemplate::MODE_SVG)
+                                @foreach ($ct->svg_inspection['warnings'] ?? [] as $warning)
+                                    <p class="text-warning small mb-2">{{ $warning }}</p>
+                                @endforeach
+                                @can('notifications.send')
+                                    <a href="{{ route('dashboard.creatives.svg.edit', $ct) }}" class="btn btn-outline-primary btn-sm mb-2">
+                                        {{ $ct->svgReadyForReview() ? 'معاينة حقول SVG' : 'فحص ملف SVG' }}
+                                    </a>
+                                @endcan
+                            @endif
+                            @can('notifications.send')
+                                @if ($ct->canPrepareArtwork() && $ct->status !== 'rejected')
+                                    <a href="{{ route('dashboard.creatives.artwork.edit', $ct) }}" class="btn btn-outline-primary btn-sm mb-2">
+                                        {{ $ct->editable_text ? 'تعديل حقول الكتابة' : 'تجهيز حقول الكتابة' }}
+                                    </a>
+                                @endif
+                            @endcan
                             <div class="creative-classification">
                                 <span class="creative-type-pill">
                                     <i class="fa-solid fa-tag" aria-hidden="true"></i>
                                     <span data-category-label>{{ $invitationTypes[$ct->invitation_type] ?? 'تصميم عام' }}</span>
                                 </span>
-                                <span class="creative-type-pill">{{ $modes[$ct->designMode()] }}</span>
                                 @can('notifications.send')
                                     <details class="creative-category-editor">
                                         <summary class="creative-type-edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i> تعديل النوع</summary>
@@ -211,13 +221,6 @@
                             @if ($ct->awaitsPublicationConsent())
                                 <p class="notif-muted small mb-0"><i class="fa-solid fa-clock" aria-hidden="true"></i> بانتظار موافقة العضو على عرض التصميم.</p>
                             @endif
-                            @can('notifications.send')
-                                @if ($ct->designMode() === \App\Models\CreativeTemplate::MODE_OVERLAY && $ct->invitation_type && $previewUrls[$ct->id])
-                                    <a class="creative-type-edit" href="{{ route('dashboard.creatives.layout.edit', $ct) }}">
-                                        <i class="fa-solid fa-font" aria-hidden="true"></i> تحرير النص والمتغيرات
-                                    </a>
-                                @endif
-                            @endcan
                         </x-slot>
                     </x-dashboard.visual.library-card>
                 @endforeach
@@ -231,7 +234,7 @@
         @endif
 
         {{-- المودالات المشتركة --}}
-        <x-dashboard.visual.preview-modal id="visualPreviewModal" title="معاينة التصميم" />
+        <x-dashboard.visual.preview-modal id="visualPreviewModal" title="معاينة التصميم" :show-fields="true" />
         <x-dashboard.visual.reject-modal
             id="visualRejectModal"
             title="رفض التصميم"
@@ -246,13 +249,17 @@
 
         @can('notifications.send')
             <x-dashboard.visual.upload-modal
-                title="رفع قالب صورة"
+                title="رفع تصميم"
+                submit-label="رفع التصميم"
                 name-label="اسم التصميم (اختياري)"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                image-hint="JPG أو PNG أو WebP أو GIF حتى 16 ميغابايت."
+                accept=".svg,image/svg+xml"
+                image-hint="SVG قابل للتحرير أو صورة ثابتة بحسب الخيار، حتى 16 ميغابايت."
                 :invitationTypes="config('invitation_templates.templates', [])"
-                :creative-modes="$modes"
-                :layout-fields="collect($invitationTypes)->map(fn ($label, $key) => \App\Services\Invitations\CreativeTextLayout::editableFields($key))->all()"
+                :creativeModes="[
+                    'svg' => 'قالب SVG قابل للتحرير',
+                    'ready' => 'صورة ثابتة',
+                ]"
+                default-creative-mode="svg"
                 :storeUrl="route('dashboard.creatives.store')"
             />
         @endcan
@@ -264,6 +271,16 @@
 
 @push('scripts')
     <script>
+        const uploadMode = document.querySelector('[data-creative-design-mode]');
+        uploadMode?.addEventListener('change', () => {
+            const form = uploadMode.closest('form');
+            const file = form.querySelector('[data-visual-file-input]');
+            file.accept = uploadMode.value === 'svg' ? '.svg,image/svg+xml' : 'image/jpeg,image/png,image/webp,image/gif';
+            file.value = '';
+            const dropzone = file.closest('[data-visual-dropzone]');
+            dropzone.querySelector('[data-visual-file-preview]').classList.add('d-none');
+            dropzone.querySelector('[data-visual-drop-empty]').classList.remove('d-none');
+        });
         const creativeTypeFilter = @json($type);
         document.querySelectorAll('[data-category-form]').forEach(function (form) {
             form.addEventListener('submit', async function (event) {
@@ -310,5 +327,4 @@
         });
     </script>
     <script src="{{ asset('js/dashboard/visual-library.js') }}?v={{ file_exists(public_path('js/dashboard/visual-library.js')) ? filemtime(public_path('js/dashboard/visual-library.js')) : time() }}"></script>
-    <script src="{{ asset('js/dashboard/creative-text-layout.js') }}?v={{ filemtime(public_path('js/dashboard/creative-text-layout.js')) }}" defer></script>
 @endpush

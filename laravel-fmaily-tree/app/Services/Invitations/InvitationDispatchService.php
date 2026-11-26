@@ -6,6 +6,7 @@ use App\Exceptions\InvitationException;
 use App\Models\CreativeTemplate;
 use App\Models\Notification;
 use App\Models\Person;
+use App\Services\Auth\WhatsappPersonLookup;
 use App\Support\NotificationSettings;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,8 @@ use Illuminate\Support\Collection;
 
 class InvitationDispatchService
 {
+    private const SELF_INVITATION_MESSAGE = 'لا يمكنك إرسال دعوة لنفسك.';
+
     public function __construct(
         protected InvitationMessageService $messages,
         protected InvitationGroupService $groups,
@@ -22,6 +25,7 @@ class InvitationDispatchService
         protected CreativeTemplateService $creatives,
         protected InvitationDeliveryService $delivery,
         protected InvitationCardRenderer $cards,
+        protected WhatsappPersonLookup $whatsappLookup,
     ) {}
 
     /**
@@ -38,7 +42,8 @@ class InvitationDispatchService
      *     media_type?: string|null,
      *     media?: UploadedFile|null,
      *     background_id?: int|null
-     *     creative_id?: int|null
+     *     creative_id?: int|null,
+     *     creative_edit_source?: string|null
      * }  $payload
      * @return array{notification: Notification, whatsapp_jobs: int, push_jobs: int}
      */
@@ -70,6 +75,15 @@ class InvitationDispatchService
             if (empty($externalRecipients)) {
                 throw new InvitationException('يرجى إدخال اسم ورقم واتساب صحيح لشخص واحد على الأقل من خارج العائلة.', 'NO_EXTERNAL_RECIPIENTS');
             }
+            $senderPhones = $sender->contactAccounts()->whereIn('type', ['whatsapp', 'phone'])->pluck('value')
+                ->map(fn ($phone) => $this->whatsappLookup->canonicalMobile((string) $phone))->filter()->all();
+            $externalRecipients = array_values(array_filter(
+                $externalRecipients,
+                fn (array $recipient) => ! in_array($this->whatsappLookup->canonicalMobile($recipient['phone']), $senderPhones, true),
+            ));
+            if ($externalRecipients === []) {
+                throw new InvitationException(self::SELF_INVITATION_MESSAGE, 'SELF_INVITATION');
+            }
         } else {
             $persons = $this->resolveRecipients($sender->id, $payload, $excludeDeceased);
             if ($persons->isEmpty()) {
@@ -84,7 +98,7 @@ class InvitationDispatchService
         $background = $this->backgrounds->usableBackground(
             isset($payload['background_id']) ? (int) $payload['background_id'] : null
         );
-        $creative = $this->creativeFor($payload);
+        $creative = $this->creativeFor($payload, allowWeb: $payload['allow_web_template'] ?? false);
         [$mediaPath, $mediaType] = $this->storeMedia($payload['media'] ?? null, $payload['media_type'] ?? null);
         if ($background && $background->image_path) {
             $copied = $this->copyBackgroundToNotification($background->image_path);
@@ -166,17 +180,38 @@ class InvitationDispatchService
         return ['notification' => $notification->fresh(['recipients'])] + $result;
     }
 
-    public function creativeFor(array $payload): ?CreativeTemplate
+    public function creativeFor(array $payload, bool $allowWeb = false): ?CreativeTemplate
     {
-        return $this->creatives->usableCreative(
+        $creative = $this->creatives->usableCreative(
             isset($payload['creative_id']) ? (int) $payload['creative_id'] : null,
             $payload['template_key'] ?? null,
         );
+        if (! $allowWeb && in_array($creative?->designMode(), CreativeTemplate::WEB_MODES, true) && ! $creative->hasPreparedArtwork()) {
+            throw new InvitationException('هذا القالب متاح من الموقع.', 'CREATIVE_NOT_AVAILABLE');
+        }
+        $revision = $creative?->artworkRevision();
+        if ($revision && isset($payload['creative_edit_source']) && $revision !== $payload['creative_edit_source']) {
+            throw new InvitationException('تغيّر القالب. أعد اختياره من المكتبة لتحديث الكتابة.', 'CREATIVE_EDIT_SOURCE_CHANGED', 422);
+        }
+
+        return $creative;
     }
 
     public function creativeCard(CreativeTemplate $creative, Person $sender, array $payload): ?string
     {
-        if ($creative->designMode() === CreativeTemplate::MODE_READY) {
+        if ($creative->designMode() === CreativeTemplate::MODE_SVG) {
+            return app(CreativeSvgArtwork::class)->card($creative, $payload['template_vars'] ?? [], $payload['svg_card'] ?? null);
+        }
+
+        if ($creative->editable_text) {
+            $path = $this->cards->renderEditableArtwork($creative, $payload['template_vars'] ?? []);
+            if (! $path) {
+                throw new InvitationException('تعذّر تجهيز صورة الدعوة. جرّب قالب صورة آخر.', 'CREATIVE_RENDER_FAILED', 422);
+            }
+
+            return $path;
+        }
+        if (in_array($creative->designMode(), [CreativeTemplate::MODE_READY, CreativeTemplate::MODE_WEB_ARTWORK], true)) {
             return null;
         }
         $usesPreset = $creative->design_mode === CreativeTemplate::MODE_OVERLAY && $creative->invitation_type !== null;
@@ -218,6 +253,20 @@ class InvitationDispatchService
         }
 
         return $card;
+    }
+
+    public function creativeArtworkLivePreview(?CreativeTemplate $creative, array $payload): string
+    {
+        if (! $creative?->hasPreparedArtwork()) {
+            throw new InvitationException('اختر قالب صورة متاحًا للتعديل.', 'CREATIVE_EDITS_UNAVAILABLE', 422);
+        }
+
+        $preview = $this->cards->renderEditableArtwork($creative, $payload['template_vars'] ?? [], inlinePreview: true);
+        if (! $preview) {
+            throw new InvitationException('تعذّر تجهيز معاينة القالب.', 'CREATIVE_RENDER_FAILED', 422);
+        }
+
+        return $preview;
     }
 
     /**
@@ -342,7 +391,7 @@ class InvitationDispatchService
     public function resolveRecipients(int $ownerPersonId, array $payload, bool $excludeDeceased = true): Collection
     {
         $type = $payload['recipient_type'] ?? '';
-        $query = Person::query()->with(['contactAccounts', 'parent.parent.parent.parent.parent']);
+        $query = Person::query()->whereKeyNot($ownerPersonId)->with(['contactAccounts', 'parent.parent.parent.parent.parent']);
 
         if ($excludeDeceased) {
             $query->whereNull('death_date');
@@ -357,6 +406,9 @@ class InvitationDispatchService
             $ids = array_values(array_unique(array_map('intval', $payload['person_ids'] ?? [])));
             if ($ids === []) {
                 throw new InvitationException('يجب اختيار شخص واحد على الأقل.', 'NO_RECIPIENTS');
+            }
+            if ($ids === [$ownerPersonId]) {
+                throw new InvitationException(self::SELF_INVITATION_MESSAGE, 'SELF_INVITATION');
             }
             $query->whereIn('id', $ids);
         } else {
