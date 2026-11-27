@@ -5,35 +5,47 @@ import {
   toWesternDigits,
 } from '@/components/auth/countryData';
 import { InvitationField } from '@/components/invitations/InvitationField';
-import { PreparedArtworkEditor } from '@/components/invitations/composer/PreparedArtworkEditor';
+import {
+  InvitationGradientButton,
+  InvitationSectionTitle,
+} from '@/components/invitations/InvitationPrimitives';
+import {
+  cardShadowStyle,
+  getInvitationPalette,
+  getTemplateVisualMeta,
+  getVarFieldIcon,
+} from '@/components/invitations/invitationTheme';
 import { PersonAvatar } from '@/components/invitations/PersonAvatar';
 import { RecipientPickerModal } from '@/components/invitations/RecipientPickerModal';
+import { PreparedArtworkEditor } from '@/components/invitations/composer/PreparedArtworkEditor';
 import { ThemedText } from '@/components/themed-text';
 import { CustomAlert } from '@/components/ui/AlertModal';
 import { DatePickerField } from '@/components/ui/DatePickerField';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import {
-  type InvitationChannel,
-  type InvitationPersonBrief,
-  type InvitationRecipientType,
-  type SendInvitationInput,
-  type InvitationTemplate,
   type CreativeTemplate,
   extractInvitationError,
   extractTemplateVarKeys,
   fetchCreatives,
-  isProfileIncomplete,
+  type InvitationChannel,
+  type InvitationPersonBrief,
+  type InvitationRecipientType,
+  type InvitationTemplate,
   isIdentityRequired,
+  isProfileIncomplete,
   isUnderageBlocked,
-  previewInvitation,
   previewCreativeArtwork,
+  previewInvitation,
+  type SendInvitationInput,
   sendInvitation,
-  templateVarLabel,
   sendInvitationWithMedia,
+  templateVarLabel,
 } from '@/lib/api/invitations';
 import { Ionicons } from '@expo/vector-icons';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -41,25 +53,24 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
-
-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  PUSH_BLUE,
-  WHATSAPP_GREEN,
-  type InvitationComposerProps,
-} from './composerHelpers';
-import { composerStyles as styles } from './composer/composerStyles';
 import { ChannelToggle } from './composer/ChannelToggle';
 import { CreativePickerModal } from './composer/CreativePickerModal';
-import { InvitationPreviewModal } from './composer/InvitationPreviewModal';
 import { DesignSection } from './composer/DesignSection';
+import { InvitationPreviewModal } from './composer/InvitationPreviewModal';
+import { composerStyles as styles } from './composer/composerStyles';
 import { invitationFontName } from './composer/typography';
+import {
+  type InvitationComposerProps,
+  PUSH_BLUE,
+  WHATSAPP_GREEN,
+} from './composerHelpers';
 
 const invitationTypography = { font_family: 'amiri', font_weight: 'bold' } as const;
 const invitationTextFont = invitationFontName(invitationTypography.font_family, invitationTypography.font_weight);
@@ -73,9 +84,10 @@ export function InvitationComposer({
   isDark,
   onSent,
 }: InvitationComposerProps) {
-  const muted = colors.icon;
-  const cardBg = isDark ? colors.card : '#FFFFFF';
-  const border = isDark ? '#334155' : colors.border;
+  const palette = getInvitationPalette(isDark);
+  const muted = palette.muted;
+  const cardBg = palette.surface;
+  const border = palette.border;
 
   const [templateKey, setTemplateKey] = useState<string | null>(null);
   const [title, setTitle] = useState('');
@@ -96,6 +108,7 @@ export function InvitationComposer({
   const [previewing, setPreviewing] = useState(false);
   const [previewCard, setPreviewCard] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [activeFormatMark, setActiveFormatMark] = useState<'*' | '_' | '~'>('*');
   // قوالب الصور المعتمدة وتصاميم العضو المرسلة للمراجعة.
   const [creatives, setCreatives] = useState<CreativeTemplate[]>([]);
   const [creativeLoading, setCreativeLoading] = useState(false);
@@ -103,10 +116,9 @@ export function InvitationComposer({
   const [artworkRevision, setArtworkRevision] = useState<string>();
   const [preparedEditorOpen, setPreparedEditorOpen] = useState(false);
   const [appliedArtworkImage, setAppliedArtworkImage] = useState<string>();
-  // اختيار مؤقت داخل المودال لا يُعتمد إلا بزر التأكيد
   const [tempCreativeId, setTempCreativeId] = useState<number | null>(null);
 
-  // ── إرفاق صورة: صورة عادية تُرسل بجانب النص كما هي بدون دمج ──
+  // إرفاق صورة: صورة عادية تُرسل بجانب النص كما هي بدون دمج
   const [attachedImage, setAttachedImage] = useState<{ uri: string } | null>(null);
   const [creativeModalVisible, setCreativeModalVisible] = useState(false);
   const [bodySel, setBodySel] = useState<{ start: number; end: number } | null>(null);
@@ -138,6 +150,7 @@ export function InvitationComposer({
       hideSub.remove();
     };
   }, []);
+
   const resetArtwork = useCallback(() => {
     setPreparedEditorOpen(false);
     setAppliedArtworkImage(undefined);
@@ -157,6 +170,19 @@ export function InvitationComposer({
     }
   };
 
+  const { visualTemplates, pillTemplates } = useMemo(() => {
+    const visual: InvitationTemplate[] = [];
+    const pills: InvitationTemplate[] = [];
+    for (const tpl of templates) {
+      const meta = getTemplateVisualMeta(tpl.key);
+      if (meta.isVisualCard) visual.push(tpl);
+      else pills.push(tpl);
+    }
+    visual.sort((a, b) => getTemplateVisualMeta(a.key).order - getTemplateVisualMeta(b.key).order);
+    pills.sort((a, b) => getTemplateVisualMeta(a.key).order - getTemplateVisualMeta(b.key).order);
+    return { visualTemplates: visual, pillTemplates: pills };
+  }, [templates]);
+
   const selectedCreative = creatives.find((b) => b.id === selectedCreativeId) ?? null;
   const preparedCreative = selectedCreative?.editable_text_fields?.length && selectedCreative.image_url
     && (selectedCreative.design_mode === 'artwork' || selectedCreative.design_mode === 'web_artwork') ? selectedCreative : null;
@@ -165,6 +191,11 @@ export function InvitationComposer({
     ...extractTemplateVarKeys(body),
     ...(selectedCreative?.editable_text_fields?.length ? [] : selectedCreative?.variable_keys ?? []),
   ])), [body, selectedCreative]);
+  const bodyTokenList = useMemo(() => {
+    const matches = body.match(/\{[a-zA-Z_][a-zA-Z0-9_]*\}/g) ?? [];
+    const unique = Array.from(new Set(matches));
+    return unique.length > 0 ? unique : ['{name}'];
+  }, [body]);
   const matchingCreatives = creatives.filter((item) => templateKey && item.invitation_type === templateKey);
   const invitationTemplate = templates.find((item) => item.key === templateKey);
   const invitationTypeName = invitationTemplate?.name;
@@ -190,7 +221,6 @@ export function InvitationComposer({
       if (lib.success && Array.isArray((lib.data as any)?.templates)) {
         setCreatives((lib.data as any).templates);
       } else if (lib.success && Array.isArray((lib.data as any)?.backgrounds)) {
-        // توافق خلفي لو رجع الباك اند backgrounds بدل templates
         setCreatives((lib.data as any).backgrounds);
       }
     } finally {
@@ -202,13 +232,11 @@ export function InvitationComposer({
     void loadCreatives();
   }, [loadCreatives]);
 
-  // فتح المودال ينسخ الاختيار الحالي إلى المؤقت حتى لا يُعتمد إلا بالتأكيد
   const openCreativeModal = useCallback(() => {
     setTempCreativeId(selectedCreativeId);
     setCreativeModalVisible(true);
     void loadCreatives();
   }, [selectedCreativeId, loadCreatives]);
-
 
   const confirmCreativeSelection = () => {
     const choice = matchingCreatives.find((item) => item.id === tempCreativeId);
@@ -232,7 +260,8 @@ export function InvitationComposer({
     setTemplateVars((vars) => Object.fromEntries(Object.entries(vars).filter(([key]) => !key.startsWith('creative_text_'))));
   }, [resetArtwork]);
 
-  const wrapBodySelection = (mark: string) => {
+  const wrapBodySelection = (mark: '*' | '_' | '~') => {
+    setActiveFormatMark(mark);
     const sel = bodySel ?? { start: body.length, end: body.length };
     const before = body.slice(0, sel.start);
     const mid = body.slice(sel.start, sel.end);
@@ -243,6 +272,17 @@ export function InvitationComposer({
     setBodySel({ start: cursor, end: cursor });
   };
 
+  const insertToken = (token: string) => {
+    if (body.includes(token)) return;
+    const sel = bodySel ?? { start: body.length, end: body.length };
+    const before = body.slice(0, sel.start);
+    const after = body.slice(sel.end);
+    const spacer = before.length > 0 && !before.endsWith(' ') && !before.endsWith('\n') ? ' ' : '';
+    const next = `${before}${spacer}${token}${after}`;
+    setBody(next);
+    const cursor = before.length + spacer.length + token.length;
+    setBodySel({ start: cursor, end: cursor });
+  };
 
   const pickAttachment = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -256,13 +296,9 @@ export function InvitationComposer({
       quality: 0.8,
     });
     if (picked.canceled || !picked.assets?.[0]?.uri) return;
-    // فصل ذكي: إرفاق صورة عادية يلغي قالب مساحة الإبداع لأن النص لن يُدمج داخل الصورة
     setAttachedImage({ uri: picked.assets[0].uri });
     clearCreativeSelection();
   };
-
-
-
 
   const toggleChannel = (channel: InvitationChannel) => {
     if (recipientType === 'external') {
@@ -484,126 +520,261 @@ export function InvitationComposer({
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
-        <ThemedText style={styles.sectionLabel}>نوع الدعوة</ThemedText>
+        <InvitationSectionTitle
+          title="نوع الدعوة"
+          subtitle="اختر القالب المناسب"
+          palette={palette}
+        />
+
         {templatesLoading ? (
-          <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
+          <ActivityIndicator color={palette.primary} style={{ marginVertical: 14 }} />
         ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsRow}
-            keyboardShouldPersistTaps="handled">
-            {templates.map((tpl) => {
-              const active = templateKey === tpl.key;
-              return (
-                <Pressable
-                  key={tpl.key}
-                  onPress={() => applyTemplate(tpl)}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor: active ? colors.primary : cardBg,
-                      borderColor: active ? colors.primary : border,
-                    },
-                  ]}>
-                  <ThemedText
-                    style={[styles.chipText, { color: active ? '#FFFFFF' : colors.text }]}>
-                    {tpl.name}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <>
+            {/* بطاقات القوالب المصورة الرئيسية */}
+            {visualTemplates.length > 0 ? (
+              <View style={styles.visualCardsRow}>
+                {visualTemplates.map((tpl) => {
+                  const active = templateKey === tpl.key;
+                  const meta = getTemplateVisualMeta(tpl.key);
+                  return (
+                    <Pressable
+                      key={tpl.key}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      onPress={() => applyTemplate(tpl)}
+                      style={({ pressed }) => [
+                        styles.visualCard,
+                        cardShadowStyle(palette),
+                        {
+                          borderColor: active ? palette.primary : palette.border,
+                          borderWidth: active ? 2 : 1,
+                          opacity: pressed ? 0.88 : 1,
+                        },
+                      ]}>
+                      {meta.image ? (
+                        <Image source={meta.image} style={StyleSheet.absoluteFill} contentFit="cover" />
+                      ) : null}
+                      <LinearGradient
+                        colors={palette.cardOverlayGradient}
+                        style={styles.visualCardOverlay}>
+                        <View style={styles.visualCardTopRow}>
+                          <View
+                            style={[
+                              styles.visualCardIconPill,
+                              {
+                                backgroundColor: active ? palette.primary : 'rgba(255,255,255,0.9)',
+                              },
+                            ]}>
+                            <Ionicons
+                              name={meta.icon}
+                              size={15}
+                              color={active ? '#FFFFFF' : '#10241C'}
+                            />
+                          </View>
+                          {active ? (
+                            <View style={styles.visualCardCheck}>
+                              <Ionicons name="checkmark" size={14} color={palette.primary} />
+                            </View>
+                          ) : null}
+                        </View>
+                        <Text style={styles.visualCardLabel} numberOfLines={2}>
+                          {tpl.name}
+                        </Text>
+                      </LinearGradient>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            {/* شرائح القوالب النصية الثانوية */}
+            {pillTemplates.length > 0 ? (
+              <View style={styles.chipsRow}>
+                {pillTemplates.map((tpl) => {
+                  const active = templateKey === tpl.key;
+                  const meta = getTemplateVisualMeta(tpl.key);
+                  return (
+                    <Pressable
+                      key={tpl.key}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      onPress={() => applyTemplate(tpl)}
+                      style={[
+                        styles.chip,
+                        cardShadowStyle(palette),
+                        {
+                          backgroundColor: active ? palette.pillBg : palette.surface,
+                          borderColor: active ? palette.primary : palette.border,
+                        },
+                      ]}>
+                      <View style={[styles.chipDot, { backgroundColor: meta.dotColor }]} />
+                      <ThemedText
+                        style={[
+                          styles.chipText,
+                          { color: active ? palette.pillText : palette.textSecondary },
+                        ]}>
+                        {tpl.name}
+                      </ThemedText>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+          </>
         )}
 
-        <InvitationField
-          label="العنوان"
-          fontFamily={invitationTextFont}
-          value={title}
-          onChangeText={setTitle}
-          placeholder="عنوان الدعوة"
-          mutedColor={muted}
-          textColor={colors.text}
-          cardBg={cardBg}
-          borderColor={border}
-        />
-        <View style={styles.formatRow}>
-          <ThemedText style={[styles.formatLabel, { color: muted }]}>تنسيق النص</ThemedText>
-          <View style={styles.formatBtns}>
-            <TouchableOpacity
-              style={[styles.formatBtn, { borderColor: border }]}
-              onPress={() => wrapBodySelection('*')}>
-              <ThemedText style={[styles.formatBtnText, { color: colors.text }]}>B</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.formatBtn, { borderColor: border }]}
-              onPress={() => wrapBodySelection('_')}>
-              <ThemedText style={[styles.formatBtnText, { color: colors.text, fontStyle: 'italic' }]}>
-                I
-              </ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.formatBtn, { borderColor: border }]}
-              onPress={() => wrapBodySelection('~')}>
-              <ThemedText
-                style={[styles.formatBtnText, { color: colors.text, textDecorationLine: 'line-through' }]}>
-                S
-              </ThemedText>
-            </TouchableOpacity>
+        {/* بطاقة تفاصيل الدعوة */}
+        <View
+          style={[
+            styles.detailsCard,
+            cardShadowStyle(palette),
+            { backgroundColor: palette.surface, borderColor: palette.border },
+          ]}>
+          <View style={[styles.detailsTopAccent, { backgroundColor: palette.primaryDark }]} />
+          <InvitationSectionTitle
+            title="تفاصيل الدعوة"
+            palette={palette}
+            style={{ marginTop: 2, marginBottom: 10 }}
+          />
+
+          <InvitationField
+            label="العنوان"
+            fontFamily={invitationTextFont}
+            value={title}
+            onChangeText={setTitle}
+            placeholder="دعوة لحضور مناسبة عائلية"
+            mutedColor={muted}
+            textColor={palette.text}
+            cardBg={palette.surfaceAlt}
+            borderColor={border}
+          />
+
+          <View style={styles.formatRow}>
+            <ThemedText style={[styles.formatLabel, { color: muted }]}>نص الرسالة · تنسيق النص</ThemedText>
+            <View style={[styles.formatToolbar, { backgroundColor: palette.toolbarBg }]}>
+              {([
+                { mark: '*', label: 'B', extra: { fontWeight: '700' as const } },
+                { mark: '_', label: 'I', extra: { fontStyle: 'italic' as const } },
+                { mark: '~', label: 'S', extra: { textDecorationLine: 'line-through' as const } },
+              ] as const).map(({ mark, label, extra }) => {
+                const isActive = activeFormatMark === mark;
+                return (
+                  <TouchableOpacity
+                    key={mark}
+                    style={[
+                      styles.formatBtn,
+                      isActive && { backgroundColor: palette.toolbarActive },
+                    ]}
+                    onPress={() => wrapBodySelection(mark)}>
+                    <Text style={[styles.formatBtnText, extra]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          <InvitationField
+            label="نص الرسالة"
+            hideLabel
+            fontFamily={invitationTextFont}
+            value={body}
+            onChangeText={setBody}
+            placeholder="اكتب نص الدعوة أو اختر قالباً من الأعلى..."
+            multiline
+            selection={bodySel}
+            onSelectionChange={setBodySel}
+            mutedColor={muted}
+            textColor={palette.text}
+            cardBg={palette.surfaceAlt}
+            borderColor={border}
+          />
+
+          <View style={styles.tokensRow}>
+            {bodyTokenList.map((token) => (
+              <Pressable
+                key={token}
+                onPress={() => insertToken(token)}
+                style={[
+                  styles.tokenPill,
+                  { backgroundColor: palette.pillBg, borderColor: palette.pillBorder },
+                ]}>
+                <Text style={[styles.tokenPillText, { color: palette.pillText }]}>{token}</Text>
+              </Pressable>
+            ))}
           </View>
         </View>
-        <InvitationField
-          label="نص الرسالة"
-          fontFamily={invitationTextFont}
-          value={body}
-          onChangeText={setBody}
-          placeholder="النص اختياري عند اختيار صورة"
-          multiline
-          selection={bodySel}
-          onSelectionChange={setBodySel}
-          mutedColor={muted}
-          textColor={colors.text}
-          cardBg={cardBg}
-          borderColor={border}
-        />
 
+        {/* شبكة تفاصيل القالب */}
         {varKeys.length > 0 ? (
-          <View style={[styles.card, { backgroundColor: cardBg, borderColor: border }]}>
-            <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-              تفاصيل القالب
-            </ThemedText>
-            {varKeys.map((key) => {
-              if (key === 'date') {
-                return (
-                  <DatePickerField
-                    key={key}
-                    label={templateVarLabel(key)}
-                    value={templateVars[key] ?? ''}
-                    onChange={(text) =>
-                      setTemplateVars((prev) => ({ ...prev, [key]: text }))
-                    }
-                    placeholder="اختر التاريخ..."
-                    containerStyle={{ marginBottom: 12 }}
-                  />
-                );
+          <>
+            <InvitationSectionTitle
+              title="تفاصيل القالب"
+              palette={palette}
+              rightBadge={
+                <View style={[styles.varBadgePill, { backgroundColor: palette.pillBg, borderColor: palette.pillBorder }]}>
+                  <Ionicons name="sync-outline" size={13} color={palette.pillText} />
+                  <Text style={[styles.varBadgeText, { color: palette.pillText }]}>
+                    {`متغيرات: ${invitationTypeName ?? 'مخصص'}`}
+                  </Text>
+                </View>
               }
-              return (
-                <InvitationField
-                  key={key}
-                  label={templateVarLabel(key)}
-                  value={templateVars[key] ?? ''}
-                  onChangeText={(text) =>
-                    setTemplateVars((prev) => ({ ...prev, [key]: text }))
-                  }
-                  placeholder={templateVarLabel(key)}
-                  mutedColor={muted}
-                  textColor={colors.text}
-                  cardBg={isDark ? '#0F172A' : '#F8FAFC'}
-                  borderColor={border}
-                />
-              );
-            })}
-          </View>
+            />
+
+            <View style={styles.varGrid}>
+              {varKeys.map((key) => {
+                if (key === 'date') {
+                  return (
+                    <View
+                      key={key}
+                      style={[
+                        styles.varCard,
+                        cardShadowStyle(palette),
+                        { width: '100%', backgroundColor: palette.surface, borderColor: palette.border },
+                      ]}>
+                      <View style={{ flex: 1 }}>
+                        <DatePickerField
+                          label={templateVarLabel(key)}
+                          value={templateVars[key] ?? ''}
+                          onChange={(text) =>
+                            setTemplateVars((prev) => ({ ...prev, [key]: text }))
+                          }
+                          placeholder="اختر التاريخ..."
+                          containerStyle={{ marginBottom: 0 }}
+                        />
+                      </View>
+                    </View>
+                  );
+                }
+                return (
+                  <View
+                    key={key}
+                    style={[
+                      styles.varCard,
+                      cardShadowStyle(palette),
+                      { backgroundColor: palette.surface, borderColor: palette.border },
+                    ]}>
+                    <View style={[styles.varCardIcon, { backgroundColor: palette.surfaceSoft }]}>
+                      <Ionicons name={getVarFieldIcon(key)} size={18} color={palette.primary} />
+                    </View>
+                    <View style={styles.varCardBody}>
+                      <Text style={[styles.varCardLabel, { color: palette.muted }]}>
+                        {templateVarLabel(key)}
+                      </Text>
+                      <TextInput
+                        value={templateVars[key] ?? ''}
+                        onChangeText={(text) =>
+                          setTemplateVars((prev) => ({ ...prev, [key]: text }))
+                        }
+                        placeholder={templateVarLabel(key)}
+                        placeholderTextColor={palette.muted}
+                        style={[styles.varCardInput, { color: palette.text }]}
+                      />
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </>
         ) : null}
 
         <DesignSection
@@ -615,11 +786,11 @@ export function InvitationComposer({
           muted={muted}
           title={title}
           body={body}
+          fontFamily={invitationTextFont}
           selectedCreative={selectedCreative}
           artworkEdited={Boolean(preparedCreative && appliedArtworkImage)}
           artworkPreviewImage={appliedArtworkImage ?? preparedImage ?? undefined}
           onEditArtwork={preparedCreative ? () => setPreparedEditorOpen(true) : undefined}
-          fontFamily={invitationTextFont}
           attachedImage={attachedImage}
           onOpenCreative={() => void openCreativeModal()}
           onClearCreative={() => void clearCreativeSelection()}
@@ -627,7 +798,7 @@ export function InvitationComposer({
           onRemoveAttachment={() => setAttachedImage(null)}
         />
 
-        <ThemedText style={styles.sectionLabel}>قنوات الإرسال</ThemedText>
+        <InvitationSectionTitle title="قنوات الإرسال" palette={palette} />
         <View style={styles.row}>
           <ChannelToggle
             label="واتساب"
@@ -637,7 +808,7 @@ export function InvitationComposer({
             onPress={() => toggleChannel('whatsapp')}
             cardBg={cardBg}
             border={border}
-            textColor={colors.text}
+            textColor={palette.text}
           />
           <ChannelToggle
             label="إشعارات"
@@ -647,30 +818,31 @@ export function InvitationComposer({
             onPress={() => toggleChannel('push')}
             cardBg={cardBg}
             border={border}
-            textColor={colors.text}
+            textColor={palette.text}
           />
         </View>
 
-        <ThemedText style={styles.sectionLabel}>المستلمون</ThemedText>
+        <InvitationSectionTitle title="المستلمون" palette={palette} />
         <View style={styles.row}>
           <Pressable
             onPress={() => setRecipientType('persons')}
             style={[
               styles.modeBtn,
+              cardShadowStyle(palette),
               {
-                backgroundColor: recipientType === 'persons' ? colors.primary : cardBg,
-                borderColor: recipientType === 'persons' ? colors.primary : border,
+                backgroundColor: recipientType === 'persons' ? palette.primary : cardBg,
+                borderColor: recipientType === 'persons' ? palette.primary : border,
               },
             ]}>
             <IconSymbol
               name="person.fill"
               size={15}
-              color={recipientType === 'persons' ? '#FFFFFF' : colors.primary}
+              color={recipientType === 'persons' ? '#FFFFFF' : palette.primary}
             />
             <ThemedText
               style={[
                 styles.modeText,
-                { color: recipientType === 'persons' ? '#FFFFFF' : colors.text },
+                { color: recipientType === 'persons' ? '#FFFFFF' : palette.text },
               ]}>
               أشخاص
             </ThemedText>
@@ -679,20 +851,21 @@ export function InvitationComposer({
             onPress={() => setRecipientType('group')}
             style={[
               styles.modeBtn,
+              cardShadowStyle(palette),
               {
-                backgroundColor: recipientType === 'group' ? colors.primary : cardBg,
-                borderColor: recipientType === 'group' ? colors.primary : border,
+                backgroundColor: recipientType === 'group' ? palette.primary : cardBg,
+                borderColor: recipientType === 'group' ? palette.primary : border,
               },
             ]}>
             <IconSymbol
               name="person.2.fill"
               size={15}
-              color={recipientType === 'group' ? '#FFFFFF' : colors.primary}
+              color={recipientType === 'group' ? '#FFFFFF' : palette.primary}
             />
             <ThemedText
               style={[
                 styles.modeText,
-                { color: recipientType === 'group' ? '#FFFFFF' : colors.text },
+                { color: recipientType === 'group' ? '#FFFFFF' : palette.text },
               ]}>
               مجموعة
             </ThemedText>
@@ -706,20 +879,21 @@ export function InvitationComposer({
             }}
             style={[
               styles.modeBtn,
+              cardShadowStyle(palette),
               {
-                backgroundColor: recipientType === 'external' ? colors.primary : cardBg,
-                borderColor: recipientType === 'external' ? colors.primary : border,
+                backgroundColor: recipientType === 'external' ? palette.primary : cardBg,
+                borderColor: recipientType === 'external' ? palette.primary : border,
               },
             ]}>
             <Ionicons
               name="globe-outline"
               size={15}
-              color={recipientType === 'external' ? '#FFFFFF' : colors.primary}
+              color={recipientType === 'external' ? '#FFFFFF' : palette.primary}
             />
             <ThemedText
               style={[
                 styles.modeText,
-                { color: recipientType === 'external' ? '#FFFFFF' : colors.text },
+                { color: recipientType === 'external' ? '#FFFFFF' : palette.text },
               ]}>
               خارج العائلة
             </ThemedText>
@@ -727,12 +901,12 @@ export function InvitationComposer({
         </View>
 
         {recipientType === 'persons' ? (
-          <View style={[styles.card, { backgroundColor: cardBg, borderColor: border }]}>
+          <View style={[styles.card, cardShadowStyle(palette), { backgroundColor: cardBg, borderColor: border }]}>
             <Pressable
               onPress={() => setPickerVisible(true)}
-              style={[styles.pickBtn, { borderColor: border }]}>
-              <IconSymbol name="magnifyingglass" size={18} color={colors.primary} />
-              <ThemedText style={[styles.pickBtnText, { color: colors.primary }]}>
+              style={[styles.pickBtn, { borderColor: palette.borderStrong, backgroundColor: palette.surfaceSoft }]}>
+              <IconSymbol name="magnifyingglass" size={18} color={palette.primary} />
+              <ThemedText style={[styles.pickBtnText, { color: palette.primary }]}>
                 اختيار من الشجرة
               </ThemedText>
             </Pressable>
@@ -748,10 +922,10 @@ export function InvitationComposer({
                     onPress={() =>
                       setChosenPersons((prev) => prev.filter((x) => x.id !== p.id))
                     }
-                    style={[styles.personChip, { borderColor: border }]}>
+                    style={[styles.personChip, { borderColor: palette.pillBorder, backgroundColor: palette.pillBg }]}>
                     <PersonAvatar uri={p.photo_url} size={22} mutedColor={muted} />
-                    <ThemedText style={styles.personChipText}>{p.first_name}</ThemedText>
-                    <IconSymbol name="xmark.circle.fill" size={14} color={muted} />
+                    <ThemedText style={[styles.personChipText, { color: palette.pillText }]}>{p.first_name}</ThemedText>
+                    <IconSymbol name="xmark.circle.fill" size={14} color={palette.pillText} />
                   </Pressable>
                 ))}
               </View>
@@ -772,19 +946,21 @@ export function InvitationComposer({
                     onPress={() => setGroupId(g.id)}
                     style={[
                       styles.groupRow,
+                      cardShadowStyle(palette),
                       {
-                        backgroundColor: active ? colors.primary + '18' : cardBg,
-                        borderColor: active ? colors.primary : border,
+                        backgroundColor: active ? palette.surfaceSoft : cardBg,
+                        borderColor: active ? palette.primary : border,
+                        borderWidth: active ? 1.5 : 1,
                       },
                     ]}>
                     <View style={{ flex: 1 }}>
-                      <ThemedText style={styles.groupName}>{g.name}</ThemedText>
-                      <ThemedText style={[styles.hint, { color: muted, marginBottom: 0 }]}>
+                      <ThemedText style={[styles.groupName, { color: palette.text }]}>{g.name}</ThemedText>
+                      <ThemedText style={[styles.hint, { color: muted, marginBottom: 0, textAlign: 'right' }]}>
                         {g.persons_count} عضو
                       </ThemedText>
                     </View>
                     {active ? (
-                      <IconSymbol name="checkmark.circle.fill" size={22} color={colors.primary} />
+                      <IconSymbol name="checkmark.circle.fill" size={22} color={palette.primary} />
                     ) : null}
                   </Pressable>
                 );
@@ -792,13 +968,13 @@ export function InvitationComposer({
             )}
           </View>
         ) : (
-          <View style={[styles.card, { backgroundColor: cardBg, borderColor: border }]}>
+          <View style={[styles.card, cardShadowStyle(palette), { backgroundColor: cardBg, borderColor: border }]}>
             <View style={styles.externalHeader}>
-              <View style={[styles.externalIconWrap, { backgroundColor: WHATSAPP_GREEN + '1A' }]}>
+              <View style={[styles.externalIconWrap, { backgroundColor: palette.surfaceSoft }]}>
                 <Ionicons name="logo-whatsapp" size={20} color={WHATSAPP_GREEN} />
               </View>
               <View style={{ flex: 1 }}>
-                <ThemedText style={[styles.cardTitle, { color: colors.text, marginBottom: 2 }]}>
+                <ThemedText style={[styles.cardTitle, { color: palette.text, marginBottom: 2, textAlign: 'right' }]}>
                   دعوة ضيف من خارج العائلة
                 </ThemedText>
                 <ThemedText style={[styles.hint, { textAlign: 'right', color: muted, marginBottom: 0 }]}>
@@ -813,8 +989,8 @@ export function InvitationComposer({
               onChangeText={setExternalName}
               placeholder="مثال: د. محمد العلي أو أبو فهد"
               mutedColor={muted}
-              textColor={colors.text}
-              cardBg={isDark ? '#0F172A' : '#F8FAFC'}
+              textColor={palette.text}
+              cardBg={palette.surfaceAlt}
               borderColor={border}
             />
 
@@ -825,14 +1001,14 @@ export function InvitationComposer({
               <View
                 style={[
                   styles.phoneInputRow,
-                  { backgroundColor: isDark ? '#0F172A' : '#F8FAFC', borderColor: border },
+                  { backgroundColor: palette.surfaceAlt, borderColor: border },
                 ]}>
                 <TouchableOpacity
                   style={styles.countryBadge}
                   onPress={() => setCountryPickerVisible(true)}
                   activeOpacity={0.7}>
                   <ThemedText style={styles.countryFlag}>{selectedCountry.flag}</ThemedText>
-                  <ThemedText style={[styles.countryCode, { color: colors.text }]}>
+                  <ThemedText style={[styles.countryCode, { color: palette.text }]}>
                     {selectedCountry.dialCode}
                   </ThemedText>
                   <MaterialIcons name="arrow-drop-down" size={18} color={muted} />
@@ -841,12 +1017,12 @@ export function InvitationComposer({
                 <View
                   style={[
                     styles.verticalDivider,
-                    { backgroundColor: isDark ? '#334155' : '#E2E8F0' },
+                    { backgroundColor: border },
                   ]}
                 />
 
                 <TextInput
-                  style={[styles.phoneTextInput, { color: colors.text }]}
+                  style={[styles.phoneTextInput, { color: palette.text }]}
                   placeholder={selectedCountry.placeholder}
                   placeholderTextColor={muted}
                   keyboardType="phone-pad"
@@ -859,60 +1035,49 @@ export function InvitationComposer({
               </View>
             </View>
 
-            <View style={[styles.noticeBadge, { backgroundColor: WHATSAPP_GREEN + '12' }]}>
-              <Ionicons name="checkmark-circle-outline" size={16} color={WHATSAPP_GREEN} />
-              <ThemedText style={[styles.noticeText, { color: isDark ? '#A7F3D0' : '#065F46' }]}>
+            <View style={[styles.noticeBadge, { backgroundColor: palette.pillBg }]}>
+              <Ionicons name="checkmark-circle-outline" size={16} color={palette.primary} />
+              <ThemedText style={[styles.noticeText, { color: palette.pillText }]}>
                 سيتم استبدال {'{name}'} باسم الضيف عند إرسال الدعوة عبر واتساب.
               </ThemedText>
             </View>
           </View>
         )}
 
-        {/* {recipientType !== 'external' ? (
-          <View style={[styles.switchRow, { backgroundColor: cardBg, borderColor: border }]}>
-            <ThemedText style={styles.switchLabel}>استبعاد المتوفين</ThemedText>
-            <Switch
-              value={excludeDeceased}
-              onValueChange={setExcludeDeceased}
-              trackColor={{ false: border, true: colors.primary + '80' }}
-              thumbColor={excludeDeceased ? colors.primary : muted}
-            />
-          </View>
-        ) : null} */}
-
         <View style={styles.actions}>
           <Pressable
             onPress={() => void handlePreview()}
             disabled={previewing || sending}
-            style={[styles.secondaryBtn, { borderColor: colors.primary }]}>
+            style={[
+              styles.secondaryBtn,
+              {
+                borderColor: palette.primary,
+                backgroundColor: palette.surface,
+              },
+            ]}>
             {previewing ? (
-              <ActivityIndicator color={colors.primary} />
+              <ActivityIndicator color={palette.primary} />
             ) : (
               <>
-                <IconSymbol name="eye.fill" size={18} color={colors.primary} />
-                <Text style={[styles.secondaryBtnText, { color: colors.primary }]}>معاينة</Text>
+                <IconSymbol name="eye.fill" size={18} color={palette.primary} />
+                <Text style={[styles.secondaryBtnText, { color: palette.primary }]}>معاينة</Text>
               </>
             )}
           </Pressable>
-          <Pressable
-            onPress={handleSend}
-            disabled={sending}
-            style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: sending ? 0.7 : 1 }]}>
-            {sending ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <>
-                <IconSymbol name="paperplane.fill" size={18} color="#FFFFFF" />
-                <Text style={styles.primaryBtnTextNative}>إرسال</Text>
-              </>
-            )}
-          </Pressable>
+          <View style={styles.primaryBtn}>
+            <InvitationGradientButton
+              label="إرسال"
+              icon="paper-plane"
+              loading={sending}
+              disabled={sending}
+              onPress={handleSend}
+              palette={palette}
+            />
+          </View>
         </View>
       </ScrollView>
 
       <RecipientPickerModal
-
-
         visible={pickerVisible}
         onClose={() => setPickerVisible(false)}
         onConfirm={setChosenPersons}
@@ -938,8 +1103,14 @@ export function InvitationComposer({
       />
 
       {preparedEditorOpen && preparedImage && preparedCreative?.editable_text_fields ? (
-        <PreparedArtworkEditor imageUrl={preparedImage} fields={preparedCreative.editable_text_fields}
-          values={templateVars} colors={colors} background={cardBg} border={border} renderPreview={renderPreparedPreview}
+        <PreparedArtworkEditor
+          imageUrl={preparedImage}
+          fields={preparedCreative.editable_text_fields}
+          values={templateVars}
+          colors={colors}
+          background={cardBg}
+          border={border}
+          renderPreview={renderPreparedPreview}
           onClose={() => setPreparedEditorOpen(false)}
           onApply={(values, image) => {
             setTemplateVars((current) => ({ ...current, ...values }));

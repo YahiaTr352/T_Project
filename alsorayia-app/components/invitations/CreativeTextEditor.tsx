@@ -1,10 +1,12 @@
+import { InvitationGradientButton } from '@/components/invitations/InvitationPrimitives';
+import { getInvitationPalette } from '@/components/invitations/invitationTheme';
 import { ThemedText } from '@/components/themed-text';
 import type { ThemeColors } from '@/constants/theme';
 import type { CreativeCardField, CreativeInlineText, CreativeTextBox, CreativeTextFormat, CreativeTextLayout } from '@/lib/api/invitations';
 import { SCALED_FLAG } from '@/lib/utils/patchGlobalText';
 import { Image } from 'expo-image';
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type LayoutRectangle } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useColorScheme, useWindowDimensions, View, type LayoutRectangle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Measure = 'x' | 'y' | 'width' | 'height' | 'fontSize' | 'offsetX' | 'offsetY';
@@ -50,6 +52,8 @@ export function CreativeTextEditor({ colors, artwork, field, initialLayout, onCl
 }) {
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
+  const isDark = useColorScheme() === 'dark';
+  const palette = getInvitationPalette(isDark);
   const [box, setBox] = useState(initialLayout.message ?? field.box);
   const [selected, setSelected] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ key: Measure; value: string } | null>(null);
@@ -97,22 +101,22 @@ export function CreativeTextEditor({ colors, artwork, field, initialLayout, onCl
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.page, { backgroundColor: colors.background, paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
+      <View style={[styles.page, { backgroundColor: palette.bgGradient[0], paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
         <View style={styles.header}>
-          <ThemedText style={styles.title}>محرر القالب</ThemedText>
-          <Pressable accessibilityRole="button" onPress={onClose} style={styles.touch}>
-            <ThemedText style={{ color: colors.primary }}>إلغاء</ThemedText>
+          <ThemedText style={[styles.title, { color: palette.text }]}>محرر القالب</ThemedText>
+          <Pressable accessibilityRole="button" onPress={onClose} style={[styles.touch, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            <ThemedText style={{ color: palette.primary, fontFamily: 'Tajawal-Bold' }}>إلغاء</ThemedText>
           </Pressable>
         </View>
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-          <ThemedText style={styles.rtl}>اضغط على عبارة أو متغير داخل النص لتنسيقه.</ThemedText>
+          <ThemedText style={[styles.rtl, { color: palette.textSecondary }]}>اضغط على عبارة أو متغير داخل النص لتنسيقه.</ThemedText>
           <View style={[styles.board, { width, height }]}>
             <Image source={{ uri: artwork.uri }} style={StyleSheet.absoluteFill} contentFit="contain" />
             {!outside && !invalidOffset && !invalidSize ? <TextBox segments={segments} box={box} width={width} height={height}
               hasOffsets={hasOffsets} onOverflow={setOverflow} /> : null}
           </View>
-          <View style={[styles.controls, { borderColor: colors.border, backgroundColor: colors.card }]}>
-            <ThemedText testID="creative-editable-invitation-text" style={styles.invitationText}>
+          <View style={[styles.controls, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+            <ThemedText testID="creative-editable-invitation-text" style={[styles.invitationText, { color: palette.text }]}>
               {'\u200F'}
               {segments.map((segment, index) => (
                 <Text key={index} accessibilityRole={segment.text.trim() ? 'button' : undefined}
@@ -120,19 +124,19 @@ export function CreativeTextEditor({ colors, artwork, field, initialLayout, onCl
                   accessibilityState={{ selected: selected === segment.key }}
                   onPress={segment.text.trim() ? () => select(segment.key) : undefined}
                   style={[styleFor({ ...box, ...box.inline?.[segment.key] }),
-                    segment.variable && { backgroundColor: `${colors.primary}22` },
-                    selected === segment.key && { backgroundColor: `${colors.primary}40` }]}>
+                    segment.variable && { backgroundColor: `${palette.primary}22` },
+                    selected === segment.key && { backgroundColor: `${palette.primary}40` }]}>
                   {segment.text.replace(/\n/g, '\n\u200F')}
                 </Text>
               ))}
             </ThemedText>
             <View style={styles.controlRow}>
-              <ThemedText style={[styles.fieldLabel, styles.controlLabel]}>
+              <ThemedText style={[styles.fieldLabel, styles.controlLabel, { color: palette.text }]}>
                 {activePart?.label ?? 'التنسيق العام'}
               </ThemedText>
               {selected ? <Pressable accessibilityRole="button" onPress={() => select(null)}
-                style={styles.touch}>
-                <ThemedText style={{ color: colors.primary }}>التنسيق العام</ThemedText>
+                style={[styles.touch, { backgroundColor: palette.surfaceAlt, borderColor: palette.border }]}>
+                <ThemedText style={{ color: palette.primary, fontFamily: 'Tajawal-Bold' }}>التنسيق العام</ThemedText>
               </Pressable> : null}
             </View>
             <View style={styles.fields}>
@@ -140,21 +144,21 @@ export function CreativeTextEditor({ colors, artwork, field, initialLayout, onCl
                 <Pressable key={key} accessibilityRole="checkbox" accessibilityLabel={label}
                   accessibilityState={{ checked: Boolean(activeFormat[key]) }}
                   onPress={() => toggleFormat(key)}
-                  style={[styles.touch, { borderColor: activeFormat[key] ? colors.primary : colors.border,
-                    backgroundColor: activeFormat[key] ? `${colors.primary}19` : colors.card }]}>
-                  <ThemedText style={styles.rtl}>{label}</ThemedText>
+                  style={[styles.touch, { borderColor: activeFormat[key] ? palette.primary : palette.border,
+                    backgroundColor: activeFormat[key] ? palette.pillBg : palette.surfaceAlt }]}>
+                  <ThemedText style={[styles.rtl, { color: activeFormat[key] ? palette.pillText : palette.text }]}>{label}</ThemedText>
                 </Pressable>
               ))}
             </View>
           </View>
-          <View style={[styles.controls, { borderColor: colors.border, backgroundColor: colors.card }]}>
-            <ThemedText style={styles.fieldLabel}>{activePart ? `موضع «${activePart.label}» وحجمه` : 'موضع نص الدعوة وحجمه'}</ThemedText>
-            {activePart ? <ThemedText style={styles.rtl}>القيم السالبة تحرّك الجزء لليسار أو للأعلى.</ThemedText> : null}
+          <View style={[styles.controls, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+            <ThemedText style={[styles.fieldLabel, { color: palette.text }]}>{activePart ? `موضع «${activePart.label}» وحجمه` : 'موضع نص الدعوة وحجمه'}</ThemedText>
+            {activePart ? <ThemedText style={[styles.rtl, { color: palette.muted }]}>القيم السالبة تحرّك الجزء لليسار أو للأعلى.</ThemedText> : null}
             {(selected ? inlineControls : controls).map(({ key, label, step }) => (
               <View key={key} style={styles.controlRow}>
-                <ThemedText style={[styles.rtl, styles.controlLabel]}>{label}</ThemedText>
-                <Pressable accessibilityRole="button" accessibilityLabel={`إنقاص ${label}`} onPress={() => adjust(key, -step)} style={styles.touch}>
-                  <ThemedText>−</ThemedText>
+                <ThemedText style={[styles.rtl, styles.controlLabel, { color: palette.textSecondary }]}>{label}</ThemedText>
+                <Pressable accessibilityRole="button" accessibilityLabel={`إنقاص ${label}`} onPress={() => adjust(key, -step)} style={[styles.touch, { backgroundColor: palette.surfaceAlt, borderColor: palette.border }]}>
+                  <ThemedText style={{ color: palette.text }}>−</ThemedText>
                 </Pressable>
                 <TextInput accessibilityLabel={`${label} (%)`} inputMode="decimal" maxLength={12}
                   value={draft?.key === key ? draft.value : String(activeFormat[key])}
@@ -164,34 +168,36 @@ export function CreativeTextEditor({ colors, artwork, field, initialLayout, onCl
                     if (numeric !== null) setMeasure(key, numeric);
                   }}
                   onBlur={() => setDraft((current) => current?.key === key ? null : current)}
-                  style={[styles.value, { borderColor: colors.border, color: colors.text }]} />
-                <Pressable accessibilityRole="button" accessibilityLabel={`زيادة ${label}`} onPress={() => adjust(key, step)} style={styles.touch}>
-                  <ThemedText>+</ThemedText>
+                  style={[styles.value, { borderColor: palette.border, backgroundColor: palette.surfaceAlt, color: palette.text }]} />
+                <Pressable accessibilityRole="button" accessibilityLabel={`زيادة ${label}`} onPress={() => adjust(key, step)} style={[styles.touch, { backgroundColor: palette.surfaceAlt, borderColor: palette.border }]}>
+                  <ThemedText style={{ color: palette.text }}>+</ThemedText>
                 </Pressable>
               </View>
             ))}
           </View>
           <View style={styles.fields}>
-            <Pressable accessibilityRole="button" style={styles.touch}
+            <Pressable accessibilityRole="button" style={[styles.touch, { backgroundColor: palette.surface, borderColor: palette.border }]}
               onPress={() => {
                 setDraft(null);
                 setSelected(null);
                 setOverflow(null);
                 setBox(field.box);
               }}>
-              <ThemedText style={{ color: colors.primary }}>استعادة التوزيع الافتراضي</ThemedText>
+              <ThemedText style={{ color: palette.primary, fontFamily: 'Tajawal-Bold' }}>استعادة التوزيع الافتراضي</ThemedText>
             </Pressable>
           </View>
         </ScrollView>
         {issue ? (
-          <View accessible accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>
-            <ThemedText style={[styles.rtl, { color: '#9B2424' }]}>{issue}</ThemedText>
+          <View accessible accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.error, { backgroundColor: palette.dangerBg, borderColor: palette.dangerBorder }]}>
+            <ThemedText style={[styles.rtl, { color: palette.dangerText }]}>{issue}</ThemedText>
           </View>
         ) : null}
-        <Pressable accessibilityRole="button" disabled={Boolean(issue)} onPress={() => onSave({ message: box })}
-          style={[styles.save, { backgroundColor: colors.primary, opacity: issue ? 0.5 : 1 }]}>
-          <ThemedText style={styles.saveText}>حفظ التوزيع</ThemedText>
-        </Pressable>
+        <InvitationGradientButton
+          label="حفظ التوزيع"
+          disabled={Boolean(issue)}
+          onPress={() => onSave({ message: box })}
+          palette={palette}
+        />
       </View>
     </Modal>
   );

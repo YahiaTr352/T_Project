@@ -5,12 +5,24 @@ import {
   statusMeta,
 } from '@/components/invitations/LogDetailModal';
 import { invitationLogFontName } from '@/components/invitations/composer/typography';
-import { effectiveLogStatus, extractInvitationError, respondToInvitation } from '@/lib/api/invitations';
+import {
+  cardShadowStyle,
+  getInvitationPalette,
+  inferThumbnailFromLog,
+  type InvitationPalette,
+} from '@/components/invitations/invitationTheme';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { silaTheme, type ThemeColors } from '@/constants/theme';
+import { type ThemeColors } from '@/constants/theme';
+import {
+  effectiveLogStatus,
+  extractInvitationError,
+  type InvitationLog,
+  type InvitationResponse,
+  respondToInvitation,
+} from '@/lib/api/invitations';
 import { Ionicons } from '@expo/vector-icons';
-import type { InvitationLog, InvitationResponse } from '@/lib/api/invitations';
+import { Image } from 'expo-image';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -43,6 +55,38 @@ interface LogsTabProps {
   isDark: boolean;
 }
 
+function resolveLogBadge(
+  incoming: boolean,
+  item: InvitationLog,
+  palette: InvitationPalette
+): { label: string; bg: string; text: string } {
+  if (incoming) {
+    if (item.invitation_response === 'accepted') {
+      return { label: 'سأحضر', bg: palette.successBg, text: palette.successText };
+    }
+    if (item.invitation_response === 'declined') {
+      return { label: 'معتذر', bg: palette.dangerBg, text: palette.dangerText };
+    }
+    return { label: 'بانتظار الرد', bg: palette.warningBg, text: palette.warningText };
+  }
+
+  const effective = (effectiveLogStatus(item) || item.status || '').toLowerCase().trim();
+  const meta = statusMeta(effective);
+  if (['sent', 'completed', 'delivered', 'done'].includes(effective)) {
+    return { label: meta.label, bg: palette.successBg, text: palette.successText };
+  }
+  if (['rejected', 'failed', 'fail', 'error'].includes(effective)) {
+    return { label: meta.label, bg: palette.dangerBg, text: palette.dangerText };
+  }
+  if (['approved'].includes(effective)) {
+    return { label: meta.label, bg: palette.infoBg, text: palette.infoText };
+  }
+  if (['cancelled', 'canceled', 'delivery_disabled'].includes(effective)) {
+    return { label: meta.label, bg: palette.neutralBg, text: palette.neutralText };
+  }
+  return { label: meta.label, bg: palette.warningBg, text: palette.warningText };
+}
+
 export function LogsTab({
   incoming,
   items,
@@ -58,10 +102,7 @@ export function LogsTab({
   colors,
   isDark,
 }: LogsTabProps) {
-  const muted = colors.icon;
-  const cardBg = isDark ? colors.card : '#FFFFFF';
-  const border = isDark ? '#334155' : colors.border;
-  const actionGreen = isDark ? silaTheme.primaryLight : silaTheme.primaryDark;
+  const palette = getInvitationPalette(isDark);
   const [detail, setDetail] = useState<InvitationLog | null>(null);
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -138,20 +179,25 @@ export function LogsTab({
   if (loading && items.length === 0) {
     return (
       <View style={[styles.centered, styles.flex]}>
-        <ActivityIndicator color={colors.primary} />
-        <ThemedText style={[styles.muted, { color: muted }]}>جاري تحميل السجل...</ThemedText>
+        <ActivityIndicator color={palette.primary} />
+        <ThemedText style={[styles.muted, { color: palette.muted }]}>جاري تحميل السجل...</ThemedText>
       </View>
     );
   }
 
   return (
     <View style={styles.flex}>
-      {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
+      {error ? (
+        <View style={[styles.errorBanner, { backgroundColor: palette.dangerBg, borderColor: palette.dangerBorder }]}>
+          <ThemedText style={[styles.error, { color: palette.dangerText }]}>{error}</ThemedText>
+        </View>
+      ) : null}
       <FlatList
         data={items}
         keyExtractor={(item) => String(item.id)}
+        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.primary} />
         }
         onEndReached={() => {
           if (hasMore) onLoadMore();
@@ -159,29 +205,36 @@ export function LogsTab({
         onEndReachedThreshold={0.4}
         contentContainerStyle={items.length === 0 ? styles.emptyWrap : styles.list}
         ListEmptyComponent={
-          <View style={styles.centered}>
-            <IconSymbol name="clock.fill" size={40} color={muted} />
-            <ThemedText style={[styles.muted, { color: muted }]}>
-              {incoming ? 'لا توجد دعوات واردة بعد.' : 'لا توجد إرسالات بعد. أرسل أول دعوة من تبويب «دعوة جديدة».'}
+          <View style={[styles.emptyCard, cardShadowStyle(palette), { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            <View style={[styles.emptyIconWrap, { backgroundColor: palette.surfaceSoft }]}>
+              <IconSymbol name="clock.fill" size={30} color={palette.primary} />
+            </View>
+            <ThemedText style={[styles.emptyTitle, { color: palette.text }]}>
+              {incoming ? 'لا توجد دعوات واردة بعد' : 'لا توجد دعوات مرسلة بعد'}
+            </ThemedText>
+            <ThemedText style={[styles.muted, { color: palette.muted }]}>
+              {incoming ? 'ستظهر هنا أي دعوة تصلك من أفراد العائلة.' : 'أرسل أول دعوة من تبويب «دعوة جديدة».'}
             </ThemedText>
           </View>
         }
         ListFooterComponent={
           loadingMore ? (
-            <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
+            <ActivityIndicator color={palette.primary} style={{ marginVertical: 16 }} />
           ) : null
         }
         renderItem={({ item }) => {
-          const meta = incoming
-            ? { label: 'واردة', color: colors.primary }
-            : statusMeta(effectiveLogStatus(item) || item.status);
+          const badge = resolveLogBadge(incoming, item, palette);
           const channels = normalizeChannels(item.channels);
           const recipientsCount = item.recipients_count ?? item.recipients?.length ?? 0;
           const isTransient = !incoming && ['pending_approval', 'pending', 'approved', 'queued', 'processing', 'sending'].includes((item.status || '').toLowerCase());
           const title = item.title || 'بدون عنوان';
           const awaitingResponse = incoming && item.invitation_response === null;
           const detailAction = awaitingResponse ? 'عرض الدعوة والرد' : 'عرض التفاصيل';
-          const actionColor = awaitingResponse ? actionGreen : muted;
+          const thumbSource = item.media_type === 'image' && item.media_url
+            ? { uri: item.media_url }
+            : inferThumbnailFromLog(item.title, item.body);
+          const dateText = formatLogDate(incoming ? item.sent_at ?? item.created_at : item.created_at);
+
           return (
             <Pressable
               accessibilityRole="button"
@@ -189,64 +242,69 @@ export function LogsTab({
               onPress={() => void openDetail(item)}
               style={({ pressed }) => [
                 styles.card,
-                { backgroundColor: cardBg, borderColor: border },
+                cardShadowStyle(palette),
+                {
+                  backgroundColor: palette.surface,
+                  borderColor: palette.border,
+                },
                 pressed && styles.cardPressed,
               ]}>
               <View style={styles.cardTop}>
-                <ThemedText style={[styles.cardTitle, { fontFamily: invitationLogFontName(item, 'bold') }]} numberOfLines={1}>
-                  {title}
-                </ThemedText>
-                <View style={[styles.badgeRow]}>
-                  <View style={[styles.badge, { backgroundColor: meta.color + '20' }]}>
-                    <Text style={[styles.badgeTextNative, { color: meta.color }]}>
-                      {meta.label}
-                    </Text>
+                <View style={[styles.thumbWrap, { borderColor: palette.border, backgroundColor: palette.surfaceAlt }]}>
+                  <Image source={thumbSource} style={styles.thumbImg} contentFit="cover" />
+                </View>
+
+                <View style={styles.cardContent}>
+                  <View style={styles.titleBadgeRow}>
+                    <ThemedText
+                      style={[
+                        styles.cardTitle,
+                        { color: palette.text, fontFamily: invitationLogFontName(item, 'bold') },
+                      ]}
+                      numberOfLines={1}>
+                      {title}
+                    </ThemedText>
+                    <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+                      <Text style={[styles.badgeTextNative, { color: badge.text }]}>
+                        {badge.label}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    {channels.includes('whatsapp') ? (
+                      <Ionicons name="logo-whatsapp" size={13} color={WHATSAPP_GREEN} />
+                    ) : null}
+                    {channels.includes('push') ? (
+                      <IconSymbol name="bell.fill" size={13} color={PUSH_BLUE} />
+                    ) : null}
+                    <ThemedText style={[styles.metaText, { color: palette.muted }]} numberOfLines={1}>
+                      {incoming
+                        ? `من: ${item.sender_name || 'أحد أفراد العائلة'} · ${dateText}`
+                        : `${recipientsCount > 0 ? `${recipientsCount} مستلم · ` : ''}${dateText}`}
+                    </ThemedText>
                   </View>
                 </View>
               </View>
+
               {isTransient ? (
-                <Text style={[styles.transientHint, { color: muted }]}>
+                <Text style={[styles.transientHint, { color: palette.warningText }]}>
                   {item.status === 'pending_approval' || item.status === 'pending'
                     ? 'بانتظار موافقة الإدارة — ستتحدث الحالة تلقائياً'
                     : 'المهام قيد التنفيذ في الخادم — اسحب للأسفل للتحديث'}
                 </Text>
               ) : null}
-              <ThemedText style={[styles.bodyPreview, { color: muted, fontFamily: invitationLogFontName(item, 'regular') }]} numberOfLines={2}>
-                {item.body}
-              </ThemedText>
-              <View style={styles.cardBottom}>
-                <View style={styles.channels}>
-                  {channels.includes('whatsapp') ? (
-                    <Ionicons name="logo-whatsapp" size={16} color={WHATSAPP_GREEN} />
-                  ) : null}
-                  {channels.includes('push') ? (
-                    <IconSymbol name="bell.fill" size={16} color={PUSH_BLUE} />
-                  ) : null}
-                  {incoming ? (
-                    <ThemedText style={[styles.metaText, { color: muted }]}>
-                      من {item.sender_name || 'مرسل غير معروف'}
-                    </ThemedText>
-                  ) : recipientsCount > 0 ? (
-                    <ThemedText style={[styles.metaText, { color: muted }]}>
-                      {recipientsCount} مستلم
-                    </ThemedText>
-                  ) : null}
+
+              <View style={[styles.footerDivider, { borderTopColor: palette.border }]}>
+                <ThemedText style={[styles.footerPrompt, { color: palette.muted }]} numberOfLines={1}>
+                  {awaitingResponse ? 'اضغط لعرض بطاقة الدعوة والرد' : 'اضغط لفتح تفاصيل الدعوة'}
+                </ThemedText>
+                <View style={styles.footerActionWrap}>
+                  <ThemedText style={[styles.detailActionText, { color: palette.primary }]}>
+                    {detailAction}
+                  </ThemedText>
+                  <Ionicons name="chevron-back" size={15} color={palette.primary} />
                 </View>
-                <ThemedText style={[styles.metaText, { color: muted }]}>
-                  {formatLogDate(incoming ? item.sent_at ?? item.created_at : item.created_at)}
-                </ThemedText>
-              </View>
-              <View style={[
-                styles.detailAction,
-                {
-                  backgroundColor: awaitingResponse ? actionGreen + '14' : cardBg,
-                  borderColor: awaitingResponse ? actionGreen + '40' : border,
-                },
-              ]}>
-                <ThemedText style={[styles.detailActionText, { color: actionColor }]}>
-                  {detailAction}
-                </ThemedText>
-                <Ionicons name="chevron-back" size={17} color={actionColor} />
               </View>
             </Pressable>
           );
@@ -283,7 +341,7 @@ const styles = StyleSheet.create({
   emptyWrap: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingVertical: 40,
+    paddingVertical: 32,
   },
   centered: {
     alignItems: 'center',
@@ -291,96 +349,138 @@ const styles = StyleSheet.create({
     gap: 10,
     padding: 24,
   },
+  emptyCard: {
+    borderWidth: 1,
+    borderRadius: 22,
+    padding: 28,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontFamily: 'Tajawal-Bold',
+    fontSize: 16,
+  },
   muted: {
     fontSize: 13,
     fontFamily: 'Tajawal-Regular',
     textAlign: 'center',
   },
-  error: {
-    color: '#EF4444',
-    fontFamily: 'Tajawal-Medium',
-    textAlign: 'center',
+  errorBanner: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 10,
     marginBottom: 10,
+  },
+  error: {
+    fontFamily: 'Tajawal-Medium',
+    fontSize: 13,
+    textAlign: 'center',
   },
   card: {
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 14,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   cardPressed: {
-    opacity: 0.72,
+    opacity: 0.82,
   },
   cardTop: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+  },
+  thumbWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  thumbImg: {
+    width: '100%',
+    height: '100%',
+  },
+  cardContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: 5,
+  },
+  titleBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
-    marginBottom: 6,
   },
   cardTitle: {
     flex: 1,
     fontSize: 15,
+    textAlign: 'right',
+    writingDirection: 'rtl',
   },
   badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontFamily: 'Tajawal-Bold',
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    flexShrink: 0,
   },
   badgeTextNative: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontFamily: 'Tajawal-Bold',
     textAlign: 'center',
     lineHeight: 16,
   },
-  transientHint: {
-    fontSize: 11,
-    fontFamily: 'Tajawal-Regular',
-    marginBottom: 6,
-    lineHeight: 16,
-  },
-  bodyPreview: {
-    fontSize: 13,
-    lineHeight: 20,
-    marginBottom: 10,
-  },
-  cardBottom: {
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  detailAction: {
-    direction: 'rtl',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    minHeight: 44,
-    marginTop: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderRadius: 12,
-  },
-  detailActionText: {
-    flexShrink: 1,
-    fontSize: 14,
-    fontFamily: 'Tajawal-Bold',
-  },
-  channels: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    gap: 5,
   },
   metaText: {
+    flex: 1,
     fontSize: 12,
     fontFamily: 'Tajawal-Medium',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  transientHint: {
+    fontSize: 11.5,
+    fontFamily: 'Tajawal-Medium',
+    marginTop: 8,
+    lineHeight: 17,
+    textAlign: 'right',
+  },
+  footerDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: 12,
+    paddingTop: 10,
+    gap: 8,
+  },
+  footerPrompt: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: 'Tajawal-Regular',
+    textAlign: 'right',
+  },
+  footerActionWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    flexShrink: 0,
+  },
+  detailActionText: {
+    fontSize: 13,
+    fontFamily: 'Tajawal-Bold',
   },
 });

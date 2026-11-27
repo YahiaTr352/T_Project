@@ -17,6 +17,7 @@ interface InvitationFieldProps {
   selection?: { start: number; end: number } | null;
   onSelectionChange?: (sel: { start: number; end: number }) => void;
   fontFamily?: string;
+  hideLabel?: boolean;
 }
 
 export function InvitationField({
@@ -34,10 +35,13 @@ export function InvitationField({
   selection,
   onSelectionChange,
   fontFamily,
+  hideLabel = false,
 }: InvitationFieldProps) {
   return (
     <View style={styles.wrap}>
-      <ThemedText style={[styles.label, { color: mutedColor }]}>{label}</ThemedText>
+      {!hideLabel ? (
+        <ThemedText style={[styles.label, { color: mutedColor }]}>{label}</ThemedText>
+      ) : null}
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -70,20 +74,23 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   label: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontFamily: 'Tajawal-Medium',
     marginBottom: 6,
+    textAlign: 'right',
+    writingDirection: 'rtl',
   },
   input: {
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
     fontFamily: 'Tajawal-Regular',
+    writingDirection: 'rtl',
   },
   multiline: {
-    minHeight: 120,
+    minHeight: 122,
     paddingTop: 12,
   },
 });

@@ -27,11 +27,13 @@ export function ChannelToggle({
   return (
     <Pressable
       onPress={onPress}
-      style={[
+      style={({ pressed }) => [
         styles.channelBtn,
         {
           backgroundColor: active ? color + '18' : cardBg,
           borderColor: active ? color : border,
+          borderWidth: active ? 1.5 : 1,
+          opacity: pressed ? 0.85 : 1,
         },
       ]}>
       {kind === 'whatsapp' ? (

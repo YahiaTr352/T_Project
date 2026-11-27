@@ -1,6 +1,7 @@
-import type { ThemeColors } from '@/constants/theme';
-import type { ReactNode } from 'react';
+import { InvitationSectionTitle } from '@/components/invitations/InvitationPrimitives';
+import { cardShadowStyle, getInvitationPalette } from '@/components/invitations/invitationTheme';
 import { ThemedText } from '@/components/themed-text';
+import type { ThemeColors } from '@/constants/theme';
 import {
   creativeArtworkSource,
   resolveCreativeArtworkUrl,
@@ -8,11 +9,13 @@ import {
 } from '@/lib/api/invitations';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import type { ReactNode } from 'react';
 import {
+  StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  StyleSheet,
 } from 'react-native';
 import { composerStyles as styles } from './composerStyles';
 
@@ -40,11 +43,7 @@ interface DesignSectionProps {
 
 export function DesignSection({
   invitationTypeName,
-  colors,
   isDark,
-  cardBg,
-  border,
-  muted,
   title,
   body,
   fontFamily,
@@ -59,60 +58,82 @@ export function DesignSection({
   onRemoveAttachment,
   children,
 }: DesignSectionProps) {
+  const palette = getInvitationPalette(isDark);
+
   return (
     <>
-      <ThemedText style={styles.sectionLabel}>الصورة والتصميم</ThemedText>
+      <InvitationSectionTitle title="الصورة والتصميم" palette={palette} />
 
-      {invitationTypeName ? <DesignEntryButton
-        title="قوالب الصور"
-        description={selectedCreative ? `القالب المختار: ${selectedCreative.name || 'بطاقة مصممة'}` : `صور ${invitationTypeName}`}
-        icon="images-outline"
-        color={colors.primary}
-        onPress={onOpenCreative}
-      /> : null}
-        {selectedCreative ? (
-          <View style={[styles.creativeSelectedRow, { marginBottom: 12 }]}>
-            {onEditArtwork ? (
-              <TouchableOpacity accessibilityRole="button" onPress={onEditArtwork}
-                style={[styles.miniBadgeOk, { backgroundColor: '#10B98118', paddingVertical: 10 }]}>
-                <Ionicons name="pencil-outline" size={15} color={colors.primary} />
-                <ThemedText style={[styles.miniBadgeOkText, { color: colors.primary }]}>
-                  {artworkEdited ? 'مراجعة تعديل الكتابة' : 'تعديل كتابة القالب'}
-                </ThemedText>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity onPress={() => void onClearCreative()} style={styles.clearVisual}>
-              <ThemedText style={[styles.clearVisualText, { color: muted }]}>
-                إزالة القالب
+      {invitationTypeName ? (
+        <DesignEntryButton
+          title="قوالب الصور"
+          description={selectedCreative ? `القالب المختار: ${selectedCreative.name || 'بطاقة مصممة'}` : `صور ${invitationTypeName}`}
+          icon="images-outline"
+          gradient={palette.primaryGradient}
+          onPress={onOpenCreative}
+        />
+      ) : null}
+
+      {selectedCreative ? (
+        <View style={[styles.creativeSelectedRow, { marginBottom: 12 }]}>
+          {onEditArtwork ? (
+            <TouchableOpacity
+              accessibilityRole="button"
+              onPress={onEditArtwork}
+              style={[styles.miniBadgeOk, { backgroundColor: palette.pillBg, borderWidth: 1, borderColor: palette.pillBorder, paddingVertical: 9 }]}>
+              <Ionicons name="pencil-outline" size={15} color={palette.pillText} />
+              <ThemedText style={[styles.miniBadgeOkText, { color: palette.pillText }]}>
+                {artworkEdited ? 'مراجعة تعديل الكتابة' : 'تعديل كتابة القالب'}
               </ThemedText>
             </TouchableOpacity>
-          </View>
-        ) : null}
+          ) : null}
+          <TouchableOpacity onPress={() => void onClearCreative()} style={styles.clearVisual}>
+            <ThemedText style={[styles.clearVisualText, { color: palette.muted }]}>
+              إزالة القالب
+            </ThemedText>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       {selectedCreative && artworkPreviewImage ? (
-        <Image source={artworkPreviewImage.startsWith('data:') ? { uri: artworkPreviewImage }
-          : creativeArtworkSource(resolveCreativeArtworkUrl(artworkPreviewImage))}
-          accessibilityLabel="معاينة صورة الدعوة" style={designStyles.artworkPreview} contentFit="contain" />
+        <Image
+          source={artworkPreviewImage.startsWith('data:')
+            ? { uri: artworkPreviewImage }
+            : creativeArtworkSource(resolveCreativeArtworkUrl(artworkPreviewImage))}
+          accessibilityLabel="معاينة صورة الدعوة"
+          style={designStyles.artworkPreview}
+          contentFit="contain"
+        />
       ) : null}
       {children}
 
-      <View style={[styles.card, { backgroundColor: cardBg, borderColor: attachedImage ? colors.primary : border, borderWidth: attachedImage ? 1.5 : 1 }]}>
+      <View
+        style={[
+          styles.card,
+          cardShadowStyle(palette),
+          {
+            backgroundColor: palette.surface,
+            borderColor: attachedImage ? palette.primary : palette.border,
+            borderWidth: attachedImage ? 1.5 : 1,
+          },
+        ]}>
         <View style={styles.creativeHeaderRow}>
-          <View style={[styles.creativeIconWrap, { backgroundColor: '#3B82F618' }]}>
-            <Ionicons name="chatbubble-ellipses-outline" size={20} color="#3B82F6" />
+          <View style={[styles.creativeIconWrap, { backgroundColor: palette.surfaceSoft }]}>
+            <Ionicons name="chatbubble-ellipses-outline" size={20} color={palette.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <View style={styles.attachTitleRow}>
-              <ThemedText style={[styles.creativeBtnTitle, { color: colors.text }]}>
+              <ThemedText style={[styles.creativeBtnTitle, { color: palette.text }]}>
                 صورة مع الرسالة
               </ThemedText>
-              <View style={[styles.attachStatusPill, { backgroundColor: attachedImage ? '#10B9811A' : (isDark ? '#334155' : '#F1F5F9') }]}>
-                <View style={[styles.attachDot, { backgroundColor: attachedImage ? '#10B981' : muted }]} />
-                <Text style={[styles.attachStatusText, { color: attachedImage ? '#059669' : muted }]}>
+              <View style={[styles.attachStatusPill, { backgroundColor: attachedImage ? palette.successBg : palette.surfaceAlt }]}>
+                <View style={[styles.attachDot, { backgroundColor: attachedImage ? palette.primary : palette.muted }]} />
+                <Text style={[styles.attachStatusText, { color: attachedImage ? palette.successText : palette.muted }]}>
                   {attachedImage ? 'تم الإرفاق' : 'بدون مرفق'}
                 </Text>
               </View>
             </View>
-            <ThemedText style={[styles.hint, { color: muted, marginBottom: 0, textAlign: 'right' }]}>
+            <ThemedText style={[styles.hint, { color: palette.muted, marginBottom: 0, textAlign: 'right' }]}>
               يمكنك إرسال الصورة وحدها، أو إضافة نص يظهر أسفلها في واتساب.
             </ThemedText>
           </View>
@@ -120,18 +141,24 @@ export function DesignSection({
 
         {!attachedImage ? (
           <TouchableOpacity
-            activeOpacity={0.8}
-            style={[styles.dropzone, { borderColor: selectedCreative ? '#F59E0B' : colors.primary, backgroundColor: isDark ? '#0F172A' : '#F8FAFC' }]}
+            activeOpacity={0.82}
+            style={[
+              styles.dropzone,
+              {
+                borderColor: selectedCreative ? palette.warningText : palette.borderStrong,
+                backgroundColor: palette.surfaceAlt,
+              },
+            ]}
             onPress={() => void onPickAttachment()}>
-            <View style={[styles.dropzoneIcon, { backgroundColor: colors.primary + '14' }]}>
-              <Ionicons name="image-outline" size={28} color={colors.primary} />
+            <View style={[styles.dropzoneIcon, { backgroundColor: palette.pillBg }]}>
+              <Ionicons name="image-outline" size={26} color={palette.primary} />
             </View>
-            <Text style={[styles.dropzoneTitle, { color: colors.text }]}>اضغط لاختيار صورة من المعرض</Text>
-            <Text style={[styles.dropzoneSub, { color: muted }]}>JPG أو PNG — ستظهر أسفلها رسالتك في نفس الفقاعة</Text>
+            <Text style={[styles.dropzoneTitle, { color: palette.text }]}>اضغط لاختيار صورة من المعرض</Text>
+            <Text style={[styles.dropzoneSub, { color: palette.muted }]}>JPG أو PNG — ستظهر أسفلها رسالتك في نفس الفقاعة</Text>
             {selectedCreative ? (
-              <View style={[styles.conflictBar, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
-                <Ionicons name="warning-outline" size={14} color="#D97706" />
-                <Text style={styles.conflictText}>اختيار صورة سيلغي قالب الصورة المختار</Text>
+              <View style={[styles.conflictBar, { backgroundColor: palette.warningBg, borderColor: palette.warningBorder }]}>
+                <Ionicons name="warning-outline" size={14} color={palette.warningText} />
+                <Text style={[styles.conflictText, { color: palette.warningText }]}>اختيار صورة سيلغي قالب الصورة المختار</Text>
               </View>
             ) : null}
           </TouchableOpacity>
@@ -145,38 +172,38 @@ export function DesignSection({
                   {(title.trim() || body.trim()) ? (
                     <>
                       {title.trim() ? (
-                        <Text style={[styles.chatTitle, { fontFamily }]} numberOfLines={1}>{title.trim()}</Text>
+                        <Text style={[styles.chatTitle, { fontFamily, color: isDark ? '#F1F5F9' : '#111B21' }]} numberOfLines={1}>{title.trim()}</Text>
                       ) : null}
                       {body.trim() ? (
-                        <Text style={[styles.chatBody, { fontFamily }]} numberOfLines={3}>{body.trim().slice(0, 160)}</Text>
+                        <Text style={[styles.chatBody, { fontFamily, color: isDark ? '#E2E8F0' : '#111B21' }]} numberOfLines={3}>{body.trim().slice(0, 160)}</Text>
                       ) : null}
                     </>
                   ) : (
-                    <Text style={styles.chatPlaceholder}>نص رسالتك سيظهر هنا تحت الصورة…</Text>
+                    <Text style={[styles.chatPlaceholder, { color: isDark ? '#CBD5E1' : '#667781' }]}>نص رسالتك سيظهر هنا تحت الصورة…</Text>
                   )}
                   <View style={styles.chatMetaRow}>
-                    <Text style={styles.chatTime}>الآن</Text>
+                    <Text style={[styles.chatTime, { color: isDark ? '#CBD5E1' : '#667781' }]}>الآن</Text>
                     <Ionicons name="checkmark-done" size={15} color="#53BDEB" />
                   </View>
                 </View>
               </View>
             </View>
             <View style={styles.attachCaptionRow}>
-              <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-              <Text style={[styles.attachCaption, { color: muted }]}>هكذا ستصل: الصورة أولاً ثم النص تحتها في نفس الرسالة</Text>
+              <Ionicons name="checkmark-circle" size={14} color={palette.primary} />
+              <Text style={[styles.attachCaption, { color: palette.muted }]}>هكذا ستصل: الصورة أولاً ثم النص تحتها في نفس الرسالة</Text>
             </View>
             <View style={styles.attachActions}>
               <TouchableOpacity
-                style={[styles.attachSecondaryBtn, { borderColor: border }]}
+                style={[styles.attachSecondaryBtn, { borderColor: palette.border, backgroundColor: palette.surfaceAlt }]}
                 onPress={() => void onPickAttachment()}>
-                <Ionicons name="refresh-outline" size={16} color={colors.primary} />
-                <Text style={[styles.attachSecondaryText, { color: colors.primary }]}>تغيير الصورة</Text>
+                <Ionicons name="refresh-outline" size={16} color={palette.primary} />
+                <Text style={[styles.attachSecondaryText, { color: palette.primary }]}>تغيير الصورة</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.attachRemoveBtn}
+                style={[styles.attachRemoveBtn, { backgroundColor: palette.dangerBg }]}
                 onPress={() => onRemoveAttachment()}>
-                <Ionicons name="trash-outline" size={16} color="#DC2626" />
-                <Text style={styles.attachRemoveText}>إزالة</Text>
+                <Ionicons name="trash-outline" size={16} color={palette.dangerText} />
+                <Text style={[styles.attachRemoveText, { color: palette.dangerText }]}>إزالة</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -186,37 +213,60 @@ export function DesignSection({
   );
 }
 
-function DesignEntryButton({ title, description, icon, color, onPress }: {
+function DesignEntryButton({ title, description, icon, gradient, onPress }: {
   title: string;
   description: string;
   icon: keyof typeof Ionicons.glyphMap;
-  color: string;
+  gradient: readonly [string, string];
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity accessibilityRole="button" accessibilityLabel={title} activeOpacity={0.85}
-      style={[designStyles.creativeEntry, { backgroundColor: color }]} onPress={onPress}>
-      <Ionicons name={icon} size={24} color="#FFFFFF" />
-      <View style={{ flex: 1 }}>
-        <Text style={designStyles.entryTitle}>{title}</Text>
-        <Text style={designStyles.entrySubtitle}>{description}</Text>
-      </View>
-      <Ionicons name="chevron-back" size={18} color="#FFFFFF" />
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      activeOpacity={0.85}
+      style={designStyles.creativeEntryWrap}
+      onPress={onPress}>
+      <LinearGradient
+        colors={gradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={designStyles.creativeEntry}>
+        <View style={designStyles.entryIconCircle}>
+          <Ionicons name={icon} size={20} color="#FFFFFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={designStyles.entryTitle}>{title}</Text>
+          <Text style={designStyles.entrySubtitle}>{description}</Text>
+        </View>
+        <Ionicons name="chevron-back" size={18} color="#FFFFFF" />
+      </LinearGradient>
     </TouchableOpacity>
   );
 }
 
 const designStyles = StyleSheet.create({
-  artworkPreview: { width: '100%', height: 210, borderRadius: 12, marginBottom: 12 },
+  artworkPreview: { width: '100%', height: 210, borderRadius: 16, marginBottom: 12 },
+  creativeEntryWrap: {
+    borderRadius: 18,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
   creativeEntry: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
     gap: 12,
-    marginBottom: 12,
   },
-  entryTitle: { color: '#FFFFFF', fontFamily: 'Tajawal-Bold', fontSize: 14 },
-  entrySubtitle: { color: '#FFFFFF', fontFamily: 'Tajawal-Medium', fontSize: 12, marginTop: 2 },
+  entryIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  entryTitle: { color: '#FFFFFF', fontFamily: 'Tajawal-Bold', fontSize: 14.5 },
+  entrySubtitle: { color: 'rgba(255,255,255,0.88)', fontFamily: 'Tajawal-Medium', fontSize: 12, marginTop: 2 },
 });

@@ -1,8 +1,9 @@
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
-import { Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
+import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { cardShadowStyle, getInvitationPalette } from './invitationTheme';
 
 export type InvitationTabKey = 'compose' | 'groups' | 'logs' | 'creative';
 
@@ -32,9 +33,8 @@ export function InvitationTabBar({
   groupsCount,
   logsCount,
 }: InvitationTabBarProps) {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
-  const isDark = colorScheme === 'dark';
+  const isDark = useColorScheme() === 'dark';
+  const palette = getInvitationPalette(isDark);
 
   const badgeFor = (key: InvitationTabKey) => {
     if (key === 'groups') return groupsCount;
@@ -43,10 +43,59 @@ export function InvitationTabBar({
   };
 
   return (
-    <View accessibilityRole="tablist" style={styles.container}>
+    <View
+      accessibilityRole="tablist"
+      style={[
+        styles.container,
+        cardShadowStyle(palette),
+        {
+          backgroundColor: palette.tabContainerBg,
+          borderColor: palette.border,
+        },
+      ]}>
       {TABS.map((tab) => {
         const isActive = tab.key === active;
         const badge = badgeFor(tab.key);
+
+        const content = (
+          <>
+            <View style={styles.tabIconRow}>
+              {typeof badge === 'number' && badge > 0 ? (
+                <View
+                  style={[
+                    styles.badgePill,
+                    {
+                      backgroundColor: isActive ? 'rgba(255,255,255,0.24)' : palette.pillBg,
+                    },
+                  ]}>
+                  <ThemedText
+                    style={[
+                      styles.badgeText,
+                      { color: isActive ? '#FFFFFF' : palette.pillText },
+                    ]}>
+                    {badge}
+                  </ThemedText>
+                </View>
+              ) : null}
+              <IconSymbol
+                name={tab.icon}
+                size={17}
+                color={isActive ? '#FFFFFF' : palette.textSecondary}
+              />
+            </View>
+            <ThemedText
+              numberOfLines={1}
+              style={[
+                styles.tabLabel,
+                {
+                  color: isActive ? '#FFFFFF' : palette.textSecondary,
+                  fontFamily: isActive ? 'Tajawal-Bold' : 'Tajawal-Medium',
+                },
+              ]}>
+              {tab.label}
+            </ThemedText>
+          </>
+        );
 
         return (
           <Pressable
@@ -57,43 +106,19 @@ export function InvitationTabBar({
             onPress={() => onChange(tab.key)}
             style={({ pressed }) => [
               styles.tabPill,
-              {
-                backgroundColor: isActive
-                  ? colors.primary
-                  : isDark
-                    ? '#1E293B'
-                    : '#FFFFFF',
-                borderColor: isActive
-                  ? colors.primary
-                  : isDark
-                    ? '#334155'
-                    : '#E2E8F0',
-                opacity: pressed ? 0.85 : 1,
-              },
+              { opacity: pressed ? 0.85 : 1 },
             ]}>
-            <View style={styles.tabIconRow}>
-              <IconSymbol
-                name={tab.icon}
-                size={16}
-                color={isActive ? '#FFFFFF' : isDark ? '#94A3B8' : colors.primary}
-              />
-              {typeof badge === 'number' && badge > 0 ? (
-                <View style={[styles.badgePill, { backgroundColor: isActive ? '#FFFFFF40' : `${colors.primary}20` }]}>
-                  <ThemedText style={[styles.badgeText, { color: isActive ? '#FFFFFF' : colors.primary }]}>{badge}</ThemedText>
-                </View>
-              ) : null}
-            </View>
-            <ThemedText
-              numberOfLines={2}
-              style={[
-                styles.tabLabel,
-                {
-                  color: isActive ? '#FFFFFF' : isDark ? '#F1F5F9' : '#334155',
-                  fontFamily: isActive ? 'Tajawal-Bold' : 'Tajawal-Medium',
-                },
-              ]}>
-              {tab.label}
-            </ThemedText>
+            {isActive ? (
+              <LinearGradient
+                colors={palette.primaryGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.tabInnerActive}>
+                {content}
+              </LinearGradient>
+            ) : (
+              <View style={styles.tabInnerInactive}>{content}</View>
+            )}
           </Pressable>
         );
       })}
@@ -105,28 +130,39 @@ const styles = StyleSheet.create({
   container: {
     direction: 'rtl',
     flexDirection: 'row',
-    gap: 6,
-    marginVertical: 6,
+    gap: 4,
+    padding: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginTop: 2,
+    marginBottom: 12,
   },
   tabPill: {
     flex: 1,
     minWidth: 0,
+    borderRadius: 15,
+    overflow: 'hidden',
+  },
+  tabInnerActive: {
     minHeight: 54,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
-    paddingHorizontal: 3,
+    paddingHorizontal: 4,
     paddingVertical: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
+    borderRadius: 15,
+  },
+  tabInnerInactive: {
+    minHeight: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+    borderRadius: 15,
   },
   tabLabel: {
-    fontSize: 12,
+    fontSize: 11.5,
     lineHeight: 16,
     textAlign: 'center',
     writingDirection: 'rtl',
@@ -134,17 +170,18 @@ const styles = StyleSheet.create({
   tabIconRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 4,
   },
   badgePill: {
-    paddingHorizontal: 4,
-    borderRadius: 10,
+    paddingHorizontal: 6,
+    height: 18,
+    borderRadius: 9,
     minWidth: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   badgeText: {
-    fontSize: 10,
+    fontSize: 10.5,
     lineHeight: 14,
     fontFamily: 'Tajawal-Bold',
   },

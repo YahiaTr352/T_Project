@@ -1,6 +1,7 @@
+import { getInvitationPalette } from '@/components/invitations/invitationTheme';
 import { PersonAvatar } from '@/components/invitations/PersonAvatar';
 import { ThemedText } from '@/components/themed-text';
-import { Colors, silaTheme, type ThemeColors } from '@/constants/theme';
+import { silaTheme, type ThemeColors } from '@/constants/theme';
 import {
   fetchInvitationTreePicker,
   resolveInvitationPhotoUrl,
@@ -143,17 +144,18 @@ function PersonTreeCard({
   };
 
   // Dynamic Card Border & Background
-  let cardBorderColor = isDark ? '#334155' : '#E2E8F0';
-  let cardBg = isDark ? '#1E293B' : '#FFFFFF';
+  const palette = getInvitationPalette(isDark);
+  let cardBorderColor = palette.border;
+  let cardBg = palette.surface;
 
   if (!selectable && !hasWhatsapp) {
-    cardBorderColor = isDark ? '#475569' : '#CBD5E1';
-    cardBg = isDark ? '#0F172A99' : '#F8FAFC';
+    cardBorderColor = palette.border;
+    cardBg = palette.surfaceAlt;
   } else if (isSelected) {
-    cardBorderColor = silaTheme.primary;
-    cardBg = isDark ? '#064E3B33' : '#ECFDF5';
+    cardBorderColor = palette.primary;
+    cardBg = palette.surfaceSoft;
   } else if (isExpanded) {
-    cardBorderColor = silaTheme.primaryLight;
+    cardBorderColor = palette.borderStrong;
   }
 
   return (
@@ -431,9 +433,10 @@ export function RecipientPickerModal({
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedOnce = useRef(false);
 
-  const muted = colors.icon;
-  const cardBg = isDark ? colors.card : '#FFFFFF';
-  const border = isDark ? '#334155' : colors.border;
+  const palette = getInvitationPalette(isDark);
+  const muted = palette.muted;
+  const cardBg = palette.surface;
+  const border = palette.border;
 
   // Keyboard visibility listener
   useEffect(() => {
@@ -567,11 +570,11 @@ export function RecipientPickerModal({
         style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}>
-        <View style={styles.modalOverlay}>
+        <View style={[styles.modalOverlay, { backgroundColor: palette.overlay }]}>
           <View
             style={[
               styles.modalContent,
-              { backgroundColor: cardBg, borderColor: border },
+              { backgroundColor: isDark ? '#0D1E18' : '#F6FBF8', borderColor: border },
             ]}>
             {/* Modal Header */}
             <View style={styles.header}>
@@ -583,12 +586,12 @@ export function RecipientPickerModal({
                   } catch {}
                   onClose();
                 }}
-                style={styles.closeBtn}>
-                <Ionicons name="close" size={20} color={muted} />
+                style={[styles.closeBtn, { backgroundColor: cardBg, borderWidth: 1, borderColor: border }]}>
+                <Ionicons name="close" size={18} color={muted} />
               </TouchableOpacity>
 
               <View style={{ alignItems: 'center' }}>
-                <ThemedText style={styles.headerTitle}>{title}</ThemedText>
+                <ThemedText style={[styles.headerTitle, { color: palette.text }]}>{title}</ThemedText>
                 <ThemedText style={[styles.headerSub, { color: muted }]}>
                   اختر من شجرة العائلة أو ابحث بالاسم مباشرة
                 </ThemedText>
@@ -601,7 +604,7 @@ export function RecipientPickerModal({
             <View
               style={[
                 styles.tabSwitcherWrap,
-                { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' },
+                { backgroundColor: cardBg, borderWidth: 1, borderColor: border },
               ]}>
               <TouchableOpacity
                 activeOpacity={0.85}
@@ -610,13 +613,13 @@ export function RecipientPickerModal({
                   styles.tabSwitcherBtn,
                   activeTab === 'tree' && [
                     styles.tabSwitcherBtnActive,
-                    { backgroundColor: isDark ? '#334155' : '#FFFFFF' },
+                    { backgroundColor: palette.surfaceSoft },
                   ],
                 ]}>
                 <ThemedText
                   style={[
                     styles.tabSwitcherText,
-                    { color: activeTab === 'tree' ? silaTheme.primary : muted },
+                    { color: activeTab === 'tree' ? palette.primary : muted },
                     activeTab === 'tree' && styles.tabSwitcherTextActive,
                   ]}>
                   🌳 شجرة العائلة (صلة)
@@ -630,13 +633,13 @@ export function RecipientPickerModal({
                   styles.tabSwitcherBtn,
                   activeTab === 'list' && [
                     styles.tabSwitcherBtnActive,
-                    { backgroundColor: isDark ? '#334155' : '#FFFFFF' },
+                    { backgroundColor: palette.surfaceSoft },
                   ],
                 ]}>
                 <ThemedText
                   style={[
                     styles.tabSwitcherText,
-                    { color: activeTab === 'list' ? silaTheme.primary : muted },
+                    { color: activeTab === 'list' ? palette.primary : muted },
                     activeTab === 'list' && styles.tabSwitcherTextActive,
                   ]}>
                   📋 البحث والقائمة
@@ -646,13 +649,13 @@ export function RecipientPickerModal({
 
             {/* Selected Members Chips Strip (Always Accessible) */}
             {selectedCount > 0 && (
-              <View style={[styles.selectedStrip, { borderBottomColor: isDark ? '#334155' : '#F1F5F9' }]}>
+              <View style={[styles.selectedStrip, { borderBottomColor: border }]}>
                 <View style={styles.selectedStripHeader}>
-                  <ThemedText style={[styles.selectedCountText, { color: silaTheme.primary }]}>
+                  <ThemedText style={[styles.selectedCountText, { color: palette.primary }]}>
                     تم تحديد ({selectedCount}) من أفراد العائلة
                   </ThemedText>
                   <TouchableOpacity onPress={handleClearAll}>
-                    <ThemedText style={styles.clearAllText}>مسح الكل</ThemedText>
+                    <ThemedText style={[styles.clearAllText, { color: palette.dangerText }]}>مسح الكل</ThemedText>
                   </TouchableOpacity>
                 </View>
 
@@ -666,8 +669,8 @@ export function RecipientPickerModal({
                       style={[
                         styles.chip,
                         {
-                          backgroundColor: isDark ? '#064E3B' : '#ECFDF5',
-                          borderColor: silaTheme.primary,
+                          backgroundColor: palette.pillBg,
+                          borderColor: palette.pillBorder,
                         },
                       ]}>
                       <PersonAvatar
@@ -679,7 +682,7 @@ export function RecipientPickerModal({
                       <ThemedText
                         style={[
                           styles.chipName,
-                          { color: isDark ? '#A7F3D0' : '#065F46' },
+                          { color: palette.pillText },
                         ]}>
                         {person.first_name}
                       </ThemedText>
@@ -690,7 +693,7 @@ export function RecipientPickerModal({
                         <Ionicons
                           name="close-circle"
                           size={16}
-                          color={isDark ? '#34D399' : '#059669'}
+                          color={palette.primary}
                         />
                       </TouchableOpacity>
                     </View>
@@ -710,15 +713,15 @@ export function RecipientPickerModal({
                   style={[
                     styles.treeHintBanner,
                     {
-                      backgroundColor: isDark ? '#064E3B22' : '#F0FDF4',
-                      borderColor: isDark ? '#065F46' : '#BBF7D0',
+                      backgroundColor: palette.surfaceSoft,
+                      borderColor: palette.borderStrong,
                     },
                   ]}>
-                  <Ionicons name="git-branch-outline" size={16} color={silaTheme.primary} />
+                  <Ionicons name="git-branch-outline" size={16} color={palette.primary} />
                   <ThemedText
                     style={[
                       styles.treeHintText,
-                      { color: isDark ? '#A7F3D0' : '#065F46' },
+                      { color: palette.pillText },
                     ]}>
                     انقر على كرت الشخص لعرض أبنائه، واضغط «+ إضافة للدعوة» لتحديده لإرسال الدعوة 📩
                   </ThemedText>
@@ -786,7 +789,7 @@ export function RecipientPickerModal({
                   style={[
                     styles.searchBox,
                     {
-                      backgroundColor: isDark ? '#1E293B' : '#F8FAFC',
+                      backgroundColor: cardBg,
                       borderColor: border,
                     },
                   ]}>
@@ -796,7 +799,7 @@ export function RecipientPickerModal({
                     onChangeText={setQuery}
                     placeholder="ابحث بالاسم..."
                     placeholderTextColor={muted}
-                    style={[styles.searchInput, { color: colors.text }]}
+                    style={[styles.searchInput, { color: palette.text }]}
                   />
                   {searchLoading && (
                     <ActivityIndicator size="small" color={silaTheme.primary} />
@@ -943,10 +946,10 @@ export function RecipientPickerModal({
                   {
                     backgroundColor:
                       selectedCount > 0
-                        ? silaTheme.primary
-                        : isDark
-                          ? '#334155'
-                          : '#E2E8F0',
+                        ? palette.primary
+                        : palette.surfaceAlt,
+                    borderWidth: selectedCount > 0 ? 0 : 1,
+                    borderColor: border,
                   },
                 ]}>
                 <ThemedText
@@ -956,9 +959,7 @@ export function RecipientPickerModal({
                       color:
                         selectedCount > 0
                           ? '#FFFFFF'
-                          : isDark
-                            ? '#94A3B8'
-                            : '#64748B',
+                          : palette.textSecondary,
                     },
                   ]}>
                   {selectedCount > 0
