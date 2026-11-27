@@ -888,6 +888,7 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    direction: 'rtl',
   },
   headerActionsWrap: {
     flexDirection: 'row',
@@ -978,11 +979,13 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     textAlign: 'center',
+    writingDirection: 'rtl',
     fontFamily: 'Tajawal-Bold',
     fontSize: 17,
   },
   emptyHint: {
     textAlign: 'center',
+    writingDirection: 'rtl',
     fontFamily: 'Tajawal-Regular',
     fontSize: 13,
     lineHeight: 19,

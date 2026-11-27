@@ -392,4 +392,23 @@ class ContactMessageDashboardTest extends TestCase
         $this->get(route('dashboard.contact-messages.index', ['search' => $phone]))->assertOk()
             ->assertViewHas('messages', fn ($messages) => $messages->total() === 1 && $messages->first()->is($guest));
     }
+
+    public function test_mobile_profile_exposes_registered_whatsapp_status_for_members(): void
+    {
+        $member = Person::create(['first_name' => 'سالم', 'gender' => 'male']);
+        $phoneOnly = $member->contactAccounts()->create(['type' => 'phone', 'value' => '0553216789']);
+        $token = SiteMobileAccessToken::issueIdentityToken($member->id, 'face')['token'];
+
+        $this->getJson(route('api.v1.me.show'), ['Authorization' => 'Bearer '.$token])
+            ->assertOk()
+            ->assertJsonPath('data.person.has_whatsapp', false)
+            ->assertJsonPath('data.person.whatsapp_number', null);
+
+        $phoneOnly->update(['type' => 'whatsapp']);
+
+        $this->getJson(route('api.v1.me.show'), ['Authorization' => 'Bearer '.$token])
+            ->assertOk()
+            ->assertJsonPath('data.person.has_whatsapp', true)
+            ->assertJsonPath('data.person.whatsapp_number', '+966553216789');
+    }
 }

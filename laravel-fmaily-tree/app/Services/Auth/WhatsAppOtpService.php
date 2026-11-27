@@ -305,7 +305,7 @@ class WhatsAppOtpService
                     'phone' => $phone,
                     'gender' => $person->gender,
                     'is_child' => $isChild,
-                ],
+                ] + $person->whatsAppStatusPayload($this->whatsappLookup),
             ],
         ];
     }
@@ -650,7 +650,7 @@ class WhatsAppOtpService
                     'phone' => $phone,
                     'gender' => $child->gender,
                     'is_child' => true,
-                ],
+                ] + $child->whatsAppStatusPayload($this->whatsappLookup),
             ],
         ];
     }

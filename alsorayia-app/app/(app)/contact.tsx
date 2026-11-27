@@ -91,7 +91,7 @@ export default function ContactScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const isDark = colorScheme === 'dark';
-  const { user, hasIdentity } = useAuth();
+  const { user, hasIdentity, refreshIdentityProfile } = useAuth();
 
   // High contrast color tokens
   const titleColor = isDark ? '#FFFFFF' : '#111827';
@@ -113,6 +113,12 @@ export default function ContactScreen() {
   // Keyboard Tracking & ScrollView Ref for flexible scrolling & elderly accessibility
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (hasIdentity) {
+      void refreshIdentityProfile?.();
+    }
+  }, [hasIdentity, refreshIdentityProfile]);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -368,6 +374,10 @@ export default function ContactScreen() {
     setAttachedMedia(null);
   }, []);
 
+  const hasRegisteredWhatsApp = hasIdentity && user?.has_whatsapp === true;
+  const registeredWhatsAppNumber = hasRegisteredWhatsApp
+    ? user?.whatsapp_number || user?.phone || null
+    : null;
   const senderName = hasIdentity && user?.full_name ? user.full_name : guestName.trim();
   const senderPhone = hasIdentity && user?.phone ? user.phone : guestPhone.trim();
 
@@ -552,7 +562,9 @@ export default function ContactScreen() {
                   أهلاً بك، {user.full_name}
                 </ThemedText>
                 <ThemedText style={[styles.identityDesc, { color: subtextColor }]}>
-                  سيتم توثيق مشاركتك واقتراحك برقمك المسجل ({user.phone || 'مسجل'}) لدى إدارة العائلة.
+                  {hasRegisteredWhatsApp && registeredWhatsAppNumber
+                    ? `سيتم توثيق مشاركتك واقتراحك برقمك المسجل (${registeredWhatsAppNumber}) لدى إدارة العائلة.`
+                    : 'سيتم توثيق مشاركتك واقتراحك بحسابك المسجل لدى إدارة العائلة، وسيصلك رد الإدارة عبر إشعارات التطبيق.'}
                 </ThemedText>
               </View>
             </View>

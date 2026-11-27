@@ -69,6 +69,9 @@ export interface MyPerson {
   biography?: string | null;
   occupation?: string | null;
   avatar?: string | null;
+  phone?: string | null;
+  has_whatsapp?: boolean;
+  whatsapp_number?: string | null;
   location_id?: number | null;
   privacy_settings?: ProfilePrivacySettings;
 }

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Kalnoy\Nestedset\NodeTrait;
 use App\Models\Scopes\OrderedScope;
+use App\Services\Auth\WhatsappPersonLookup;
 
 class Person extends BaseModel
 {
@@ -652,6 +653,38 @@ class Person extends BaseModel
             ->sortBy(fn (PersonContactAccount $account) => $account->type === 'whatsapp' ? 0 : 1)
             ->map(fn (PersonContactAccount $account) => trim((string) $account->value))
             ->first(fn (string $value) => $value !== '');
+    }
+
+    /**
+     * Return the member's first valid canonical WhatsApp mobile number (digits without +), if registered.
+     */
+    public function registeredWhatsAppMobile(?WhatsappPersonLookup $lookup = null): ?string
+    {
+        $lookup ??= app(WhatsappPersonLookup::class);
+        $accounts = $this->relationLoaded('contactAccounts')
+            ? $this->contactAccounts
+            : $this->contactAccounts()->where('type', 'whatsapp')->get();
+
+        return $accounts
+            ->where('type', 'whatsapp')
+            ->pluck('value')
+            ->map(fn ($value) => $lookup->canonicalMobile((string) $value))
+            ->first(fn (?string $number) => $number !== null);
+    }
+
+    /**
+     * WhatsApp registration status exposed in mobile auth and profile payloads.
+     *
+     * @return array{has_whatsapp: bool, whatsapp_number: ?string}
+     */
+    public function whatsAppStatusPayload(?WhatsappPersonLookup $lookup = null): array
+    {
+        $mobile = $this->registeredWhatsAppMobile($lookup);
+
+        return [
+            'has_whatsapp' => $mobile !== null,
+            'whatsapp_number' => $mobile !== null ? '+' . $mobile : null,
+        ];
     }
 
     /**

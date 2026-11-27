@@ -139,7 +139,7 @@ class FaceAuthService
                             'last_name' => $bestMatch->last_name,
                             'full_name' => $bestMatch->full_name,
                             'avatar' => $bestMatch->avatar,
-                        ],
+                        ] + $bestMatch->whatsAppStatusPayload(),
                     ],
                 ];
             }
@@ -196,7 +196,7 @@ class FaceAuthService
                                 'avatar' => $bestMatch->avatar,
                                 'phone' => $guardianInfo['whatsapp'],
                                 'gender' => $bestMatch->gender,
-                            ],
+                            ] + $bestMatch->whatsAppStatusPayload(),
                         ],
                     ];
                 }
@@ -251,7 +251,7 @@ class FaceAuthService
                             'avatar' => $bestMatch->avatar,
                             'phone' => $registeredWhatsapp ?: $bestMatch->resolveQuizPhone(),
                             'gender' => $bestMatch->gender,
-                        ],
+                        ] + $bestMatch->whatsAppStatusPayload(),
                     ],
                 ];
             }
@@ -309,7 +309,7 @@ class FaceAuthService
                     'avatar' => $bestMatch->avatar,
                     'phone' => $bestMatch->resolveQuizPhone(),
                     'gender' => $bestMatch->gender,
-                ],
+                ] + $bestMatch->whatsAppStatusPayload(),
             ],
         ];
     }

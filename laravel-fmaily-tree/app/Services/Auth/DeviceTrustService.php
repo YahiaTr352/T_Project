@@ -293,7 +293,7 @@ class DeviceTrustService
                     'avatar' => $person->avatar,
                     'phone' => $data['phone'] ?? $person->resolveQuizPhone(),
                     'gender' => $person->gender,
-                ],
+                ] + $person->whatsAppStatusPayload(),
             ],
         ];
     }
@@ -449,6 +449,8 @@ class DeviceTrustService
                     'last_name' => $person->last_name,
                     'full_name' => $person->full_name,
                     'avatar' => $person->avatar,
+                    'has_whatsapp' => false,
+                    'whatsapp_number' => null,
                 ],
             ],
         ];

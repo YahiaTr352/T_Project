@@ -372,7 +372,6 @@ export function SwipeableNotificationCard({
               borderColor: cardBorderColor,
             },
             !item.read && !isInvitation && styles.unreadCardBorder,
-            isInvitation && styles.invitationCard,
             isSelected && styles.selectedCardBorder,
           ]}
         >
@@ -402,8 +401,8 @@ export function SwipeableNotificationCard({
                 <ThemedText
                   style={[
                     styles.cardTitle,
+                    styles.rtlText,
                     item.read && styles.cardTitleRead,
-                    isInvitation && styles.invitationText,
                     isInvitation && styles.invitationTitle,
                     { color: colors.text },
                   ]}
@@ -415,7 +414,7 @@ export function SwipeableNotificationCard({
 
               <View style={styles.timeRow}>
                 <IconSymbol name="clock.fill" size={11} color={colors.icon} />
-                <ThemedText style={[styles.timeAgo, { color: colors.icon }]}>
+                <ThemedText style={[styles.timeAgo, styles.rtlText, { color: colors.icon }]}>
                   {item.timeAgo || formattedTime}
                 </ThemedText>
               </View>
@@ -459,9 +458,9 @@ export function SwipeableNotificationCard({
           <ThemedText
             style={[
               styles.cardBody,
+              styles.rtlText,
               { color: isDark ? '#CBD5E1' : '#334155' },
               item.read && styles.cardBodyRead,
-              isInvitation && styles.invitationText,
             ]}
             numberOfLines={isExpanded ? undefined : 2}
             selectable={isExpanded && !isSelectionMode}
@@ -472,7 +471,7 @@ export function SwipeableNotificationCard({
           {showInvitationResponse && (
             savedResponse ? (
               <ThemedText
-                style={[styles.invitationStatus, styles.invitationText, { color: savedResponse === 'accepted' ? colors.primary : declineColor }]}
+                style={[styles.invitationStatus, styles.rtlText, { color: savedResponse === 'accepted' ? colors.primary : declineColor }]}
                 accessibilityLiveRegion="polite"
               >
                 {savedResponse === 'accepted' ? 'تم القبول' : 'تم الرفض'}
@@ -509,7 +508,7 @@ export function SwipeableNotificationCard({
                   })}
                 </View>
                 {invitationResponsePending && (
-                  <ThemedText style={[styles.invitationStatus, styles.invitationText, { color: colors.icon }]} accessibilityLiveRegion="polite">
+                  <ThemedText style={[styles.invitationStatus, styles.rtlText, { color: colors.icon }]} accessibilityLiveRegion="polite">
                     جارٍ حفظ الرد…
                   </ThemedText>
                 )}
@@ -534,6 +533,7 @@ export function SwipeableNotificationCard({
               <ThemedText
                 style={[
                   styles.expandToggleText,
+                  styles.rtlText,
                   { color: isExpanded ? colors.icon : colors.primary },
                 ]}
               >
@@ -748,19 +748,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 15,
     position: 'relative',
+    direction: 'rtl',
+    overflow: 'hidden',
     ...Platform.select({
       ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1.5 }, shadowOpacity: 0.05, shadowRadius: 5 },
       android: { elevation: 1.5 },
     }),
   },
   unreadCardBorder: {
-    borderRightWidth: 4,
+    borderStartWidth: 4,
   },
-  invitationCard: {
-    direction: 'rtl',
-    overflow: 'hidden',
-  },
-  invitationText: {
+  rtlText: {
     // Keep Android from interpreting right alignment relative to the RTL card layout.
     ...(Platform.OS === 'android' ? { direction: 'ltr' } : {}),
     textAlign: 'right',
@@ -823,17 +821,19 @@ const styles = StyleSheet.create({
   },
   headerTextWrap: {
     flex: 1,
+    minWidth: 0,
     justifyContent: 'center',
     gap: 2,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    minWidth: 0,
   },
   cardTitle: {
+    flex: 1,
     fontFamily: 'Tajawal-Bold',
     fontSize: 15.5,
-    textAlign: 'right',
   },
   cardTitleRead: {
     fontFamily: 'Tajawal-Medium',
@@ -866,7 +866,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Tajawal-Regular',
     lineHeight: 21,
     marginBottom: 10,
-    textAlign: 'right',
   },
   cardBodyRead: {
     opacity: 0.85,
@@ -897,7 +896,7 @@ const styles = StyleSheet.create({
   imageZoomOverlay: {
     position: 'absolute',
     bottom: 8,
-    left: 8,
+    end: 8,
     backgroundColor: 'rgba(0,0,0,0.65)',
     flexDirection: 'row',
     alignItems: 'center',
@@ -927,7 +926,7 @@ const styles = StyleSheet.create({
   expandedImageBadge: {
     position: 'absolute',
     bottom: 8,
-    left: 8,
+    end: 8,
     backgroundColor: 'rgba(0,0,0,0.7)',
     flexDirection: 'row',
     alignItems: 'center',

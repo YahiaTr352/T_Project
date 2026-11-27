@@ -110,11 +110,7 @@ class ContactMessageService
             return preg_replace('/\D/', '', (string) $message->sender_display_phone) ?: null;
         }
 
-        return $message->person->contactAccounts
-            ->where('type', 'whatsapp')
-            ->pluck('value')
-            ->map(fn ($value) => $this->whatsappLookup->canonicalMobile((string) $value))
-            ->first(fn (?string $number) => $number !== null);
+        return $message->person->registeredWhatsAppMobile($this->whatsappLookup);
     }
 
     public function suggestionReplies(ContactMessage $message): Builder

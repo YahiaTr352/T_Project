@@ -20,7 +20,7 @@ import React, {
 import { Alert, Platform } from 'react-native';
 
 import { refreshAuthToken, type AuthPerson } from '@/lib/api/authApi';
-import { fetchMyProfile } from '@/lib/api/myProfile';
+import { fetchMyProfile, type MyContact } from '@/lib/api/myProfile';
 import { logger } from '@/lib/utils/logger';
 import { clearWalkingLedger } from '@/lib/walking/ledger';
 import { resetWalkingSyncState } from '@/lib/walking/syncService';
@@ -105,7 +105,25 @@ export const storage = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function mapToAuthPerson(p: any, fallbackPhone?: string | null): AuthPerson {
+function mapToAuthPerson(
+  p: any,
+  fallbackPhone?: string | null,
+  contacts?: MyContact[]
+): AuthPerson {
+  const whatsappContact = contacts
+    ?.find((c) => c.type === 'whatsapp' && typeof c.value === 'string' && c.value.trim() !== '')
+    ?.value?.trim();
+  const hasWhatsapp =
+    typeof p.has_whatsapp === 'boolean'
+      ? p.has_whatsapp
+      : whatsappContact
+        ? true
+        : contacts
+          ? false
+          : undefined;
+  const whatsappNumber =
+    p.whatsapp_number !== undefined ? p.whatsapp_number : (whatsappContact ?? null);
+
   return {
     id: p.id,
     first_name: p.first_name,
@@ -113,6 +131,8 @@ function mapToAuthPerson(p: any, fallbackPhone?: string | null): AuthPerson {
     full_name: p.full_name,
     avatar: p.avatar ?? null,
     phone: p.phone ?? fallbackPhone ?? null,
+    has_whatsapp: hasWhatsapp,
+    whatsapp_number: whatsappNumber,
     birth_date: p.birth_date ?? null,
     gender: p.gender ?? null,
   };
@@ -125,6 +145,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthPerson | null>(null);
 
   const hasIdentity = user?.id != null;
+  const userRef = useRef<AuthPerson | null>(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   const clearLocalSession = useCallback(async () => {
     await storage.removeItem(SITE_ACCESS_TOKEN_KEY);
@@ -174,7 +198,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       void fetchMyProfile()
         .then((res) => {
           if (res?.success && res.data?.person) {
-            const mapped = mapToAuthPerson(res.data.person);
+            const mapped = mapToAuthPerson(
+              res.data.person,
+              userRef.current?.phone ?? null,
+              res.data.contacts
+            );
             setUser(mapped);
             void storage.setItem(USER_DATA_KEY, JSON.stringify(mapped));
           }
@@ -222,7 +250,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               if (cachedUserStr || refreshToken) {
                 const prof = await fetchMyProfile();
                 if (prof?.success && prof?.data?.person) {
-                  const mapped = mapToAuthPerson(prof.data.person);
+                  const mapped = mapToAuthPerson(
+                    prof.data.person,
+                    userRef.current?.phone ?? null,
+                    prof.data.contacts
+                  );
                   setUser(mapped);
                   await storage.setItem(USER_DATA_KEY, JSON.stringify(mapped));
                 } else if (!prof?.success && refreshToken) {
@@ -238,7 +270,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
                       const updatedProf = await fetchMyProfile();
                       if (updatedProf?.success && updatedProf?.data?.person) {
-                        const mapped = mapToAuthPerson(updatedProf.data.person);
+                        const mapped = mapToAuthPerson(
+                          updatedProf.data.person,
+                          userRef.current?.phone ?? null,
+                          updatedProf.data.contacts
+                        );
                         setUser(mapped);
                         await storage.setItem(USER_DATA_KEY, JSON.stringify(mapped));
                       }
@@ -277,7 +313,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             const prof = await fetchMyProfile();
             if (prof?.success && prof?.data?.person) {
-              const mapped = mapToAuthPerson(prof.data.person);
+              const mapped = mapToAuthPerson(
+                prof.data.person,
+                userRef.current?.phone ?? null,
+                prof.data.contacts
+              );
               setUser(mapped);
               await storage.setItem(USER_DATA_KEY, JSON.stringify(mapped));
             }
@@ -368,8 +408,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (opts?.user) {
-      setUser(opts.user);
-      await storage.setItem(USER_DATA_KEY, JSON.stringify(opts.user));
+      const normalizedUser = mapToAuthPerson(opts.user);
+      setUser(normalizedUser);
+      await storage.setItem(USER_DATA_KEY, JSON.stringify(normalizedUser));
     }
 
     const now = Date.now();
@@ -395,24 +436,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!res.success || !res.data?.person) {
         return false;
       }
-      const p = res.data.person;
-      const nextUser: AuthPerson = {
-        id: p.id,
-        first_name: p.first_name,
-        last_name: p.last_name ?? '',
-        full_name: p.full_name,
-        avatar: p.avatar ?? null,
-        phone: user?.phone ?? null,
-        birth_date: p.birth_date ?? null,
-        gender: (p as any).gender ?? user?.gender ?? null,
-      };
+      const nextUser = mapToAuthPerson(
+        res.data.person,
+        userRef.current?.phone ?? null,
+        res.data.contacts
+      );
       setUser(nextUser);
       await storage.setItem(USER_DATA_KEY, JSON.stringify(nextUser));
       return true;
     } catch {
       return false;
     }
-  }, [user?.phone]);
+  }, []);
 
   return (
     <AuthContext.Provider

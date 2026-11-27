@@ -10,6 +10,8 @@ export interface AuthPerson {
   full_name: string;
   avatar?: string | null;
   phone?: string | null;
+  has_whatsapp?: boolean;
+  whatsapp_number?: string | null;
   birth_date?: string | null;
   gender?: string | null;
 }

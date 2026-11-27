@@ -461,7 +461,7 @@ class MyProfileService
             'phone' => $person->resolveQuizPhone(),
             'location_id' => $person->location_id,
             'privacy_settings' => $person->getResolvedPrivacySettings(),
-        ];
+        ] + $person->whatsAppStatusPayload();
     }
 
     /**
