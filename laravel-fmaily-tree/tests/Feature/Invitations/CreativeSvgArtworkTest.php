@@ -215,6 +215,64 @@ class CreativeSvgArtworkTest extends TestCase
         $this->get('/invitations/send')->assertOk()->assertSee('data-prepared-artwork="false"', false);
     }
 
+    public function test_admin_can_preview_fields_before_uploading_and_approving_an_image(): void
+    {
+        $member = $this->identity();
+        $fields = json_encode([[
+            'id' => 1, 'label' => 'اسم المدعو', 'text' => 'أحمد', 'x' => 51.44, 'y' => 30.32,
+            'width' => 35.21, 'height' => 16.16, 'fontFamily' => 'amiri', 'fontSize' => 4, 'bold' => false,
+            'alignment' => 'center', 'color' => '#123456',
+        ]]);
+        $memberProof = $this->postJson('/invitations/creatives/field-preview', [
+            'image' => $this->png(), 'fields' => $fields,
+        ])->assertOk()->json('proof');
+
+        $this->editor();
+        $this->get('/dashboard/creative-templates')->assertOk()
+            ->assertSee('data-admin-upload', false)
+            ->assertSee('data-preview-url="/dashboard/creative-templates/field-preview"', false)
+            ->assertSee('id="creativeFieldEditor"', false)
+            ->assertSee('فتح محرّر المتغيّرات')
+            ->assertDontSee('data-creative-design-mode', false);
+        $preview = $this->postJson('/dashboard/creative-templates/field-preview', [
+            'image' => $this->png(), 'fields' => $fields,
+        ])->assertOk()->assertJsonMissingPath('image')->json();
+        $this->assertStringStartsWith('data:image/png;base64,', $preview['design']);
+        $this->assertDatabaseCount('creative_templates', 0);
+
+        $payload = ['fields' => $fields, 'invitation_type' => 'greeting', 'name' => 'قالب من الإدارة'];
+        $this->postJson('/dashboard/creative-templates', $payload + ['image' => $this->png(), 'proof' => $memberProof])
+            ->assertUnprocessable()->assertJsonPath('code', 'CREATIVE_ARTWORK_PREVIEW_REQUIRED');
+        $this->postJson('/dashboard/creative-templates', $payload + ['image' => $this->png(0xffffff), 'proof' => $preview['proof']])
+            ->assertUnprocessable()->assertJsonPath('code', 'CREATIVE_ARTWORK_PREVIEW_REQUIRED');
+        $id = $this->postJson('/dashboard/creative-templates', $payload + ['image' => $this->png(), 'proof' => $preview['proof']])
+            ->assertCreated()->assertJsonPath('data.template.editable_text_fields.0.x', 51.44)->json('data.template.id');
+
+        $template = CreativeTemplate::findOrFail($id);
+        $this->assertSame(CreativeTemplate::STATUS_APPROVED, $template->status);
+        $this->assertNull($template->uploaded_by);
+        Storage::disk('public')->assertExists($template->editable_image_path);
+        $this->get('/dashboard/creative-templates?status=approved&source=admin')
+            ->assertOk()->assertSee('data-visual-preview-fields=', false)->assertSee('اسم المدعو');
+        $this->identity($member);
+        $this->getJson('/api/v1/invitations/creatives?editable_only=1&member_fields=1')
+            ->assertOk()->assertJsonPath('data.templates.0.id', $id);
+    }
+
+    public function test_admin_upload_detects_svg_without_choosing_a_mode(): void
+    {
+        $this->editor();
+        $redirect = $this->postJson('/dashboard/creative-templates', [
+            'image' => $this->svg('<text x="100" y="80" font-family="Tajawal" font-size="28">النص</text>'),
+            'invitation_type' => 'greeting',
+        ])->assertCreated()->json('data.redirect_url');
+
+        $template = CreativeTemplate::sole();
+        $this->assertSame(CreativeTemplate::MODE_SVG, $template->designMode());
+        $this->assertSame(CreativeTemplate::STATUS_PENDING, $template->status);
+        $this->assertSame(route('dashboard.creatives.svg.edit', $template, absolute: false), $redirect);
+    }
+
     public function test_mobile_member_fields_are_reviewed_in_dashboard_and_can_be_used_in_the_app(): void
     {
         $member = $this->identity();

@@ -4,6 +4,9 @@
 
 @push('styles')
     @include('dashboard.notifications.partials.styles')
+    @can('notifications.send')
+        <link rel="stylesheet" href="{{ asset('css/invitations/creative-field-editor.css') }}?v={{ filemtime(public_path('css/invitations/creative-field-editor.css')) }}">
+    @endcan
     <style>
         .creative-library { --creative-line: #e2e8f0; --creative-tag-text: #075985; --creative-tag-bg: #e0f2fe; }
         body.dark .creative-library { --creative-line: #334155; --creative-tag-text: #bae6fd; --creative-tag-bg: #0c4a6e; }
@@ -35,6 +38,7 @@
         .creative-category-editor form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; margin-top: 6px; }
         .creative-category-feedback:empty { display: none; }
         .creative-category-feedback { font-size: .75rem; }
+        .creative-upload-details { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); align-items: end; }
     </style>
 @endpush
 
@@ -248,20 +252,7 @@
         />
 
         @can('notifications.send')
-            <x-dashboard.visual.upload-modal
-                title="رفع تصميم"
-                submit-label="رفع التصميم"
-                name-label="اسم التصميم (اختياري)"
-                accept=".svg,image/svg+xml"
-                image-hint="SVG قابل للتحرير أو صورة ثابتة بحسب الخيار، حتى 16 ميغابايت."
-                :invitationTypes="config('invitation_templates.templates', [])"
-                :creativeModes="[
-                    'svg' => 'قالب SVG قابل للتحرير',
-                    'ready' => 'صورة ثابتة',
-                ]"
-                default-creative-mode="svg"
-                :storeUrl="route('dashboard.creatives.store')"
-            />
+            @include('dashboard.creative-templates.upload-modal')
         @endcan
 
         <x-dashboard.visual.toasts />
@@ -270,17 +261,10 @@
 @endsection
 
 @push('scripts')
+    @can('notifications.send')
+        <script src="{{ asset('js/invitations/creative-field-editor.js') }}?v={{ filemtime(public_path('js/invitations/creative-field-editor.js')) }}" defer></script>
+    @endcan
     <script>
-        const uploadMode = document.querySelector('[data-creative-design-mode]');
-        uploadMode?.addEventListener('change', () => {
-            const form = uploadMode.closest('form');
-            const file = form.querySelector('[data-visual-file-input]');
-            file.accept = uploadMode.value === 'svg' ? '.svg,image/svg+xml' : 'image/jpeg,image/png,image/webp,image/gif';
-            file.value = '';
-            const dropzone = file.closest('[data-visual-dropzone]');
-            dropzone.querySelector('[data-visual-file-preview]').classList.add('d-none');
-            dropzone.querySelector('[data-visual-drop-empty]').classList.remove('d-none');
-        });
         const creativeTypeFilter = @json($type);
         document.querySelectorAll('[data-category-form]').forEach(function (form) {
             form.addEventListener('submit', async function (event) {

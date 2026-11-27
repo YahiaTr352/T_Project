@@ -843,6 +843,8 @@ Route::group(['middleware' => ['auth'], 'prefix' => 'dashboard'], function () {
         Route::put('/{template}/text-layout', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'saveLayout'])->name('layout.save')->middleware(['permission:notifications.send']);
         Route::post('/{template}/text-layout/preview', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'previewLayout'])->name('layout.preview')->middleware(['permission:notifications.send', 'throttle:30,1']);
         Route::middleware(['permission:notifications.send'])->group(function () {
+            Route::post('/field-preview', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'previewUploadFields'])
+                ->name('fields.preview')->middleware('throttle:invitation-artwork-preview');
             Route::get('/{template}/svg', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'editSvg'])->name('svg.edit');
             Route::get('/{template}/svg/source', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'svgSource'])->name('svg.source');
             Route::post('/{template}/svg', [\App\Http\Controllers\admin\CreativeTemplateController::class, 'saveSvg'])->name('svg.save')->middleware('throttle:30,1');

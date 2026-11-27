@@ -13,6 +13,7 @@ use App\Services\Invitations\InvitationCardRenderer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -73,14 +74,32 @@ class CreativeTemplateController extends Controller
         return view('dashboard.creative-templates.index', compact('creatives', 'status', 'counts', 'type', 'source', 'mode', 'modes', 'filters', 'invitationTypes', 'previewUrls'));
     }
 
-    public function store(Request $request, CreativeSvgArtwork $svg): JsonResponse
+    public function previewUploadFields(Request $request, CreativeArtworkReview $review): JsonResponse
     {
-        if ($request->input('design_mode') === CreativeTemplate::MODE_SVG) {
+        $validated = $request->validate([
+            'image' => CreativeTemplateService::ARTWORK_RULES,
+            'fields' => 'required|string|json|max:30000',
+        ]);
+
+        try {
+            return response()->json($review->previewUpload($request->user(), $request->file('image'), $validated['fields']));
+        } catch (InvitationException $error) {
+            return response()->json(['message' => $error->getMessage(), 'code' => $error->errorCode], $error->httpStatus);
+        }
+    }
+
+    public function store(Request $request, CreativeSvgArtwork $svg, CreativeArtworkReview $review): JsonResponse
+    {
+        $mode = $request->input('design_mode');
+        $image = $request->file('image');
+        if ($mode === CreativeTemplate::MODE_SVG || ($mode === null && $image instanceof UploadedFile && $image->isValid() && $image->getMimeType() === 'image/svg+xml')) {
             $validated = $request->validate([
                 'image' => CreativeSvgArtwork::UPLOAD_RULES,
                 'name' => 'nullable|string|max:255',
                 'description' => 'nullable|string|max:1000',
                 'invitation_type' => ['required', Rule::in(array_column(config('invitation_templates.templates', []), 'key'))],
+                'fields' => 'prohibited',
+                'proof' => 'prohibited',
             ], ['image.mimes' => 'اختر ملف SVG صادرًا من محرّر التصميم.']);
             try {
                 $template = $svg->upload(null, $request->file('image'), $validated['invitation_type'], $validated['name'] ?? null, $validated['description'] ?? null);
@@ -100,9 +119,24 @@ class CreativeTemplateController extends Controller
             'name' => 'nullable|string|max:255',
             'description' => 'nullable|string|max:1000',
             'invitation_type' => ['required', Rule::in(array_column(config('invitation_templates.templates', []), 'key'))],
+            'fields' => 'required_with:proof|prohibits:text_layout,design_mode|nullable|string|json|max:30000',
+            'proof' => 'nullable|string|regex:/^[a-f0-9]{64}$/',
         ] + CreativeTemplateService::designRules(), [
             'text_layout.required_if' => 'احفظ توزيع النص في المحرر.',
         ]);
+
+        if (isset($validated['fields'])) {
+            try {
+                $template = $review->submitUpload(
+                    $request->user(), $request->file('image'), $validated['invitation_type'],
+                    $validated['name'] ?? null, $validated['fields'], $validated['proof'] ?? null, $validated['description'] ?? null,
+                );
+            } catch (InvitationException $error) {
+                return response()->json(['message' => $error->getMessage(), 'code' => $error->errorCode], $error->httpStatus);
+            }
+
+            return $this->approvedUploadResponse($template);
+        }
 
         $template = $this->creatives->upload(
             null,
@@ -121,8 +155,11 @@ class CreativeTemplateController extends Controller
             ], 201);
         }
 
-        $template = $this->creatives->approve($template, $request->user());
+        return $this->approvedUploadResponse($this->creatives->approve($template, $request->user()));
+    }
 
+    private function approvedUploadResponse(CreativeTemplate $template): JsonResponse
+    {
         return response()->json([
             'success' => true,
             'message' => 'تم رفع التصميم واعتماده كقالب.',

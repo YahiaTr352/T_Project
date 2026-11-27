@@ -53,14 +53,7 @@
                 <p id="submissionStatus" class="creative-editor-status" role="status"></p>
                 <button type="submit" id="submissionSend" class="creative-editor-button creative-editor-primary">إرسال للمراجعة</button>
             </div>
-            <dialog id="creativeSubmissionReview" class="creative-editor-review" aria-labelledby="creativeSubmissionReviewTitle">
-                <h3 id="creativeSubmissionReviewTitle">راجع التصميم قبل الإرسال</h3>
-                <img id="creativeSubmissionPreview" alt="معاينة التصميم مع المتغيّرات">
-                <div class="creative-editor-review-actions">
-                    <button id="creativeSubmissionReturn" type="button" class="creative-editor-button">رجوع للتعديل</button>
-                    <button id="creativeSubmissionConfirm" type="button" class="creative-editor-button creative-editor-primary">تأكيد الإرسال للمراجعة</button>
-                </div>
-            </dialog>
+            @include('web-site.invitations.partials.creative-submission-review')
         </form>
 
         <section aria-labelledby="my-designs">

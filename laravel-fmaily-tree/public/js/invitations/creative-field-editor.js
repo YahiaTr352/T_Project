@@ -1,6 +1,8 @@
 (() => {
     const byId = (id) => document.getElementById(id);
     const form = byId('creativeSubmission');
+    if (!form) return;
+    const adminUpload = form.hasAttribute('data-admin-upload');
     const upload = byId('submissionImage');
     const editor = byId('creativeFieldEditor');
     const stage = byId('creativeCanvasStage');
@@ -46,6 +48,7 @@
     }
 
     function buttons() {
+        upload.disabled = submitting;
         editorToggle.disabled = !editorReady || submitting;
         add.disabled = !fileReady || fields.length >= 12 || submitting;
         preview.disabled = !fileReady || !fields.length || Boolean(request) || submitting;
@@ -232,7 +235,7 @@
         renderFields();
         byId('creativeCanvasHint').textContent = 'اختر «إضافة حقل» ثم انقر أو اسحب على الصورة.';
         const file = upload.files[0];
-        byId('submissionFileName').textContent = file?.name || 'اختر صورة تصميمك';
+        byId('submissionFileName').textContent = file?.name || (adminUpload ? 'اختر صورة التصميم' : 'اختر صورة تصميمك');
         if (!file) return;
         if (file.size > 16 * 1024 * 1024) {
             status('submissionStatus', 'اختر صورة حجمها ١٦ ميغابايت أو أقل.', true);
@@ -284,7 +287,7 @@
 
     async function responseData(response, fallback) {
         if (response.redirected || [401, 419].includes(response.status)) {
-            throw new Error('انتهت جلسة الموقع. سجّل الدخول مجددًا ثم حاول الإرسال.');
+            throw new Error('انتهت جلسة الموقع. سجّل الدخول مجددًا ثم حاول مرة أخرى.');
         }
         const result = await response.json().catch(() => null);
         if (!response.ok || !result) {
@@ -323,7 +326,7 @@
             if (controller.signal.aborted) return;
             rendered = { design: result.design, proof: result.proof };
             show('design');
-            status('creativePreviewStatus', 'المعاينة جاهزة. راجع النص وتنسيقه قبل الإرسال.');
+            status('creativePreviewStatus', 'المعاينة جاهزة. راجع النص وتنسيقه قبل المتابعة.');
             status('submissionStatus', '');
             return true;
         } catch (error) {
@@ -338,6 +341,25 @@
     }
 
     upload.addEventListener('change', () => void openFile());
+    const dropzone = form.querySelector('[data-creative-dropzone]');
+    if (dropzone) {
+        dropzone.addEventListener('dragover', (event) => {
+            event.preventDefault();
+            dropzone.toggleAttribute('data-dragging', !submitting);
+        });
+        dropzone.addEventListener('dragleave', () => dropzone.removeAttribute('data-dragging'));
+        dropzone.addEventListener('drop', (event) => {
+            event.preventDefault();
+            dropzone.removeAttribute('data-dragging');
+            if (submitting) return;
+            if (event.dataTransfer.files.length !== 1) {
+                status('submissionStatus', 'اختر ملف صورة واحدًا في كل مرة.', true);
+                return;
+            }
+            upload.files = event.dataTransfer.files;
+            void openFile();
+        });
+    }
     editorToggle.addEventListener('click', () => {
         if (!editorReady) return;
         setEditorOpen(editor.hidden);
@@ -455,14 +477,19 @@
         }
         submitting = true;
         buttons();
-        status('submissionStatus', 'جارٍ إرسال التصميم للمراجعة…');
+        const fallback = adminUpload ? 'تعذّر حفظ القالب. حاول مرة أخرى.' : 'تعذّر إرسال التصميم. حاول مرة أخرى.';
+        status('submissionStatus', adminUpload ? 'جارٍ حفظ القالب…' : 'جارٍ إرسال التصميم للمراجعة…');
         try {
             const response = await fetch(form.action, { method: 'POST', headers: { Accept: 'application/json' }, body: data });
-            const result = await responseData(response, 'تعذّر إرسال التصميم. حاول مرة أخرى.');
-            if (!result.redirect_url) throw new Error('تعذّر تأكيد إرسال التصميم. راجع «تصاميمي» قبل المحاولة مجددًا.');
-            window.location.assign(result.redirect_url);
+            const result = await responseData(response, fallback);
+            const redirect = result.redirect_url || result.data?.redirect_url;
+            if (!redirect) {
+                throw new Error(adminUpload ? 'تعذّر تأكيد الحفظ. راجع قائمة القوالب قبل المحاولة مجددًا.'
+                    : 'تعذّر تأكيد إرسال التصميم. راجع «تصاميمي» قبل المحاولة مجددًا.');
+            }
+            window.location.assign(redirect);
         } catch (error) {
-            status('submissionStatus', error.message || 'تعذّر إرسال التصميم. حاول مرة أخرى.', true);
+            status('submissionStatus', error.message || fallback, true);
             submitting = false;
             buttons();
         }
@@ -471,8 +498,8 @@
     form.addEventListener('invalid', (event) => {
         if (event.target !== form.querySelector('input:invalid, select:invalid, textarea:invalid')) return;
         const messages = {
-            image: 'اختر صورة تصميمك قبل الإرسال.',
-            invitation_type: 'اختر نوع الدعوة قبل الإرسال.',
+            image: 'اختر صورة التصميم أولًا.',
+            invitation_type: 'اختر نوع الدعوة أولًا.',
             publication_consent: 'وافق على عرض التصميم بعد اعتماده حتى تقدر ترسله.',
         };
         status('submissionStatus', messages[event.target.name] || event.target.validationMessage, true);
@@ -482,7 +509,7 @@
         if (submitting || request) return;
         if (!fileReady) {
             if (!byId('submissionStatus').hasAttribute('data-error')) {
-                status('submissionStatus', 'انتظر حتى يظهر التصميم، ثم حاول الإرسال.');
+                status('submissionStatus', 'انتظر حتى تظهر الصورة، ثم حاول مرة أخرى.');
             }
             return;
         }
@@ -491,7 +518,7 @@
             return;
         }
 
-        status('submissionStatus', 'جارٍ تجهيز المعاينة قبل الإرسال…');
+        status('submissionStatus', adminUpload ? 'جارٍ تجهيز المعاينة قبل الحفظ…' : 'جارٍ تجهيز المعاينة قبل الإرسال…');
         if (await previewFields()) {
             byId('creativeSubmissionPreview').src = rendered.design;
             review.showModal();

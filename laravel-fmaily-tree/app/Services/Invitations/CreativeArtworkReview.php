@@ -22,7 +22,7 @@ class CreativeArtworkReview
         private CreativeTemplateService $creatives,
     ) {}
 
-    public function previewUpload(Person $member, UploadedFile $file, string $input): array
+    public function previewUpload(Person|User $actor, UploadedFile $file, string $input): array
     {
         [$fields, $samples] = $this->fields($input, memberUpload: true);
         $bytes = $file->get();
@@ -38,7 +38,7 @@ class CreativeArtworkReview
             throw new InvitationException('تعذّر إنشاء معاينة التصميم.', 'CREATIVE_RENDER_FAILED');
         }
 
-        $result = ['design' => $design, 'proof' => $this->uploadProof($member, $bytes, $fields, $samples)];
+        $result = ['design' => $design, 'proof' => $this->uploadProof($actor, $bytes, $fields, $samples)];
         if ($samples) {
             $preview = $this->renderer->renderEditableArtwork($draft, $samples, inlinePreview: true, cleaned: $cleaned);
             if (! $preview) {
@@ -50,15 +50,15 @@ class CreativeArtworkReview
         return $result;
     }
 
-    public function submitUpload(Person $member, UploadedFile $file, string $type, ?string $name, ?string $input, ?string $proof, ?string $description = null): CreativeTemplate
+    public function submitUpload(Person|User $actor, UploadedFile $file, string $type, ?string $name, ?string $input, ?string $proof, ?string $description = null): CreativeTemplate
     {
         $fields = $path = null;
         $disk = Storage::disk('public');
         if ($input !== null) {
             [$fields, $samples] = $this->fields($input, memberUpload: true);
             $bytes = $file->get();
-            if (! $proof || ! hash_equals($this->uploadProof($member, $bytes, $fields, $samples), $proof)) {
-                throw new InvitationException('اعرض المعاينة بعد آخر تعديل على الحقول قبل إرسال التصميم.', 'CREATIVE_ARTWORK_PREVIEW_REQUIRED');
+            if (! $proof || ! hash_equals($this->uploadProof($actor, $bytes, $fields, $samples), $proof)) {
+                throw new InvitationException('اعرض المعاينة بعد آخر تعديل على الحقول قبل المتابعة.', 'CREATIVE_ARTWORK_PREVIEW_REQUIRED');
             }
             $background = $this->artwork->prepareUpload($bytes, $fields);
             $path = 'creative-templates/prepared/'.Str::uuid().'.png';
@@ -67,15 +67,36 @@ class CreativeArtworkReview
             }
         }
 
-        return $this->creatives->upload(
+        $upload = fn (?Person $member) => $this->creatives->upload(
             $member, $file, $name, $description, invitationType: $type, publicationConsent: true,
-            designMode: CreativeTemplate::MODE_WEB_ARTWORK, editableImage: $path, editableText: $fields,
+            designMode: $member || $fields ? CreativeTemplate::MODE_WEB_ARTWORK : CreativeTemplate::MODE_READY,
+            editableImage: $path, editableText: $fields,
         );
+
+        if ($actor instanceof Person) {
+            return $upload($actor);
+        }
+
+        $template = null;
+        try {
+            return DB::transaction(function () use ($actor, $upload, &$template) {
+                $template = $upload(null);
+
+                return $this->creatives->approve($template, $actor);
+            });
+        } catch (\Throwable $error) {
+            if ($template) {
+                $disk->delete(array_filter([$template->image_path, $path]));
+            }
+            throw $error;
+        }
     }
 
-    private function uploadProof(Person $member, string $bytes, array $fields, array $samples): string
+    private function uploadProof(Person|User $actor, string $bytes, array $fields, array $samples): string
     {
-        return hash_hmac('sha256', serialize([$member->id, hash('sha256', $bytes), $fields, $samples]), (string) config('app.key'));
+        $owner = $actor instanceof User ? ['dashboard', $actor->id] : $actor->id;
+
+        return hash_hmac('sha256', serialize([$owner, hash('sha256', $bytes), $fields, $samples]), (string) config('app.key'));
     }
 
     public function preview(CreativeTemplate $template, string $input, ?string $background, bool $reuseBackground): array
