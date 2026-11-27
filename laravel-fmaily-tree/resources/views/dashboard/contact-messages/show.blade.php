@@ -169,7 +169,7 @@
                         </li>
                         <li class="list-group-item d-flex justify-content-between align-items-center px-0" style="background: transparent; border-color: var(--dash-card-border);">
                             <span class="text-muted">رقم الجوال:</span>
-                            <span class="font-weight-bold" dir="ltr">{{ $contactMessage->sender_display_phone ?: '—' }}</span>
+                            <span class="font-weight-bold" dir="auto">{{ $contactMessage->sender_display_phone ?: 'لا يوجد رقم مسجّل' }}</span>
                         </li>
                         <li class="list-group-item d-flex justify-content-between align-items-center px-0" style="background: transparent; border-color: var(--dash-card-border);">
                             <span class="text-muted">نوع الحساب:</span>

@@ -14,7 +14,7 @@ class ContactMessageAdminController extends Controller
 {
     public function index(Request $request, ContactMessageService $contactService): View
     {
-        $query = ContactMessage::with(['person.contactAccounts' => fn ($accounts) => $accounts->where('type', 'whatsapp'), 'user'])
+        $query = ContactMessage::with(['person.contactAccounts' => fn ($accounts) => $accounts->whereIn('type', ['whatsapp', 'phone']), 'user'])
             ->latest('id');
 
         if ($request->filled('status')) {
@@ -33,12 +33,13 @@ class ContactMessageAdminController extends Controller
             $term = trim((string) $request->query('search'));
             $query->where(function ($q) use ($term) {
                 $q->where('name', 'like', "%{$term}%")
-                  ->orWhere('phone', 'like', "%{$term}%")
+                  ->orWhere(fn ($guests) => $guests->whereNull('person_id')->where('phone', 'like', "%{$term}%"))
                   ->orWhere('message', 'like', "%{$term}%")
                   ->orWhereHas('person', function ($pq) use ($term) {
                       $pq->where('first_name', 'like', "%{$term}%")
                          ->orWhere('last_name', 'like', "%{$term}%")
-                         ->orWhere('phone', 'like', "%{$term}%");
+                         ->orWhereHas('contactAccounts', fn ($accounts) => $accounts
+                             ->whereIn('type', ['whatsapp', 'phone'])->where('value', 'like', "%{$term}%"));
                   });
             });
         }
@@ -60,7 +61,7 @@ class ContactMessageAdminController extends Controller
 
     public function show(ContactMessage $contactMessage, ContactMessageService $contactService): View
     {
-        $contactMessage->load(['person', 'user', 'resolver']);
+        $contactMessage->load(['person.contactAccounts', 'user', 'resolver']);
 
         if ($contactMessage->status === 'pending') {
             $contactMessage->update(['status' => 'in_progress']);

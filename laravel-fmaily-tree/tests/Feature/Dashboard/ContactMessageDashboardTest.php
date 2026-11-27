@@ -323,4 +323,73 @@ class ContactMessageDashboardTest extends TestCase
         $this->getJson('/api/notifications', ['Authorization' => 'Bearer '.$token])->assertOk()
             ->assertJsonPath('data.data.0.body', 'وصلنا مقترحك');
     }
+
+    public function test_member_without_registered_phone_never_displays_or_stores_submitted_placeholder_phone(): void
+    {
+        $this->mock(AdminAlertDispatcherService::class)->shouldReceive('sendWhatsAppToAdmins')->once();
+        $member = Person::create(['first_name' => 'صالح', 'gender' => 'male']);
+        $placeholderPhone = $member->resolveQuizPhone();
+        $oldSuggestion = ContactMessage::create([
+            'person_id' => $member->id,
+            'phone' => $placeholderPhone,
+            'type' => 'suggestion',
+            'message' => 'اقتراح سابق',
+        ]);
+        $this->assertNull($oldSuggestion->sender_display_phone);
+
+        $token = SiteMobileAccessToken::issueIdentityToken($member->id, 'face')['token'];
+        $submitted = $this->postJson(route('api.v1.contact-messages.store'), [
+            'phone' => $placeholderPhone,
+            'type' => 'suggestion',
+            'message' => 'اقتراح جديد',
+        ], ['Authorization' => 'Bearer '.$token])->assertCreated();
+        $this->assertNull(ContactMessage::findOrFail($submitted->json('data.id'))->phone);
+        $this->flushSession();
+
+        $admin = User::factory()->create();
+        $admin->givePermissionTo(Permission::firstOrCreate(['name' => 'dashboard.view', 'guard_name' => 'web']));
+        $this->actingAs($admin)->get(route('dashboard.contact-messages.index'))->assertOk()
+            ->assertSee('لا يوجد رقم مسجّل')->assertDontSee($placeholderPhone);
+        $this->get(route('dashboard.contact-messages.show', $oldSuggestion))->assertOk()
+            ->assertSee('لا يوجد رقم مسجّل')->assertSee('إرسال الرد')->assertDontSee($placeholderPhone);
+        $this->get(route('dashboard.contact-messages.index', ['search' => $placeholderPhone]))->assertOk()
+            ->assertViewHas('messages', fn ($messages) => $messages->isEmpty());
+    }
+
+    public function test_member_contact_phone_is_used_for_storage_display_and_dashboard_search(): void
+    {
+        $this->mock(AdminAlertDispatcherService::class)->shouldReceive('sendWhatsAppToAdmins')->once();
+        $member = Person::create(['first_name' => 'محمد', 'gender' => 'male']);
+        $phone = '0553216789';
+        $contact = $member->contactAccounts()->create(['type' => 'phone', 'value' => $phone]);
+        $member->contactAccounts()->create(['type' => 'whatsapp', 'value' => '   ']);
+        $oldSuggestion = ContactMessage::create([
+            'person_id' => $member->id, 'phone' => '0500000001', 'type' => 'suggestion',
+        ]);
+        $this->assertSame($phone, $oldSuggestion->sender_display_phone);
+        $token = SiteMobileAccessToken::issueIdentityToken($member->id, 'face')['token'];
+        $submitted = $this->postJson(route('api.v1.contact-messages.store'), [
+            'phone' => '0500000001', 'type' => 'suggestion', 'message' => 'اقتراح جديد',
+        ], ['Authorization' => 'Bearer '.$token])->assertCreated();
+        $this->assertSame($phone, ContactMessage::findOrFail($submitted->json('data.id'))->phone);
+        $this->flushSession();
+
+        $admin = User::factory()->create();
+        $admin->givePermissionTo(Permission::firstOrCreate(['name' => 'dashboard.view', 'guard_name' => 'web']));
+        $this->actingAs($admin)->get(route('dashboard.contact-messages.index', ['search' => $phone]))
+            ->assertOk()->assertSee($phone)->assertDontSee('0500000001')
+            ->assertViewHas('messages', fn ($messages) => $messages->total() === 2);
+        $this->get(route('dashboard.contact-messages.show', $oldSuggestion))->assertOk()->assertSee($phone);
+
+        $contact->update(['type' => 'whatsapp']);
+        $this->get(route('dashboard.contact-messages.show', $oldSuggestion))->assertOk()
+            ->assertSee('https://wa.me/966553216789')->assertDontSee('إرسال الرد');
+        $contact->delete();
+        $this->assertNull($oldSuggestion->fresh()->sender_display_phone);
+
+        $guest = ContactMessage::create(['phone' => $phone, 'type' => 'suggestion']);
+        $this->assertSame($phone, $guest->sender_display_phone);
+        $this->get(route('dashboard.contact-messages.index', ['search' => $phone]))->assertOk()
+            ->assertViewHas('messages', fn ($messages) => $messages->total() === 1 && $messages->first()->is($guest));
+    }
 }

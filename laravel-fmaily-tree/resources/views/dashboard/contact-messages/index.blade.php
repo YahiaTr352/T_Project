@@ -295,7 +295,7 @@
                                 @elseif($phone = $msg->sender_display_phone)
                                     <span dir="ltr">{{ $phone }}</span>
                                 @else
-                                    <span class="text-muted small">—</span>
+                                    <span class="text-muted small">لا يوجد رقم مسجّل</span>
                                 @endif
                             </td>
 

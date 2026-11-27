@@ -48,9 +48,7 @@ class ContactMessageService
             if (empty($senderName)) {
                 $senderName = $person->full_name ?: trim(($person->first_name ?? '') . ' ' . ($person->last_name ?? ''));
             }
-            if (empty($senderPhone)) {
-                $senderPhone = $person->phone;
-            }
+            $senderPhone = $person->registeredContactPhone();
         }
 
         // 2. Handle Media File Upload

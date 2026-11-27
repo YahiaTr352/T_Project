@@ -645,6 +645,15 @@ class Person extends BaseModel
         return $this->hasMany(PersonContactAccount::class)->orderBy('sort_order');
     }
 
+    public function registeredContactPhone(): ?string
+    {
+        return $this->contactAccounts
+            ->whereIn('type', ['whatsapp', 'phone'])
+            ->sortBy(fn (PersonContactAccount $account) => $account->type === 'whatsapp' ? 0 : 1)
+            ->map(fn (PersonContactAccount $account) => trim((string) $account->value))
+            ->first(fn (string $value) => $value !== '');
+    }
+
     /**
      * لوكيشنات متعددة للشخص
      */

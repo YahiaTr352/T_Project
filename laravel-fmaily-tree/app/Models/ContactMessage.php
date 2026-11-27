@@ -119,7 +119,11 @@ class ContactMessage extends Model
 
     public function getSenderDisplayPhoneAttribute(): ?string
     {
-        return $this->phone ?: ($this->person?->phone ?? null);
+        if ($this->person_id !== null) {
+            return $this->person?->registeredContactPhone();
+        }
+
+        return $this->phone;
     }
 
     public function isMemberSuggestion(): bool
