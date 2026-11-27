@@ -109,15 +109,16 @@ class MobileNotificationApiController extends Controller
      */
     public function index(Request $request, InvitationEligibilityService $invitationEligibility): JsonResponse
     {
-        $identity = $this->identityResolver->resolve($request);
-        $verifiedPersonId = $identity ? (int) $identity['person_id'] : null;
-        $personId = $verifiedPersonId ?? $this->resolvePhoneViewerId($request);
+        [$personId, $verifiedViewer] = $this->resolveViewer($request);
         $viewerPerson = $personId ? Person::find($personId) : null;
         $request->attributes->set('viewer_person', $viewerPerson);
-        $canRespondToInvitations = $invitationEligibility->check($viewerPerson, $verifiedPersonId !== null)['eligible'];
-        $request->attributes->set('invitation_response_person_id', $canRespondToInvitations ? $verifiedPersonId : null);
+        $canRespondToInvitations = $invitationEligibility->check($viewerPerson, $verifiedViewer)['eligible'];
+        $request->attributes->set('invitation_response_person_id', $canRespondToInvitations ? $personId : null);
 
-        $query = $this->notificationService->getInboxQueryForPerson($personId);
+        $query = $this->notificationService->getInboxQueryForPerson($personId, $verifiedViewer);
+        if ($request->filled('notification_id')) {
+            $query->whereKey($request->integer('notification_id'));
+        }
 
         $notifications = $query->with(['person', 'recipients' => function ($q) use ($personId) {
             if ($personId) {
@@ -140,7 +141,7 @@ class MobileNotificationApiController extends Controller
      */
     public function unreadCount(Request $request): JsonResponse
     {
-        $personId = $this->resolveViewerPersonId($request);
+        [$personId, $verifiedViewer] = $this->resolveViewer($request);
 
         if (! $personId) {
             return response()->json([
@@ -151,7 +152,7 @@ class MobileNotificationApiController extends Controller
             ]);
         }
 
-        $unreadCount = $this->notificationService->getUnreadCountForPerson($personId);
+        $unreadCount = $this->notificationService->getUnreadCountForPerson($personId, $verifiedViewer);
 
         return response()->json([
             'success' => true,
@@ -166,7 +167,7 @@ class MobileNotificationApiController extends Controller
      */
     public function markAsRead(Request $request, $id): JsonResponse
     {
-        $personId = $this->resolveViewerPersonId($request);
+        [$personId, $verifiedViewer] = $this->resolveViewer($request);
 
         if (! $personId) {
             return response()->json([
@@ -180,6 +181,7 @@ class MobileNotificationApiController extends Controller
         $updated = DB::table('notification_recipients')
             ->where('notification_id', $id)
             ->where('person_id', $personId)
+            ->when(! $verifiedViewer, fn ($query) => $query->whereIn('notification_id', Notification::withoutContactMessageReplies()->select('id')))
             ->update(['read_at' => now()]);
 
         return response()->json([
@@ -195,7 +197,7 @@ class MobileNotificationApiController extends Controller
      */
     public function markAllAsRead(Request $request): JsonResponse
     {
-        $personId = $this->resolveViewerPersonId($request);
+        [$personId, $verifiedViewer] = $this->resolveViewer($request);
 
         if (! $personId) {
             return response()->json([
@@ -209,6 +211,7 @@ class MobileNotificationApiController extends Controller
         $updated = DB::table('notification_recipients')
             ->where('person_id', $personId)
             ->whereNull('read_at')
+            ->when(! $verifiedViewer, fn ($query) => $query->whereIn('notification_id', Notification::withoutContactMessageReplies()->select('id')))
             ->update(['read_at' => now()]);
 
         return response()->json([
@@ -225,7 +228,7 @@ class MobileNotificationApiController extends Controller
      */
     public function destroy(Request $request, $id): JsonResponse
     {
-        $personId = $this->resolveViewerPersonId($request);
+        [$personId, $verifiedViewer] = $this->resolveViewer($request);
 
         if (! $personId) {
             return response()->json([
@@ -236,7 +239,9 @@ class MobileNotificationApiController extends Controller
             ]);
         }
 
-        $this->notificationService->dismiss($id, $personId);
+        if ($verifiedViewer || Notification::withoutContactMessageReplies()->whereKey($id)->exists()) {
+            $this->notificationService->dismiss($id, $personId);
+        }
 
         return response()->json([
             'success' => true,
@@ -266,7 +271,7 @@ class MobileNotificationApiController extends Controller
             ], 422);
         }
 
-        $personId = $this->resolveViewerPersonId($request);
+        [$personId, $verifiedViewer] = $this->resolveViewer($request);
         $ids = $request->input('ids', []);
 
         if (! $personId) {
@@ -276,6 +281,10 @@ class MobileNotificationApiController extends Controller
                 'message' => 'تم استبعاد الإشعارات محلياً (زائر).',
                 'errors' => null,
             ]);
+        }
+
+        if (! $verifiedViewer) {
+            $ids = Notification::withoutContactMessageReplies()->whereIn('id', $ids)->pluck('id')->all();
         }
 
         $deletedCount = $this->notificationService->dismissMultiple($ids, $personId);
@@ -294,7 +303,7 @@ class MobileNotificationApiController extends Controller
      */
     public function clearAll(Request $request): JsonResponse
     {
-        $personId = $this->resolveViewerPersonId($request);
+        [$personId, $verifiedViewer] = $this->resolveViewer($request);
 
         if (! $personId) {
             return response()->json([
@@ -305,7 +314,7 @@ class MobileNotificationApiController extends Controller
             ]);
         }
 
-        $deletedCount = $this->notificationService->clearAll($personId);
+        $deletedCount = $this->notificationService->clearAll($personId, $verifiedViewer);
 
         return response()->json([
             'success' => true,
@@ -333,14 +342,15 @@ class MobileNotificationApiController extends Controller
         return [null, 'none'];
     }
 
-    private function resolveViewerPersonId(Request $request): ?int
+    /** @return array{0: int|null, 1: bool} */
+    private function resolveViewer(Request $request): array
     {
         $identity = $this->identityResolver->resolve($request);
         if ($identity) {
-            return (int) $identity['person_id'];
+            return [(int) $identity['person_id'], true];
         }
 
-        return $this->resolvePhoneViewerId($request);
+        return [$this->resolvePhoneViewerId($request), false];
     }
 
     private function resolvePhoneViewerId(Request $request): ?int

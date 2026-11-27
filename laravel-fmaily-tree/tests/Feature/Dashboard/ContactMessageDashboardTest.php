@@ -2,12 +2,21 @@
 
 namespace Tests\Feature\Dashboard;
 
+use App\Jobs\SendExpoPushNotificationJob;
 use App\Models\ContactMessage;
+use App\Models\Notification;
 use App\Models\Person;
 use App\Models\User;
+use App\Models\UserDevice;
+use App\Services\AdminAlertDispatcherService;
+use App\Services\Auth\WhatsappPersonLookup;
 use App\Services\ContactMessageService;
+use App\Services\ExpoNotificationService;
+use App\Services\SiteMobileAccessToken;
+use App\Support\NotificationSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Queue;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
@@ -18,7 +27,8 @@ class ContactMessageDashboardTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        \Illuminate\Support\Facades\Queue::fake();
+        Queue::fake();
+        NotificationSettings::forgetCache();
         config(['site.password_protection_enabled' => false]);
     }
 
@@ -175,7 +185,8 @@ class ContactMessageDashboardTest extends TestCase
 
         $serviceWithMock = new ContactMessageService(
             $identityResolver,
-            app(\App\Services\AdminAlertDispatcherService::class)
+            app(AdminAlertDispatcherService::class),
+            app(WhatsappPersonLookup::class),
         );
 
         $stored = $serviceWithMock->storeMessage($request, [
@@ -186,5 +197,130 @@ class ContactMessageDashboardTest extends TestCase
 
         $this->assertEquals('فيصل الناصر', $stored->name);
         $this->assertEquals('فيصل الناصر', $stored->full_name);
+    }
+
+    public function test_dashboard_sends_private_suggestion_reply_to_verified_member_without_whatsapp(): void
+    {
+        config(['invitations.delivery_enabled' => false]);
+        $this->mock(AdminAlertDispatcherService::class)->shouldReceive('sendWhatsAppToAdmins')->once();
+        $member = Person::create(['first_name' => 'محمد', 'gender' => 'male']);
+        $phone = '0501234567';
+        $member->contactAccounts()->create(['type' => 'phone', 'value' => $phone]);
+        $other = Person::create(['first_name' => 'أحمد', 'gender' => 'male']);
+        $device = UserDevice::create(['person_id' => $member->id, 'expo_push_token' => 'ExpoPushToken[member]']);
+        UserDevice::create(['person_id' => $other->id, 'expo_push_token' => 'ExpoPushToken[other]']);
+
+        $token = SiteMobileAccessToken::issueIdentityToken($member->id, 'face')['token'];
+        $memberHeaders = ['Authorization' => 'Bearer '.$token];
+        $submitted = $this->postJson(route('api.v1.contact-messages.store'), [
+            'type' => 'suggestion',
+            'message' => 'مقترح لتحدي المشي',
+            'phone' => $phone,
+        ], $memberHeaders)->assertCreated();
+        $suggestion = ContactMessage::findOrFail($submitted->json('data.id'));
+        $this->assertEquals($member->id, $suggestion->person_id);
+        $this->assertSame($phone, $suggestion->phone);
+
+        $admin = User::factory()->create();
+        foreach (['site-content.view', 'site-content.update', 'notifications.view'] as $permission) {
+            $admin->givePermissionTo(Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'web']));
+        }
+
+        $showUrl = route('dashboard.contact-messages.show', $suggestion);
+        $replyUrl = route('dashboard.contact-messages.reply', $suggestion);
+        $this->actingAs($admin)->get($showUrl)->assertOk()
+            ->assertSee('إرسال الرد')->assertDontSee('https://wa.me/0501234567');
+        $this->get(route('dashboard.contact-messages.index'))->assertOk()->assertDontSee('https://wa.me/0501234567');
+        $this->patch(route('dashboard.contact-messages.status', $suggestion), [
+            'status' => 'in_progress',
+            'admin_notes' => 'للمتابعة داخلياً',
+        ])->assertRedirect($showUrl);
+        $this->assertDatabaseCount('notifications', 0);
+        $this->post($replyUrl, ['reply' => '  '])->assertSessionHasErrors('reply');
+
+        $reply = 'شكراً، سنراجع اقتراحك حول تحدي المشي. {name}';
+        $this->post($replyUrl, ['reply' => $reply])->assertRedirect($showUrl);
+        $this->post($replyUrl, ['reply' => $reply])->assertRedirect($showUrl);
+        $notice = Notification::sole();
+        $recipient = $notice->recipients()->sole();
+        $this->assertEquals($member->id, $recipient->person_id);
+        $this->assertSame($reply, $notice->body);
+        $this->assertSame('للمتابعة داخلياً', $suggestion->fresh()->admin_notes);
+        $this->get($showUrl)->assertOk()->assertSee($reply);
+        $this->get(route('dashboard.notifications.logs.show', $notice))->assertNotFound();
+
+        Queue::assertPushed(SendExpoPushNotificationJob::class, 1);
+        $job = Queue::pushed(SendExpoPushNotificationJob::class)->sole();
+        $this->assertSame($device->expo_push_token, $job->expoPushToken);
+        $this->assertSame($notice->id, $job->data['notification_id']);
+        $this->assertSame('افتح التطبيق لقراءة رد الإدارة.', $job->body);
+
+        $targetUrl = '/api/notifications?notification_id='.$notice->id;
+        $this->getJson($targetUrl, $memberHeaders)->assertOk()->assertJsonPath('data.data.0.body', $reply);
+        $this->getJson('/api/notifications/unread-count', $memberHeaders)->assertJsonPath('data.unread_count', 1);
+        $otherToken = SiteMobileAccessToken::issueIdentityToken($other->id, 'face')['token'];
+        $this->flushSession();
+        $this->getJson($targetUrl, ['Authorization' => 'Bearer '.$otherToken])->assertOk()->assertJsonCount(0, 'data.data');
+        $this->flushSession();
+        $this->getJson($targetUrl.'&phone='.$phone)->assertOk()->assertJsonCount(0, 'data.data');
+        $this->getJson('/api/notifications/unread-count?phone='.$phone)->assertJsonPath('data.unread_count', 0);
+        $this->postJson('/api/notifications/read-all', ['phone' => $phone])->assertJsonPath('data.updated_rows', 0);
+        $this->postJson('/api/notifications/delete-multiple', ['ids' => [$notice->id], 'phone' => $phone])
+            ->assertJsonPath('data.deleted_count', 0);
+        $this->getJson($targetUrl, $memberHeaders)->assertJsonPath('data.data.0.read', false);
+
+        $expo = $this->mock(ExpoNotificationService::class);
+        $expo->shouldReceive('send')->once()->with($job->expoPushToken, $job->title, $job->body, $job->data)
+            ->andReturn(['success' => true, 'sent_count' => 1]);
+        $job->handle($expo);
+        $device->update(['person_id' => $other->id]);
+        $job->handle($expo);
+
+        $recipient->delete();
+        $this->flushSession();
+        $this->getJson($targetUrl)->assertOk()->assertJsonCount(0, 'data.data');
+        $this->getJson($targetUrl, $memberHeaders)->assertOk()->assertJsonCount(0, 'data.data');
+    }
+
+    public function test_dashboard_reply_requires_permission_and_suggestion_without_registered_whatsapp(): void
+    {
+        $member = Person::create(['first_name' => 'عبدالله', 'gender' => 'male']);
+        $member->contactAccounts()->create(['type' => 'whatsapp', 'value' => '0505555555']);
+        $registered = ContactMessage::create(['person_id' => $member->id, 'type' => 'suggestion']);
+        $guest = ContactMessage::create(['type' => 'suggestion', 'phone' => '0501112233']);
+        $otherType = ContactMessage::create(['person_id' => $member->id, 'type' => 'problem']);
+        $admin = User::factory()->create();
+        $admin->givePermissionTo(Permission::firstOrCreate(['name' => 'site-content.view', 'guard_name' => 'web']));
+
+        $this->actingAs($admin)->post(route('dashboard.contact-messages.reply', $registered), ['reply' => 'رد'])
+            ->assertForbidden();
+        $admin->givePermissionTo(Permission::firstOrCreate(['name' => 'site-content.update', 'guard_name' => 'web']));
+        $this->get(route('dashboard.contact-messages.show', $registered))->assertOk()
+            ->assertSee('https://wa.me/966505555555')->assertDontSee('إرسال الرد');
+        $this->get(route('dashboard.contact-messages.show', $guest))->assertOk()
+            ->assertSee('https://wa.me/0501112233')->assertDontSee('إرسال الرد');
+
+        foreach ([$registered, $guest, $otherType] as $message) {
+            $this->post(route('dashboard.contact-messages.reply', $message), ['reply' => 'رد'])->assertSessionHasErrors('reply');
+        }
+
+        $this->assertDatabaseCount('notifications', 0);
+        Queue::assertNotPushed(SendExpoPushNotificationJob::class);
+    }
+
+    public function test_reply_remains_in_app_inbox_without_a_registered_device(): void
+    {
+        $member = Person::create(['first_name' => 'صالح', 'gender' => 'male']);
+        $suggestion = ContactMessage::create(['person_id' => $member->id, 'type' => 'suggestion']);
+        $admin = User::factory()->create();
+        $admin->givePermissionTo(Permission::firstOrCreate(['name' => 'site-content.update', 'guard_name' => 'web']));
+
+        $this->actingAs($admin)->post(route('dashboard.contact-messages.reply', $suggestion), ['reply' => 'وصلنا مقترحك'])
+            ->assertRedirect(route('dashboard.contact-messages.show', $suggestion));
+
+        Queue::assertNotPushed(SendExpoPushNotificationJob::class);
+        $token = SiteMobileAccessToken::issueIdentityToken($member->id, 'face')['token'];
+        $this->getJson('/api/notifications', ['Authorization' => 'Bearer '.$token])->assertOk()
+            ->assertJsonPath('data.data.0.body', 'وصلنا مقترحك');
     }
 }

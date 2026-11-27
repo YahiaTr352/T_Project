@@ -12,9 +12,10 @@ class MobileNotificationService
      * بناء استعلام الإشعارات الصالحة للعرض في صندوق الوارد
      * مع استبعاد إشعارات الشات نهائياً لضمان عدم ظهورها داخل التطبيق.
      */
-    public function visibleInboxQuery(): Builder
+    public function visibleInboxQuery(bool $verifiedViewer = true): Builder
     {
         return Notification::query()
+            ->when(! $verifiedViewer, fn (Builder $query) => $query->withoutContactMessageReplies())
             ->where(function ($q) {
                 $q->whereIn('status', ['sending', 'partial', 'sent', 'published'])
                     ->orWhereNull('status')
@@ -31,7 +32,11 @@ class MobileNotificationService
             ->where(function (Builder $query) {
                 // Private notices must not become broadcasts when their recipient is deleted.
                 $query->whereNull('targeting_filters->data->type')
-                    ->orWhereNotIn('targeting_filters->data->type', [Notification::INVITATION_RESPONSE_TYPE, Notification::CREATIVE_DECISION_TYPE])
+                    ->orWhereNotIn('targeting_filters->data->type', [
+                        Notification::INVITATION_RESPONSE_TYPE,
+                        Notification::CREATIVE_DECISION_TYPE,
+                        Notification::CONTACT_MESSAGE_REPLY_TYPE,
+                    ])
                     ->orWhereHas('recipients');
             });
     }
@@ -39,9 +44,9 @@ class MobileNotificationService
     /**
      * استعلام الإشعارات الموجهة للعضو وغير المحذوفة من قبله
      */
-    public function getInboxQueryForPerson(?int $personId): Builder
+    public function getInboxQueryForPerson(?int $personId, bool $verifiedViewer = true): Builder
     {
-        $query = $this->visibleInboxQuery();
+        $query = $this->visibleInboxQuery($verifiedViewer);
 
         if ($personId) {
             $query->where(function ($q) use ($personId) {
@@ -61,9 +66,9 @@ class MobileNotificationService
     /**
      * حساب عدد الإشعارات غير المقروءة للعضو مع استبعاد المحذوفة
      */
-    public function getUnreadCountForPerson(int $personId): int
+    public function getUnreadCountForPerson(int $personId, bool $verifiedViewer = true): int
     {
-        return $this->visibleInboxQuery()
+        return $this->visibleInboxQuery($verifiedViewer)
             ->whereHas('recipients', function ($r) use ($personId) {
                 $r->where('person_id', $personId)->whereNull('read_at');
             })
@@ -120,9 +125,9 @@ class MobileNotificationService
     /**
      * مسح كافة الإشعارات الظاهرة حالياً في رصيد الوارد للعضو
      */
-    public function clearAll(int $personId): int
+    public function clearAll(int $personId, bool $verifiedViewer = true): int
     {
-        $visibleIds = $this->getInboxQueryForPerson($personId)->pluck('id');
+        $visibleIds = $this->getInboxQueryForPerson($personId, $verifiedViewer)->pluck('id');
 
         if ($visibleIds->isEmpty()) {
             return 0;

@@ -288,10 +288,12 @@
 
                             {{-- الجوال --}}
                             <td class="text-center">
-                                @if($phone = $msg->sender_display_phone)
-                                    <a href="https://wa.me/{{ preg_replace('/\D/', '', $phone) }}" target="_blank" class="btn btn-xs btn-outline-success rounded-pill px-2.5 py-1 font-weight-bold text-nowrap" dir="ltr" title="مراسلة عبر واتساب">
-                                        <i class="fab fa-whatsapp ml-1"></i> {{ $phone }}
+                                @if($whatsAppNumber = $whatsAppNumbers[$msg->id])
+                                    <a href="https://wa.me/{{ $whatsAppNumber }}" target="_blank" rel="noopener" class="btn btn-xs btn-outline-success rounded-pill px-2.5 py-1 font-weight-bold text-nowrap" dir="ltr" title="مراسلة عبر واتساب">
+                                        <i class="fab fa-whatsapp ml-1"></i> {{ $msg->isMemberSuggestion() ? $whatsAppNumber : $msg->sender_display_phone }}
                                     </a>
+                                @elseif($phone = $msg->sender_display_phone)
+                                    <span dir="ltr">{{ $phone }}</span>
                                 @else
                                     <span class="text-muted small">—</span>
                                 @endif

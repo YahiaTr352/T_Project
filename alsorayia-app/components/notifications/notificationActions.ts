@@ -87,6 +87,7 @@ export function resolveNotificationAction(
   if (!item) return null;
 
   const data = (item.data || {}) as Record<string, unknown>;
+  if (data.type === 'contact_message_reply') return null;
   const actionUrl = item.actionUrl;
 
   const fullText = `${item.title} ${item.body}`.toLowerCase();

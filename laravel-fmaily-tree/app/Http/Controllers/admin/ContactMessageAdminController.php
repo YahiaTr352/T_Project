@@ -4,6 +4,7 @@ namespace App\Http\Controllers\admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ContactMessage;
+use App\Services\ContactMessageService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -11,9 +12,9 @@ use Illuminate\View\View;
 
 class ContactMessageAdminController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, ContactMessageService $contactService): View
     {
-        $query = ContactMessage::with(['person', 'user'])
+        $query = ContactMessage::with(['person.contactAccounts' => fn ($accounts) => $accounts->where('type', 'whatsapp'), 'user'])
             ->latest('id');
 
         if ($request->filled('status')) {
@@ -43,6 +44,9 @@ class ContactMessageAdminController extends Controller
         }
 
         $messages = $query->paginate(20)->withQueryString();
+        $whatsAppNumbers = $messages->getCollection()->mapWithKeys(
+            fn (ContactMessage $message) => [$message->id => $contactService->whatsAppNumber($message)]
+        );
 
         $stats = [
             'total'       => ContactMessage::count(),
@@ -51,10 +55,10 @@ class ContactMessageAdminController extends Controller
             'resolved'    => ContactMessage::where('status', 'resolved')->count(),
         ];
 
-        return view('dashboard.contact-messages.index', compact('messages', 'stats'));
+        return view('dashboard.contact-messages.index', compact('messages', 'stats', 'whatsAppNumbers'));
     }
 
-    public function show(ContactMessage $contactMessage): View
+    public function show(ContactMessage $contactMessage, ContactMessageService $contactService): View
     {
         $contactMessage->load(['person', 'user', 'resolver']);
 
@@ -62,7 +66,24 @@ class ContactMessageAdminController extends Controller
             $contactMessage->update(['status' => 'in_progress']);
         }
 
-        return view('dashboard.contact-messages.show', compact('contactMessage'));
+        $whatsAppNumber = $contactService->whatsAppNumber($contactMessage);
+        $canReplyInApp = $contactMessage->isMemberSuggestion() && ! $whatsAppNumber
+            && auth()->user()->canAny(['site-content.update', 'dashboard.view']);
+        $replies = $contactMessage->type === 'suggestion' ? $contactService->suggestionReplies($contactMessage)->get() : collect();
+
+        return view('dashboard.contact-messages.show', compact('contactMessage', 'whatsAppNumber', 'canReplyInApp', 'replies'));
+    }
+
+    public function reply(Request $request, ContactMessage $contactMessage, ContactMessageService $contactService): RedirectResponse
+    {
+        $validated = $request->validate([
+            'reply' => 'required|string|max:3000',
+        ], [], ['reply' => 'الرد على المقترح']);
+
+        $contactService->replyToSuggestion($contactMessage, $request->user()->id, $validated['reply']);
+
+        return redirect()->route('dashboard.contact-messages.show', $contactMessage)
+            ->with('success', 'أُضيف ردّك إلى إشعارات العضو في التطبيق.');
     }
 
     public function updateStatus(Request $request, ContactMessage $contactMessage): RedirectResponse

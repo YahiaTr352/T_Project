@@ -450,6 +450,7 @@ Route::group(['middleware' => ['auth'], 'prefix' => 'dashboard'], function () {
         Route::get('/', [\App\Http\Controllers\admin\ContactMessageAdminController::class, 'index'])->name('index')->middleware(['permission:site-content.view|dashboard.view']);
         Route::get('/{contactMessage}', [\App\Http\Controllers\admin\ContactMessageAdminController::class, 'show'])->name('show')->middleware(['permission:site-content.view|dashboard.view']);
         Route::patch('/{contactMessage}/status', [\App\Http\Controllers\admin\ContactMessageAdminController::class, 'updateStatus'])->name('status')->middleware(['permission:site-content.update|dashboard.view']);
+        Route::post('/{contactMessage}/reply', [\App\Http\Controllers\admin\ContactMessageAdminController::class, 'reply'])->name('reply')->middleware(['permission:site-content.update|dashboard.view']);
         Route::delete('/{contactMessage}', [\App\Http\Controllers\admin\ContactMessageAdminController::class, 'destroy'])->name('destroy')->middleware(['permission:site-content.update|dashboard.view']);
     });
 

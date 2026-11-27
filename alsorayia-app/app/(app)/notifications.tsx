@@ -80,7 +80,7 @@ function mapInboxItem(
   return {
     id: idStr,
     title: cleanNotificationText(n.title, viewerName) || 'إشعار جديد',
-    body: cleanNotificationText(n.body, viewerName),
+    body: n.data?.type === 'contact_message_reply' ? n.body : cleanNotificationText(n.body, viewerName),
     time: n.created_at || '',
     timeAgo: n.time_ago || '',
     read: n.read || localReadIds.includes(idStr),
@@ -161,6 +161,11 @@ export default function NotificationsScreen() {
       setDeletedLocalIds(deletedIds);
 
       const items = await fetchNotifications();
+      const requestedId = params.id ? String(params.id) : null;
+      if (requestedId && !deletedIds.includes(requestedId) && !items.some((item) => String(item.id) === requestedId)) {
+        const [requestedItem] = await fetchNotifications(requestedId).catch(() => []);
+        if (requestedItem && String(requestedItem.id) === requestedId) items.unshift(requestedItem);
+      }
       if (currentViewerId.current !== invitationViewerId) return;
 
       // فلترة الإشعارات المحذوفة ومطابقة المقروءة
@@ -177,8 +182,8 @@ export default function NotificationsScreen() {
       setNotifications(mapped);
 
       // التعامل مع المعرف القادم من الإشعار الخارجي (Push Notification / Deep Link)
-      if (params.id) {
-        const target = mapped.find((item) => item.id === String(params.id));
+      if (requestedId) {
+        const target = mapped.find((item) => item.id === requestedId);
         if (target) {
           const act = resolveNotificationAction(target);
           if (act?.route) {

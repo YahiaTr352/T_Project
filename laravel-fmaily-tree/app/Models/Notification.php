@@ -15,6 +15,8 @@ class Notification extends Model
 
     public const CREATIVE_DECISION_TYPE = 'creative_decision';
 
+    public const CONTACT_MESSAGE_REPLY_TYPE = 'contact_message_reply';
+
     protected $fillable = [
         'user_id',
         'person_id',
@@ -136,6 +138,18 @@ class Notification extends Model
     {
         return in_array($this->status, self::RESPONDABLE_STATUSES, true)
             || ($this->status === 'sending' && array_intersect(['push', 'whatsapp'], $this->channels ?? []) !== []);
+    }
+
+    public function isContactMessageReply(): bool
+    {
+        return data_get($this->targeting_filters, 'data.type') === self::CONTACT_MESSAGE_REPLY_TYPE;
+    }
+
+    public function scopeWithoutContactMessageReplies(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $items) => $items
+            ->whereNull('targeting_filters->data->type')
+            ->orWhere('targeting_filters->data->type', '!=', self::CONTACT_MESSAGE_REPLY_TYPE));
     }
 
     public function scopeReceivedInvitations(Builder $query, int $personId): Builder

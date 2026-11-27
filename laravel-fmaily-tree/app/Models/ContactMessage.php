@@ -122,6 +122,11 @@ class ContactMessage extends Model
         return $this->phone ?: ($this->person?->phone ?? null);
     }
 
+    public function isMemberSuggestion(): bool
+    {
+        return $this->type === 'suggestion' && $this->person !== null;
+    }
+
     public static function typeLabels(): array
     {
         return [

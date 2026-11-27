@@ -63,7 +63,12 @@ class SendExpoPushNotificationJob implements ShouldQueue
 
         // Find device ID for polymorphic log mapping
         $device = UserDevice::where('expo_push_token', $this->expoPushToken)->first();
-        if ($isPrivateInvitationNotice && ($this->personId === null || (int) $device?->person_id !== $this->personId)) {
+        $isContactMessageReply = $notification->isContactMessageReply();
+        if (($isPrivateInvitationNotice || $isContactMessageReply)
+            && ($this->personId === null || (int) $device?->person_id !== $this->personId)) {
+            return;
+        }
+        if ($isContactMessageReply && ! $notification->recipients()->where('person_id', $this->personId)->exists()) {
             return;
         }
 

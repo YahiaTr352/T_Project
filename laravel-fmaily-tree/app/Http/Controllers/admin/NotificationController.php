@@ -293,7 +293,7 @@ class NotificationController extends Controller
 
     public function logs(Request $request): View
     {
-        $query = Notification::query()
+        $query = Notification::withoutContactMessageReplies()
             ->with(['user', 'person', 'approvedBy', 'rejectedBy'])
             ->withCount([
                 'recipients',
@@ -320,6 +320,8 @@ class NotificationController extends Controller
 
     public function logShow(Request $request, Notification $notification): View
     {
+        abort_if($notification->isContactMessageReply(), 404);
+
         $notification->load(['user', 'person', 'approvedBy', 'rejectedBy']);
 
         $channel = $request->get('channel', 'all');
@@ -622,6 +624,8 @@ class NotificationController extends Controller
 
     public function retryNotification(Notification $notification): RedirectResponse
     {
+        abort_if($notification->isContactMessageReply(), 404);
+
         $channels = $notification->channels ?? [];
         $dispatchedWhatsAppCount = 0;
         $dispatchedPushCount = 0;

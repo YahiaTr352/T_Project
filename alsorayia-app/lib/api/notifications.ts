@@ -76,9 +76,10 @@ export function extractNotificationItems(body: unknown): InboxNotification[] {
   return [];
 }
 
-export async function fetchNotifications(): Promise<InboxNotification[]> {
+export async function fetchNotifications(notificationId?: string): Promise<InboxNotification[]> {
   const raw = (await api.get('/notifications', {
     skipGlobalErrorHandler: true,
+    params: notificationId ? { notification_id: notificationId } : undefined,
   })) as unknown;
   return extractNotificationItems(raw);
 }

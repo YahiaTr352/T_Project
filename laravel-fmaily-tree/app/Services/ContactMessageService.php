@@ -2,20 +2,27 @@
 
 namespace App\Services;
 
+use App\Jobs\SendExpoPushNotificationJob;
 use App\Models\ContactMessage;
+use App\Models\Notification;
 use App\Models\Person;
-use App\Services\AdminAlertDispatcherService;
-use App\Services\SiteIdentityResolver;
+use App\Models\UserDevice;
+use App\Services\Auth\WhatsappPersonLookup;
+use App\Support\NotificationSettings;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class ContactMessageService
 {
     public function __construct(
         protected SiteIdentityResolver $identityResolver,
-        protected AdminAlertDispatcherService $alertDispatcher
+        protected AdminAlertDispatcherService $alertDispatcher,
+        private WhatsappPersonLookup $whatsappLookup,
     ) {}
 
     /**
@@ -97,6 +104,71 @@ class ContactMessageService
         $this->notifyAdminsSafely($message);
 
         return $message;
+    }
+
+    public function whatsAppNumber(ContactMessage $message): ?string
+    {
+        if (! $message->isMemberSuggestion()) {
+            return preg_replace('/\D/', '', (string) $message->sender_display_phone) ?: null;
+        }
+
+        return $message->person->contactAccounts
+            ->where('type', 'whatsapp')
+            ->pluck('value')
+            ->map(fn ($value) => $this->whatsappLookup->canonicalMobile((string) $value))
+            ->first(fn (?string $number) => $number !== null);
+    }
+
+    public function suggestionReplies(ContactMessage $message): Builder
+    {
+        return Notification::query()
+            ->where('targeting_filters->data->type', Notification::CONTACT_MESSAGE_REPLY_TYPE)
+            ->where('targeting_filters->data->contact_message_id', $message->id)
+            ->latest('id');
+    }
+
+    public function replyToSuggestion(ContactMessage $message, int $adminId, string $reply): void
+    {
+        DB::transaction(function () use ($message, $adminId, $reply) {
+            $suggestion = ContactMessage::query()->lockForUpdate()->findOrFail($message->id);
+            $person = $suggestion->person;
+
+            if (! $suggestion->isMemberSuggestion() || $this->whatsAppNumber($suggestion)) {
+                throw ValidationException::withMessages(['reply' => 'الرد عبر التطبيق متاح للمقترحات المرتبطة بعضو بلا رقم واتساب مسجّل.']);
+            }
+
+            if ($this->suggestionReplies($suggestion)->first()?->body === $reply) {
+                return;
+            }
+
+            $data = ['type' => Notification::CONTACT_MESSAGE_REPLY_TYPE, 'contact_message_id' => $suggestion->id];
+            $notification = Notification::create([
+                'user_id' => $adminId,
+                'title' => 'تم الرد على مقترحك',
+                'body' => $reply,
+                'status' => 'sent',
+                'sent_at' => now(),
+                'targeting_filters' => ['data' => $data],
+            ]);
+            $notification->recipients()->create(['person_id' => $person->id]);
+
+            if (! NotificationSettings::canSendPush()) {
+                return;
+            }
+
+            $tokens = UserDevice::where('person_id', $person->id)->where('expo_push_token', '!=', '')->pluck('expo_push_token');
+            foreach ($tokens as $token) {
+                SendExpoPushNotificationJob::dispatch(
+                    $notification->id,
+                    $person->id,
+                    $token,
+                    $notification->title,
+                    'افتح التطبيق لقراءة رد الإدارة.',
+                    ['type' => Notification::CONTACT_MESSAGE_REPLY_TYPE, 'notification_id' => $notification->id],
+                    isSenderNotice: true,
+                )->afterCommit();
+            }
+        });
     }
 
     /**

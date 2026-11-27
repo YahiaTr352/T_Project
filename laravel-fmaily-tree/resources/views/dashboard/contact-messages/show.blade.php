@@ -26,8 +26,8 @@
             <a href="{{ route('dashboard.contact-messages.index') }}" class="btn btn-secondary btn-sm shadow-sm rounded-pill px-3">
                 <i class="fas fa-arrow-right ml-1"></i> العودة للقائمة
             </a>
-            @if($phone = $contactMessage->sender_display_phone)
-                <a href="https://wa.me/{{ preg_replace('/\D/', '', $phone) }}" target="_blank" class="btn btn-success btn-sm shadow-sm rounded-pill px-3">
+            @if($whatsAppNumber)
+                <a href="https://wa.me/{{ $whatsAppNumber }}" target="_blank" rel="noopener" class="btn btn-success btn-sm shadow-sm rounded-pill px-3">
                     <i class="fab fa-whatsapp ml-1"></i> تواصل عبر واتساب
                 </a>
             @endif
@@ -110,6 +110,39 @@
                     @endif
                 </div>
             </div>
+            @if($canReplyInApp || $replies->isNotEmpty() || $errors->has('reply'))
+                <div class="contact-card overflow-hidden mb-4">
+                    <div class="card-header py-3 px-4" style="background: var(--ppl-table-header-bg, #f8fafc); border-bottom: 1.5px solid var(--dash-card-border, #e2e8f0);">
+                        <h6 class="m-0 font-weight-bold" style="color: var(--dash-heading);">
+                            <i class="fas fa-reply text-primary ml-2"></i>الرد عبر التطبيق
+                        </h6>
+                    </div>
+                    <div class="card-body p-4">
+                        @if($canReplyInApp)
+                            <form action="{{ route('dashboard.contact-messages.reply', $contactMessage) }}" method="POST" class="mb-3">
+                                @csrf
+                                <div class="form-group">
+                                    <label for="contact-reply" class="font-weight-bold">نص الرد</label>
+                                    <textarea id="contact-reply" name="reply" dir="auto" rows="4" maxlength="3000" required class="form-control rounded-lg @error('reply') is-invalid @enderror">{{ old('reply') }}</textarea>
+                                    <small class="form-text text-muted">يظهر هذا الرد في صندوق إشعارات العضو في التطبيق.</small>
+                                </div>
+                                <button type="submit" class="btn btn-primary rounded-pill px-4">
+                                    <i class="fas fa-paper-plane ml-1"></i> إرسال الرد
+                                </button>
+                            </form>
+                        @endif
+                        @error('reply')
+                            <div class="alert alert-danger" role="alert">{{ $message }}</div>
+                        @enderror
+                        @foreach($replies as $reply)
+                            <div class="border rounded-lg p-3 mb-2">
+                                <time datetime="{{ $reply->sent_at->toIso8601String() }}" class="text-muted small">{{ $reply->sent_at->format('Y-m-d H:i') }}</time>
+                                <div dir="auto" style="white-space: pre-wrap; overflow-wrap: anywhere; color: var(--dash-body-text);">{{ $reply->body }}</div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
         </div>
 
         {{-- بيانات المرسل وتحديث الحالة --}}
