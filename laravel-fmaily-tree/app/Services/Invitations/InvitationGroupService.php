@@ -9,11 +9,11 @@ use Illuminate\Support\Collection;
 
 class InvitationGroupService
 {
-    public function ownedByPerson(int $personId): Collection
+    public function ownedByPerson(int $personId, bool $excludeOwner = false): Collection
     {
         return NotificationGroup::query()
             ->where('person_id', $personId)
-            ->withCount('persons')
+            ->withCount($excludeOwner ? ['persons' => fn ($members) => $members->whereKeyNot($personId)] : 'persons')
             ->latest()
             ->get();
     }

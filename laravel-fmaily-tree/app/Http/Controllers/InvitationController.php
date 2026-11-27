@@ -88,7 +88,7 @@ class InvitationController extends Controller
     public function send(Request $request): View
     {
         $person = $request->attributes->get('identity_person');
-        $groups = $this->groups->ownedByPerson($person->id);
+        $groups = $this->groups->ownedByPerson($person->id, excludeOwner: true);
         $templates = $this->messages->templates();
 
         $backgrounds = InvitationBackground::approved()->latest()->get();
@@ -479,10 +479,13 @@ class InvitationController extends Controller
     public function searchPersons(Request $request): JsonResponse
     {
         $q = trim((string) $request->get('q', ''));
+        $excludedPersonId = $request->boolean('exclude_sender')
+            ? $request->attributes->get('identity_person')->id
+            : null;
 
         return response()->json([
             'success' => true,
-            'persons' => $q === '' ? [] : $this->treePicker->search($q),
+            'persons' => $this->treePicker->search($q, excludedPersonId: $excludedPersonId),
         ]);
     }
 
@@ -515,9 +518,12 @@ class InvitationController extends Controller
                 ]);
             }
             $sampleId = $validated['person_id'] ?? null;
+            if ($sampleId !== null && (int) $sampleId === $person->id) {
+                $sampleId = null;
+            }
             if (! $sampleId && ($validated['recipient_type'] ?? null) === 'group' && ! empty($validated['group_id'])) {
                 $group = $this->groups->findOwned((int) $validated['group_id'], $person->id);
-                $sampleId = $group->persons()->first()?->id;
+                $sampleId = $group->persons()->whereKeyNot($person->id)->first()?->id;
             }
             $preview = $this->dispatcher->preview($person, $validated, $sampleId ? (int) $sampleId : null, $validated['external_name'] ?? null);
             $card = $creative ? $this->dispatcher->creativeCard($creative, $person, $validated) : null;

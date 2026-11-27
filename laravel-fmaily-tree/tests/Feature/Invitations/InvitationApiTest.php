@@ -217,6 +217,32 @@ class InvitationApiTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_web_send_picker_and_group_preview_exclude_the_sender(): void
+    {
+        $adult = ['birth_date' => '1990-01-01', 'death_date' => null];
+        $sender = Person::factory()->create($adult + ['first_name' => 'معاذ']);
+        $recipient = Person::factory()->create($adult + ['first_name' => 'ياسر', 'parent_id' => $sender->id]);
+        $this->giveWhatsapp($sender);
+        $this->giveWhatsapp($recipient);
+        $group = NotificationGroup::create(['name' => 'مجموعة مختلطة', 'person_id' => $sender->id]);
+        $group->persons()->attach([$sender->id => ['sort_order' => 1], $recipient->id => ['sort_order' => 2]]);
+
+        $this->withHeaders($this->identityHeaders($sender))->withSession([
+            'site_person_id' => $sender->id, 'site_auth_method' => 'whatsapp', 'site_password_verified' => true,
+        ]);
+        $this->get('/invitations/send')->assertOk()
+            ->assertSee('data-excluded-person-id="'.$sender->id.'"', false)
+            ->assertSee('مجموعة مختلطة (1 شخص)');
+        $search = '/invitations/persons-search?q='.urlencode('معاذ');
+        $this->getJson($search)->assertOk()->assertJsonFragment(['id' => $sender->id]);
+        $this->getJson($search.'&exclude_sender=1')->assertOk()->assertJsonMissing(['id' => $sender->id]);
+
+        $response = $this->postJson('/invitations/preview-message', [
+            'recipient_type' => 'group', 'group_id' => $group->id, 'body' => 'للمستلم {first_name}',
+        ])->assertOk();
+        $this->assertStringContainsString('للمستلم ياسر', $response->json('preview'));
+    }
+
     public function test_cannot_send_from_someone_elses_group(): void
     {
         $me = Person::factory()->create(['gender' => 'male', 'death_date' => null]);

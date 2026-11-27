@@ -54,7 +54,7 @@ class InvitationTreePickerService
     /**
      * @return list<array<string, mixed>>
      */
-    public function search(string $query, int $limit = 40): array
+    public function search(string $query, int $limit = 40, ?int $excludedPersonId = null): array
     {
         $term = trim($query);
         if ($term === '') {
@@ -62,7 +62,10 @@ class InvitationTreePickerService
         }
 
         $whatsappIds = array_flip($this->groups->personIdsWithWhatsApp());
-        $people = $this->personLookup->search($term, $limit);
+        $people = $this->personLookup->search($term, $excludedPersonId === null ? $limit : $limit + 1);
+        if ($excludedPersonId !== null) {
+            $people = $people->reject(fn (Person $person) => $person->id === $excludedPersonId)->take($limit);
+        }
 
         $people->each(function (Person $person) {
             $person->loadMissing(['parent.parent.parent.parent.parent', 'contactAccounts']);

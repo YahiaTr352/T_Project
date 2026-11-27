@@ -62,7 +62,7 @@
                     <select name="group_id" class="w-full px-4 py-3 border rounded-xl">
                         <option value="">— اختر مجموعة —</option>
                         @foreach($groups as $g)
-                            <option value="{{ $g->id }}" @selected((string) old('group_id') === (string) $g->id)>{{ $g->name }} ({{ $g->persons_count }} شخص)</option>
+                            <option value="{{ $g->id }}" @disabled($g->persons_count === 0) @selected($g->persons_count > 0 && (string) old('group_id') === (string) $g->id)>{{ $g->name }} ({{ $g->persons_count }} شخص)</option>
                         @endforeach
                     </select>
                     @if($groups->isEmpty())
@@ -70,7 +70,7 @@
                     @endif
                 </div>
                 <div id="wrapperPersons" class="hidden">
-                    @include('web-site.invitations.partials.tree-picker', ['pickerId' => 'sendPicker', 'inputName' => 'person_ids[]'])
+                    @include('web-site.invitations.partials.tree-picker', ['pickerId' => 'sendPicker', 'inputName' => 'person_ids[]', 'excludedPersonId' => $person->id])
                 </div>
                 <div id="wrapperExternal" class="hidden">
                     <div class="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-3">

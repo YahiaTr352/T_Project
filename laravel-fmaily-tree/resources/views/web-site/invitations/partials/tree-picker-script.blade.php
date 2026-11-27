@@ -9,6 +9,7 @@
         const searchUrl = root.dataset.searchUrl;
         const treeUrl = root.dataset.treeUrl;
         const childrenBase = root.dataset.childrenUrl;
+        const excludedPersonId = Number(root.dataset.excludedPersonId) || null;
         const treeColumn = root.querySelector('.inv-picker-tree');
         const hiddenBox = root.querySelector('.inv-picker-hidden');
         const chipsBox = root.querySelector('.inv-picker-selected');
@@ -20,6 +21,7 @@
 
         try {
             (JSON.parse(root.dataset.selected || '[]') || []).forEach(function (id) {
+                if (Number(id) === excludedPersonId) return;
                 selected.set(Number(id), { id: Number(id), first_name: '#' + id });
             });
         } catch (e) {}
@@ -60,6 +62,7 @@
         }
 
         function toggleSelect(person) {
+            if (Number(person.id) === excludedPersonId) return;
             const flag = flagFor(person.id);
             if (!flag.selectable) return;
             if (selected.has(person.id)) {
@@ -144,6 +147,17 @@
             return response.json();
         }
 
+        async function withoutSender(people) {
+            if (excludedPersonId === null) return people;
+            const sender = people.find((person) => Number(person.id) === excludedPersonId);
+            if (!sender) return people;
+
+            const children = sender.children_count > 0
+                ? (await fetchJson(childrenBase + '/' + sender.id + '/children')).children ?? []
+                : [];
+            return people.flatMap((person) => person === sender ? children : [person]);
+        }
+
         function initCardClicks() {
             treeColumn.querySelectorAll('.card-header-section').forEach(function (header) {
                 if (header.dataset.bound) return;
@@ -178,8 +192,9 @@
                         childrenContainer.classList.add('show');
                         try {
                             const data = await fetchJson(childrenBase + '/' + personId + '/children');
-                            if (data && data.children && data.children.length > 0) {
-                                childrenContainer.innerHTML = data.children.map(function (child) {
+                            const children = await withoutSender(data?.children ?? []);
+                            if (children.length > 0) {
+                                childrenContainer.innerHTML = children.map(function (child) {
                                     return createPersonCard(child, level + 1);
                                 }).join('');
                                 childrenContainer.dataset.loaded = 'true';
@@ -229,8 +244,9 @@
                     fetchJson(flagsUrl)
                 ]);
                 flags = flagData.flags || {};
-                if (treeData && treeData.tree && treeData.tree.length > 0) {
-                    treeColumn.innerHTML = treeData.tree.map(function (person) {
+                const people = await withoutSender(treeData?.tree ?? []);
+                if (people.length > 0) {
+                    treeColumn.innerHTML = people.map(function (person) {
                         return createPersonCard(person, 0);
                     }).join('');
                     bindSelectButtons();
@@ -255,8 +271,10 @@
             }
             searchTimer = setTimeout(async function () {
                 try {
-                    const data = await fetchJson(searchUrl + '?q=' + encodeURIComponent(q));
-                    const persons = data.persons || [];
+                    const url = new URL(searchUrl, window.location.href);
+                    url.searchParams.set('q', q);
+                    const data = await fetchJson(url);
+                    const persons = (data.persons ?? []).filter((person) => Number(person.id) !== excludedPersonId);
                     if (!persons.length) {
                         dropdown.innerHTML = '<div class="search-no-results"><i class="fas fa-search me-2"></i>لا توجد نتائج لـ "' + q + '"</div>';
                         dropdown.classList.add('visible');

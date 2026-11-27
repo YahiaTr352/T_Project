@@ -147,7 +147,8 @@
      data-input-name="{{ $inputName }}"
      data-selected="{{ json_encode($selectedIds) }}"
      data-flags-url="{{ route('invitations.tree-picker') }}"
-     data-search-url="{{ route('invitations.persons-search') }}"
+     data-search-url="{{ route('invitations.persons-search', isset($excludedPersonId) ? ['exclude_sender' => 1] : []) }}"
+     data-excluded-person-id="{{ $excludedPersonId ?? '' }}"
      data-tree-url="{{ url('/api/family-tree') }}"
      data-children-url="{{ url('/api/person') }}">
     <div class="flex items-center justify-between mb-2 px-1">
