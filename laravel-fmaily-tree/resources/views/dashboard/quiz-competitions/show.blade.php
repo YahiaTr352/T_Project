@@ -355,7 +355,7 @@
                                                     title="تخصيص إعدادات سباق الترتيب اليومي">
                                                 <i class="fe fe-sliders mr-1"></i> إعدادات السباق
                                             </button>
-                                            @if(auth()->user()->canAny(['site-content.view', 'dashboard.view']) && $question->canViewWalkingLeaderboard(auth()->user()->person))
+                                            @canany(['site-content.view', 'dashboard.view'])
                                                 <button type="button"
                                                         class="btn btn-sm btn-outline-success font-weight-bold"
                                                         data-toggle="modal"
@@ -363,7 +363,7 @@
                                                         data-video-timeline="{{ route('dashboard.quiz-questions.walking-race-video', [$quizCompetition, $question], false) }}">
                                                     <i class="fe fe-film mr-1" aria-hidden="true"></i> حفظ الفيديو
                                                 </button>
-                                            @endif
+                                            @endcanany
                                         </div>
                                     @elseif($question->answers_count > 0)
                                         <a href="{{ route('dashboard.quiz-competitions.responses', ['quizCompetition' => $quizCompetition, 'question_id' => $question->id]) }}" class="btn btn-sm btn-outline-info px-3 font-weight-bold" style="border-radius: 8px;" title="عرض إحصائيات الإجابات">
@@ -722,9 +722,11 @@
     </x-dashboard.card>
 </div>
 
-@if(auth()->user()->canAny(['site-content.view', 'dashboard.view']) && $quizCompetition->questions->contains(fn ($question) => $question->isWalkingChallenge() && $question->canViewWalkingLeaderboard(auth()->user()->person)))
-    @include('dashboard.quiz-competitions._walking-race-video')
-@endif
+@canany(['site-content.view', 'dashboard.view'])
+    @if($quizCompetition->questions->contains(fn ($question) => $question->isWalkingChallenge()))
+        @include('dashboard.quiz-competitions._walking-race-video')
+    @endif
+@endcanany
 
 @push('scripts')
 <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>

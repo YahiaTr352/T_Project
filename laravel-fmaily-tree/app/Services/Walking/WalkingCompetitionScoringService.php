@@ -1105,13 +1105,14 @@ class WalkingCompetitionScoringService
         ?Person $viewer = null,
         ?int $maxRanks = null,
         bool $personalizeViewer = true,
+        bool $includeWomenForExport = false,
     ): array {
         $config = $question->getWalkingRaceConfig();
         if ($maxRanks !== null) {
             $config['max_ranks'] = $maxRanks;
         }
         $targetGender = $question->getWalkingTargetGender();
-        $canViewFemale = $this->canViewFemaleLeaderboard($viewer);
+        $canViewFemale = $includeWomenForExport || $this->canViewFemaleLeaderboard($viewer);
         $isGroupScoped = $question->isGroupWalkingChallenge();
 
         // Enforce female leaderboard privacy for female-only competitions

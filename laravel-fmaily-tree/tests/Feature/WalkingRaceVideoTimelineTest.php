@@ -73,25 +73,65 @@ class WalkingRaceVideoTimelineTest extends TestCase
         $this->assertFalse($question->fresh()->isWalkingRaceEnabled());
     }
 
-    public function test_export_requires_dashboard_permission_and_respects_womens_leaderboard_visibility(): void
+    public function test_dashboard_permission_allows_exporting_a_womens_race_without_linking_the_account(): void
     {
-        $competition = QuizCompetition::create(['title' => 'تحدي المشي', 'is_active' => true]);
+        $yesterday = now(WalkingCompetitionScoringService::KSA_TIMEZONE)->subDay();
+        $competition = QuizCompetition::create([
+            'title' => 'تحدي المشي', 'is_active' => true,
+            'start_at' => $yesterday->copy()->startOfDay(), 'end_at' => $yesterday->copy()->endOfDay(),
+        ]);
         $question = QuizQuestion::create([
             'quiz_competition_id' => $competition->id,
             'question_text' => 'تحدي المشي للنساء',
             'answer_type' => 'walking',
             'winners_count' => 3,
-            'walking_settings' => ['target_gender' => 'female'],
+            'walking_settings' => ['target_gender' => 'female', 'race_enabled' => true],
         ]);
+        $walker = Person::create(['first_name' => 'اسم خاص', 'gender' => 'female', 'walking_leaderboard_mode' => 'anonymous']);
+        WalkingRecord::create(['person_id' => $walker->id, 'date' => $yesterday->toDateString(), 'steps' => 8000]);
+
+        $page = route('dashboard.quiz-competitions.show', $competition);
         $url = route('dashboard.quiz-questions.walking-race-video', [$competition, $question]);
         $user = User::factory()->create();
 
         $this->getJson($url)->assertUnauthorized();
         $this->actingAs($user)->getJson($url)->assertForbidden();
+        $this->get($page)->assertOk()->assertDontSee('data-video-timeline=', false);
         $user->givePermissionTo(Permission::findOrCreate('dashboard.view'));
-        $this->getJson($url)->assertForbidden();
+        $this->get($page)->assertOk()->assertSee('data-video-timeline=', false);
+        $this->getJson($url)->assertOk()
+            ->assertJsonPath('access_denied', false)
+            ->assertJsonPath('default_section', 'female')
+            ->assertJsonPath('sections.female.days.0.top_entries.0.name', 'متسابق متخفي')
+            ->assertJsonMissingPath('sections.female.days.0.top_entries.0.person_id')
+            ->assertJsonMissingPath('sections.male');
+        $this->getJson(route('quiz-competitions.walking-race', [$competition, $question]))->assertForbidden();
 
         $otherCompetition = QuizCompetition::create(['title' => 'مسابقة أخرى', 'is_active' => true]);
         $this->getJson(route('dashboard.quiz-questions.walking-race-video', [$otherCompetition, $question]))->assertNotFound();
+    }
+
+    public function test_export_includes_both_sections_for_a_segregated_race_without_exposing_them_to_public_viewers(): void
+    {
+        $yesterday = now(WalkingCompetitionScoringService::KSA_TIMEZONE)->subDay();
+        $competition = QuizCompetition::create([
+            'title' => 'سباق بفئتين', 'is_active' => true,
+            'start_at' => $yesterday->copy()->startOfDay(), 'end_at' => $yesterday->copy()->endOfDay(),
+        ]);
+        $question = $competition->questions()->create([
+            'question_text' => 'تحدي المشي', 'answer_type' => 'walking', 'winners_count' => 3,
+            'walking_settings' => ['target_gender' => 'both_segregated', 'race_enabled' => true],
+        ]);
+        foreach (['male', 'female'] as $gender) {
+            $person = Person::create(['first_name' => 'متسابق', 'gender' => $gender]);
+            WalkingRecord::create(['person_id' => $person->id, 'date' => $yesterday->toDateString(), 'steps' => 8000]);
+        }
+        $admin = User::factory()->create();
+        $admin->givePermissionTo(Permission::findOrCreate('site-content.view'));
+        $this->actingAs($admin)->getJson(route('dashboard.quiz-questions.walking-race-video', [$competition, $question]))
+            ->assertOk()->assertJsonCount(1, 'sections.male.days.0.top_entries')->assertJsonCount(1, 'sections.female.days.0.top_entries');
+
+        $this->getJson(route('quiz-competitions.walking-race', [$competition, $question]))
+            ->assertOk()->assertJsonCount(1, 'data.sections.male.days.0.top_entries')->assertJsonMissingPath('data.sections.female');
     }
 }

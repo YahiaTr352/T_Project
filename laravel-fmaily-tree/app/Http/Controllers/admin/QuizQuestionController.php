@@ -1248,7 +1248,6 @@ class QuizQuestionController extends Controller
     }
 
     public function walkingRaceVideoTimeline(
-        Request $request,
         QuizCompetition $quizCompetition,
         QuizQuestion $quizQuestion,
         WalkingCompetitionScoringService $scoring,
@@ -1259,10 +1258,13 @@ class QuizQuestionController extends Controller
             'تحدي المشي غير موجود في هذه المسابقة.'
         );
 
-        $viewer = $request->user()->person;
-        abort_unless($quizQuestion->canViewWalkingLeaderboard($viewer), 403, 'هذا الترتيب غير متاح لك.');
-
-        $timeline = $scoring->getDailyRaceTimeline($quizCompetition, $quizQuestion, $viewer, maxRanks: 10, personalizeViewer: false);
+        $timeline = $scoring->getDailyRaceTimeline(
+            $quizCompetition,
+            $quizQuestion,
+            maxRanks: 10,
+            personalizeViewer: false,
+            includeWomenForExport: true,
+        );
         $entryAliases = [];
         foreach ($timeline['sections'] as &$section) {
             foreach ($section['days'] as &$day) {
